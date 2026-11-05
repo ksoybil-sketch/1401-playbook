@@ -1,0 +1,15 @@
+node_modules/
+www/
+dist/
+functions/lib/
+functions/node_modules/
+.emulator-data/
+*.log
+.env
+.env.production
+.env.*.local
+serviceAccountKey.json
+android/app/build/
+android/.gradle/
+android/local.properties
+.firebase/

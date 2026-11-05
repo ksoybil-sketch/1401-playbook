@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// 1401 Playbook — Firestore güvenlik kuralları.
+//
+// Kimlik custom claim'lerden okunur (bkz. functions/index.js):
+//   role: 'ops' | 'admin'            → Kahve Operasyonu (e-posta ile giriş)
+//   role: 'store'                    → Eşleştirilmiş mağaza telefonu (barista girişi yok)
+//   role: 'barista' | 'lead'         → Telefonda PIN ile giriş yapmış barista / mağaza sorumlusu
+//
+// PIN'ler, cihaz anahtarları, davet kodları ve soruların cevap anahtarı
+// istemcilere hiç açılmaz; bunlara sadece Cloud Functions erişir.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function role() { return request.auth.token.role; }
+    function isStaff() { return signedIn() && role() in ['ops', 'admin']; }
+    function isStoreSession() { return signedIn() && role() in ['store', 'barista', 'lead']; }
+    function inStore(storeId) { return isStoreSession() && request.auth.token.storeId == storeId; }
+    function isBarista() { return signedIn() && role() in ['barista', 'lead']; }
+    function isLead() { return signedIn() && role() == 'lead'; }
+
+    match /stores/{storeId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    match /baristas/{baristaId} {
+      allow read: if isStaff() || inStore(resource.data.storeId);
+      allow write: if false; // sadece Cloud Functions
+    }
+
+    match /staff/{uid} {
+      allow read: if isStaff() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+
+    match /devices/{deviceId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    // --- İçerik: herkes okur, yönetici yazar ---------------------------
+    match /tracks/{id} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+    match /modules/{id} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+    match /lessons/{id} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    // Soru bankası cevap anahtarı içerir — baristaya kapalı.
+    match /questions/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // --- Sonuçlar ----------------------------------------------------
+    match /attempts/{id} {
+      allow read: if isStaff()
+        || (isBarista() && resource.data.baristaId == request.auth.token.baristaId)
+        || (isLead() && resource.data.storeId == request.auth.token.storeId);
+      allow write: if false; // puanlama sunucuda
+    }
+
+    match /progress/{baristaId} {
+      allow read: if isStaff() || inStore(resource.data.storeId);
+      // Barista sadece kendi ders tamamlamalarını işaretleyebilir.
+      // Modül (sınav) başarıları sadece sunucu tarafından yazılır.
+      allow update: if isBarista()
+        && request.auth.token.baristaId == baristaId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'updatedAt']);
+      allow create, delete: if false;
+    }
+
+    // --- Görevler ------------------------------------------------------
+    match /assignments/{id} {
+      allow read: if isStaff() || inStore(resource.data.storeId);
+      allow create: if (isStaff() || (isLead() && request.resource.data.storeId == request.auth.token.storeId))
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isStaff()
+        || (isLead() && resource.data.storeId == request.auth.token.storeId && resource.data.createdBy == request.auth.uid);
+    }
+
+    // devices, pairingCodes, baristaSecrets, invites ve diğer her şey: kapalı.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

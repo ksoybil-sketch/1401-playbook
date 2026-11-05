@@ -1,0 +1,38 @@
+{
+  "name": "1401-playbook",
+  "private": true,
+  "version": "0.1.0",
+  "description": "1401 Coffee Playbook — barista eğitimi, standartlar, sınav ve görev yönetimi",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:emu": "vite --mode emulator",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "emulators": "firebase emulators:start --project demo-playbook --import=./.emulator-data --export-on-exit",
+    "seed:emu": "node scripts/seed.mjs --emulator",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/preferences": "^8.0.1",
+    "firebase": "^12.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.5",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@tailwindcss/vite": "^4.3.4",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.0.1",
+    "firebase-admin": "^14.5.0",
+    "tailwindcss": "^4.3.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  }
+}
