@@ -77,7 +77,22 @@ blaze/                    Sunucu kodu (Cloud Functions) ve eski kurallar — kul
 3. `firebase deploy --only firestore,hosting` (rules, indexes, web paneli).
 4. İlk yönetici hesabı: yayındaki adreste `#/kurulum` sayfasından (yalnızca hiç yönetici yokken çalışır) ya da `node scripts/seed.mjs --production --content-only` ile müfredat yükledikten sonra uygulamadaki "İlk kurulum" ekranından.
 5. Müfredat: panele yönetici olarak gir → **İçerik → Müfredatı güncelle**. Uygulamanın içine gömülü müfredat (`src/generated/curriculum.json`) yöneticinin kendi oturumuyla yazılır; menüden çıkmış ders ve sorular silinir, panelden eklenen soru fotoğrafları ve yayın durumları korunur. Betik ya da servis hesabı anahtarı gerekmez.
-6. Android: `npx cap add android && npm run build && npx cap sync android`.
+6. Android: `npm run apk` → `android/app/build/outputs/apk/release/app-release.apk`.
+
+### Android uygulaması
+
+`capacitor.config.json` içinde `server.url` **canlı adresi** gösterir: APK paketlenmiş
+HTML'i değil, `playbook-1401.web.app`'i yükler. Sonuç: `firebase deploy --only hosting`
+ile yayınlanan her değişiklik, telefonlara yeni APK kurulmadan ulaşır. Yeni APK yalnızca
+Capacitor eklentisi, uygulama ikonu/adı veya `server.url` değişirse gerekir.
+
+Bedeli: uygulama açılışta internet ister. Dersler Firestore önbelleğinden çevrimdışı
+açılıyordu; bu kurulumda kabuk da ağdan geldiği için şube wifi'si yoksa uygulama açılmaz.
+
+İmzalama: `android/keystore.properties` ve `android/1401-playbook.keystore` depoya
+**girmez** (`.gitignore`). Bu iki dosya kaybolursa aynı uygulamanın güncellemesi
+yayınlanamaz — yedeklenmeleri gerekir. Play Store'a geçilirse imzalamayı Google üstlenir
+ve bu anahtar yalnızca yükleme anahtarı olarak kalır.
 
 ### Sezon güncellemesi (reçeteler değiştiğinde)
 

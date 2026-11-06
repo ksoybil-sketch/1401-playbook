@@ -11,6 +11,7 @@
     "build": "node scripts/build-curriculum.mjs && tsc && vite build",
     "build:demo": "node scripts/build-curriculum.mjs && tsc && vite build --mode demo",
     "seed:demo": "node scripts/seed.mjs --demo",
+    "apk": "npx cap sync android && cd android && gradlew assembleRelease",
     "deploy:demo": "npm run build:demo && firebase deploy --only hosting,firestore --project playbook-demo-1401",
     "preview": "vite preview",
     "emulators": "firebase emulators:start --project demo-playbook --import=./.emulator-data --export-on-exit",

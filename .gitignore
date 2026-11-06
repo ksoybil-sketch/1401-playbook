@@ -14,3 +14,10 @@ android/.gradle/
 android/local.properties
 .firebase/
 src/generated/
+
+# Android imzalama anahtarı ve şifresi — asla depoya girmez.
+android/1401-playbook.keystore
+android/keystore.properties
+
+# Derlenmiş APK — her derlemede yeniden üretilir.
+apk/
