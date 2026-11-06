@@ -4,7 +4,8 @@
  * Kaynaklar (hepsi 1401 Coffee'nin kendi materyalleri):
  *  - 1401 İşletme Manueli (İşletme Standartları Coffee Shop.pdf, 2025)
  *  - PERSONEL EĞİTİM KONULARI.docx
- *  - 1401 AOS reçete kitabı (76 reçete) ve soru bankası (73 soru)
+ *  - 1401 Yeni Menü Reçeteleri 2026 (67 reçete, 9 kategori)
+ *  - 1401 AOS soru bankası (73 soru)
  *
  * Bu dosya yalnızca ilk yükleme içindir; sonrasında içerik uygulamadaki
  * İçerik editöründen yönetilir.
@@ -15,7 +16,8 @@ import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const RECIPES = JSON.parse(readFileSync(join(here, 'source/aos-recipes.json'), 'utf8'));
+/** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
+const RECIPES = JSON.parse(readFileSync(join(here, 'source/recipes-2026.json'), 'utf8'));
 
 /* ------------------------------------------------------------------ */
 /* Yardımcılar                                                         */
@@ -33,10 +35,100 @@ const CHECK = (prompt, options, answer, explanation) => ({ type: 'check', prompt
 const Q = (prompt, correct, wrong, explanation) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation });
 const TF = (prompt, isTrue, explanation) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation });
 
+/**
+ * AOS soru bankasından gelen 73 sorunun hiçbirinde açıklama yoktu (AOS'un
+ * kendi tipinde bu alan hiç tanımlı değildi). Her biri için, doğru cevabı
+ * tekrar etmek yerine ALTINDAKİ İLKEYİ anlatan birer açıklama — araştırma
+ * (Butler ve ark. 2013) açıklamalı geri bildirimin asıl faydasının aynı
+ * soruyu ezberlemek değil, öğrenileni YENİ bir duruma aktarabilmek
+ * olduğunu gösteriyor; bu yüzden her açıklama "neden" sorusuna cevap verir.
+ */
+const AOS_EXPLANATIONS = {
+  'sales-1': 'Önerili satış, misafirin henüz fark etmediği bir ihtiyacı keşfetmesine yardım etmektir; agresif satış değildir. İki türü var: tamamlayıcı (yanına bir şey ekle) ve yükseltme (aynı üründen daha iyisi). Amaç her zaman misafire değer katmaktır, ciro bunun bir sonucudur.',
+  'sales-2': 'Lattenin yanına cheesecake önermek, ana ürünle uyumlu İKİNCİ bir ürün eklemektir — bu tamamlayıcı satıştır (cross-sell). Yükseltme satışından farkı: ürün değişmiyor, yanına bir şey ekleniyor.',
+  'sales-3': 'Double shot önerisi aynı ürünün (kahve) daha üst bir versiyonunu sunar — bu yükseltme satışıdır (up-sell). Cross-sell\'den farkı: misafir hâlâ aynı kategoride kalır, sadece daha iyisini alır.',
+  'sales-4': '"Şefin önerisi" ya da "popüler seçim" gibi ifadeler misafire güven verir çünkü karar baskısı hissettirmez, bir tavsiye gibi gelir. Israrla tekrar önermek ya da misafiri dinlemeden siparişe eklemek tam tersi etki yapar, misafiri rahatsız eder.',
+  'sales-5': 'Açık uçlu sorular ("Ne tür bir şey istersiniz?") misafirin gerçek ihtiyacını ortaya çıkarır; evet/hayır soruları ("Tatlı ister misiniz?") hızlı bir "hayır" almayı kolaylaştırır. Doğru soru, doğru öneriyi mümkün kılar.',
+  'sales-6': 'Sadık bir misafir sadece kendisi tekrar gelmekle kalmaz, çevresine de tavsiye eder — bu bedava ve güvenilir bir pazarlamadır. Bir şubenin en güçlü büyüme kaynağı reklam değil, memnun misafirin ağzından çıkan sözdür.',
+  'sales-7': 'Kapıdan giren HER misafire aynı sıcaklıkta "Hoş geldiniz" demek, günün yoğunluğundan ya da misafirin tanıdık olup olmamasından bağımsız bir standarttır — tutarlılık, misafirin her ziyarette aynı deneyimi bulacağını bilmesini sağlar.',
+  'sales-8': 'Bir misafirin sabit tercihini ("şekersiz yulaf sütlü latte") hatırlamak ona özel olduğunu hissettirir — bu kişiselleştirilmiş hizmettir. Siparişi almak işin başlangıcı, misafiri TANIMAK sadakati kalıcı kılan şeydir.',
+  'sales-9': 'Bar ve servis ekibi arasındaki iletişim ne kadar hızlıysa sipariş o kadar hızlı misafire ulaşır — servis hızı bireysel değil, takım performansıdır. Bir halkadaki gecikme tüm zinciri yavaşlatır.',
+  'sales-10': '1401 İmzası; temiz fincan, doğru servis sıcaklığı ve lekesiz camlar gibi HER ziyarette aynı kalması gereken küçük ama kritik detaylardır. "En pahalı ürünü önermek" bunlardan biri değildir çünkü bu bir satış taktiğidir, bir kalite standardı değil.',
+  'sales-11': 'Misafir bardağı eline almadan önce önce GÖRÜR — köpüğün kıvamı, tatmadan oluşan ilk izlenimi belirler. Lezzet doğru olsa bile kötü görünen bir sunum memnuniyeti baştan zedeler.',
+  'sales-12': '"Her şey arzu ettiğiniz gibi mi?" nötr ve davetkârdır; misafiri suçlama ya da savunma pozisyonuna sokmaz. "Beğenmediniz mi?" gibi olumsuz çerçeveli sorular, misafiri rahatsız olmadığı hâlde bile tedirgin edebilir.',
+  'sales-13': 'Yoğun saatte herkesin sadece kendi görevine odaklanması kuyruğu büyütür; takım mantığıyla birbirinin açığını kapatmak hızı korur. İyi bir ekip, kimin ne iş yaptığından önce misafirin beklemediğinden emin olur.',
+  'sales-14': "1401'in barista rehberinde dört satış stratejisi tanımlanır: tamamlayıcı satış, yükseltme satışı, yeni ürün tanıtımı ve kampanya/bonus gücü. Her biri farklı bir anda, farklı bir amaçla kullanılır.",
+  'sales-15': '"Bugün menüye yeni eklenen spesiyalimiz çok popüler!" merak uyandırır ve sosyal kanıt kullanır (başkaları da beğeniyor); baskıcı ifadeler ("almazsanız pişman olursunuz") misafiri rahatsız eder ve güven kaybettirir.',
+  'sales-16': 'Gülümseme, dik duruş ve göz teması sözsüz bir "seni önemsiyorum" mesajıdır — misafir cümleleri duymadan önce bu sinyalleri alır ve ona göre güven duyar ya da duymaz.',
+  'sales-17': 'Satış oranlarını takip etmenin amacı cezalandırmak değil, gelişimi görünür kılmaktır — başarıyı birlikte kutlamak ve düzenli geri bildirim vermek motivasyonu artırır; herkesin önünde eleştirmek tam tersi etki yapar.',
+  'sales-18': 'Bir misafirin aceleci mi, sakin mi, üzgün mü olduğunu anlayıp ona göre yaklaşmak empati kurmaktır — aynı cümle, farklı ruh hâlindeki iki misafire farklı etki yapar.',
+
+  'complaints-1': 'Şikayet yönetiminin sırası önemlidir: önce DİNLE (sözünü kesme), sonra EMPATİ kur, TEŞEKKÜR et (bildirdiği için), ÖZÜR dile, en son ÇÖZÜM sun. Sıra bozulursa — örneğin dinlemeden çözüm sunmak — misafir kendini duyulmamış hisseder.',
+  'complaints-2': '"Sizi çok iyi anlıyorum" misafirin duygusunu onayladığını gösterir — bu empati adımıdır, henüz çözüm ya da özür değildir. Empati, misafire "yalnız değilsin, seni duyuyorum" der.',
+  'complaints-3': 'Misafiri suçlamak ya da "bizde hata olmaz" demek savunmacı bir tavırdır ve şikayeti büyütür. Dinlemek, özür dilemek ve hızlı çözüm üretmek doğru tepkilerdir — bunların tam tersi yanlış olanı belirler.',
+  'complaints-4': 'Kalite şikayetinde ürün SORGUSUZ geri alınır ve hemen yenisi hazırlanır — misafiri ikna etmeye çalışmak ya da onay beklemek güveni zedeler. Hız ve koşulsuzluk, misafire ciddiye alındığını gösterir.',
+  'complaints-5': 'Demleme gerektirmeyen içecekler (soğuk hazırlananlar, hazır içecekler) en geç 2 dakikada hazır olmalıdır — bu standart, gecikme şikayetlerinde "ne kadar beklemesi gerekiyordu" sorusunun cevabıdır.',
+  'complaints-6': 'Demleme gerektiren içecekler (espresso bazlı, filtre kahve) en geç 5 dakikada hazır olmalıdır. Bu süre aşılırsa, misafire bu gecikmeyi fark etmeden bekletildiği hissini vermemek için bilgilendirme ve özür önemlidir.',
+  'complaints-7': 'Küçük çaplı bir şikayetin ÇÖZÜMÜNDEN bar personeli (barista) sorumludur — her şey için yöneticiyi beklemek gecikmeye ve misafirin daha da rahatsız olmasına yol açar. Barista kendi yetkisindeki sorunu kendi çözer.',
+  'complaints-8': 'Şikayet büyümeye başladığında barista durumu derhal vardiyadaki yöneticiye iletir ve devreder — misafirle tartışmak ya da kendi başına söz vermek, karşılayamayacağı bir taahhüde girmesine yol açabilir.',
+  'complaints-9': 'İndirim ve ikram yetkisi yalnızca Şube Yöneticileri ve Operasyon Müdürü\'ndedir — bu, kontrolsüz indirimlerin işletmeye maliyetini önler. Barista bu yetkiyi kullanamaz, durumu yöneticiye taşır.',
+  'complaints-10': 'Öfkeli bir misafire sakin kalıp durumu tırmandırmadan yaklaşmak, aynı üslupla karşılık vermekten çok daha etkilidir — öfkeye öfkeyle karşılık vermek durumu daima kötüleştirir, asla düzeltmez.',
+  'complaints-11': 'Çözüm sunulduktan 5 dakika sonra masaya uğrayıp "Yeni kahveniz nasıl oldu?" diye sormak, misafire gerçekten önemsendiğini gösterir — bu küçük jest bir şikayeti olumlu bir anıya çevirebilir.',
+  'complaints-12': 'Yöneticiler maliyeti belirsiz taahhütlerde bulunmamalıdır ("biz karşılarız" gibi) — bu, işletmeyi önceden onaylanmamış bir maliyete sokabilir. Telafi her zaman makul ve ölçülü olmalıdır (kuru temizleme bedeli gibi).',
+  'complaints-13': 'Ürün stokta yoksa özür dilenip alternatif önerilir — "o ürün hiç yok" deyip konuyu kapatmak misafiri çözümsüz bırakır, oysa doğru alternatif önerisi hayal kırıklığını fırsata çevirebilir.',
+  'complaints-14': 'Şikayetler yazılı olarak kaydedilip ekibe raporlanmalıdır — sadece sözlü aktarım unutulur ve aynı hata tekrarlanır. Yazılı kayıt, şubenin aynı sorunu tekrar tekrar yaşamasını önler.',
+  'complaints-15': 'Çözülen bir şikayet sonrası küçük bir ikram (kurabiye, çikolata) misafire "bu olay bizim için de önemliydi" mesajı verir — maliyeti düşük ama etkisi yüksek bir jesttir.',
+  'complaints-16': 'Ekip arasında kriz senaryolarını canlandırmak (role-play), gerçek bir şikayet anında doğru tepkiyi otomatik hâle getirir — pratik yapılmış bir tepki, panikle verilen bir tepkiden çok daha hızlı ve doğrudur.',
+
+  'logistics-1': "FIFO (First In, First Out) = ilk giren ürün ilk çıkar. Depoya önce giren ürün SKT'si daha yakın olduğu için önce kullanılmalıdır — aksi hâlde eski ürünler arkada unutulup son kullanma tarihini geçirir.",
+  'logistics-2': 'Süt ve süt ürünleri 0-4°C arasında saklanır — bu aralığın dışına çıkmak hem lezzeti hem güvenliği riske atar; çok soğuk donmaya, yetersiz soğuk bozulmaya yol açar.',
+  'logistics-3': 'Yırtık ya da sızdıran ambalajlı ürün teslim ALINMAZ — hasar, içeriğin kontamine ya da bozulmuş olabileceği anlamına gelir; "sonra düzeltiriz" riski göze alınmaz.',
+  'logistics-4': "Kahve çekirdeği serin, kuru, güneş almayan, hava almayan valfli kapta saklanır — ışık ve nem çekirdeğin aromasını hızla bozar; valf, içeride oluşan gazın çıkmasına izin verirken dışarıdan hava almasını engeller.",
+  'logistics-5': 'Gıda ürünleri ile temizlik kimyasalları KESİNLİKLE ayrı alanlarda tutulur — yan yana durmaları bile bulaşma riski taşır; bu gıda güvenliğinin en temel kurallarından biridir.',
+  'logistics-6': "Açılan her şurup veya süt paketinin üzerine açılış tarihi yazılır — bu olmadan bir ürünün ne zaman açıldığını ve hâlâ güvenli olup olmadığını kimse bilemez.",
+  'logistics-7': 'Bitkisel ve hayvansal sütler ayrı alanlarda saklanır — hem çapraz bulaşmayı (alerjen açısından) önler hem de birbirine karışmalarını engeller.',
+  'logistics-8': 'Kuru gıdaların zeminle doğrudan teması KESİNLİKLE yasaktır, palet kullanılır — zemin nem ve kir taşır; palet ürünü hem nemden hem haşereden uzak tutar.',
+  'logistics-9': 'Donuk ürünler +4°C dolaba alındıktan sonra 3 gün içinde tüketilmelidir — bu süre, ürünün tazeliğini kaybetmeden güvenle kullanılabileceği üst sınırdır.',
+  'logistics-10': 'Hiçbir gıda ürünü ikinci kez dondurulamaz — çözülme sırasında üreyen bakteriler tekrar dondurmayla yok olmaz, sadece "uyur"; tekrar çözüldüğünde risk katlanarak artar.',
+  'logistics-11': "Donuk ürün çözdürme işlemi yalnızca +5°C'deki buzdolabında yapılır — oda sıcaklığında ya da sıcak suda çözdürmek, ürünün dış yüzeyinin bakteri üremesi için tehlikeli bir sıcaklığa uzun süre maruz kalmasına yol açar.",
+  'logistics-12': 'Depoda dökülen toz ya da sıvı ürün ANINDA temizlenir — bekletilen dökülme hem kayma riski hem haşere çekme riski taşır.',
+  'logistics-13': 'Kritik seviyeye düşen malzeme ANINDA sipariş edilir — "bitene kadar beklemek" o ürünün olmadığı bir günü garantiler; proaktif sipariş stok-dışı kalmayı önler.',
+  'logistics-14': 'Kullanılamaz hâle gelen hammaddeler fire sistemine İŞLENEREK kayıt altına alınır — kayıtsız atılan ürün, hem maliyet takibini hem tekrarlayan kayıpların fark edilmesini imkânsız kılar.',
+  'logistics-15': 'Depoda kategori ayrımı (kahve, süt, kuru gıda, temizlik) kolay erişim, düzen ve hijyen sağlar — karışık bir depoda ürün bulmak zaman kaybettirir ve yanlış ürün kullanımına yol açabilir.',
+  'logistics-16': 'Haftalık/günlük stok kontrolleri, eksik ürünleri ERKEN fark edip zamanında sipariş vermeyi sağlar — kontrol atlanırsa eksiklik ancak ürün tükendiğinde, yani çok geç fark edilir.',
+  'logistics-17': 'Soğuk zincirin kırılması (ürünün gerekli sıcaklığın dışına çıkması) hem lezzet kaybına hem sağlık risklerine yol açar — bir kez kırılan soğuk zincir geri alınamaz, ürün güvenilirliğini kaybeder.',
+  'logistics-18': "Tedarikçilerden akşam 17:30'dan sonra mal teslim alınmaz — bu kural, kontrolün (SKT, sıcaklık, ambalaj) günün yorgunluğunda eksik yapılmasını önler.",
+
+  'operations-1': 'Göz seviyesi kuralı: en çok satan ve öne çıkarılmak istenen ürünler misafirin göz hizasına konur — insan gözü doğal olarak önce kendi boy hizasındaki rafı tarar, bu yüzden o raf en değerli reklam alanıdır.',
+  'operations-2': 'Facing tekniği, ürünlerin etiketi dışa dönük ve raf dolu GÖRÜNECEK şekilde dizilmesidir — düzenli ve dolu bir raf, misafire "bu ürün taze ve popüler" mesajı verir.',
+  'operations-3': "Dağınık bir vitrin veya eksik etiketli ürünler satışı %40'a kadar düşürebilir — görsel düzensizlik misafirin bilinçaltında \"ihmal edilmiş\" izlenimi bırakır, bu da güveni azaltır.",
+  'operations-4': 'Şube alarm şifresini yalnızca yöneticiler bilir — bu, güvenliğin kaç kişiye emanet edildiğini sınırlı tutar; şifre çok kişiyle paylaşılırsa kontrolü kaybetmek kolaylaşır.',
+  'operations-5': "Kruvasan çeşitleri 180°C'de 20 dakika pişirilir — bu standart sıcaklık/süre, her şubede aynı kıvam ve rengin çıkmasını garanti eder; farklı ayar farklı sonuç demektir.",
+  'operations-6': 'Fırından çıkan kruvasan teşhire konmadan önce 4 dakika dinlendirilir — sıcak ürün doğrudan teşhire konursa buharı dolap içinde yoğunlaşıp hem ürünü hem komşu ürünleri nemlendirir.',
+  'operations-7': "Soğuyan kruvasan serviste mikrodalgada 45 saniye, 200°C'de ısıtılır — bu kesin ölçü, ürünün ne yanmasını ne de soğuk kalmasını sağlar; standart olmadan herkes farklı süre dener.",
+  'operations-8': 'Kapanışta buzdolapları, derin dondurucular ve soğuk oda ÇALIŞIR durumda bırakılır — kapatılırsa içindeki tüm stok birkaç saat içinde bozulur. Klima gibi gıda güvenliğiyle ilgisi olmayan ama çok enerji tüketen cihazlar kapatılır.',
+  'operations-9': 'SKT\'si dolmuş ürün sisteme ZAYİ kaydı yapılarak çöpe atılır — kayıtsız atmak, o maliyetin nereye gittiğinin hiç görünmemesi, dolayısıyla tekrarlayan kaybın fark edilmemesi demektir.',
+  'operations-10': 'Personelin günlük içecek hakkı 3 adettir: kahve, limonata ve çay — bu sınır hem personel memnuniyetini sağlar hem maliyetin kontrolsüz büyümesini önler.',
+  'operations-11': 'KerzzPOS\'a herkes YALNIZCA kendi şifresiyle girer — ortak şifre kullanmak hangi işlemi kimin yaptığını belirsizleştirir; bu hem hesap verebilirliği hem hata takibini imkânsız kılar.',
+  'operations-12': 'Mesai saatinde şube sınırları içinde şahsi telefon görüşmesi yapılamaz; zorunlu durumda izinle dışarıda yapılabilir — bu kural, misafirin barista ile değil telefonla ilgilenen bir personel görmesini önler.',
+  'operations-13': 'İş kıyafetleriyle şube dışına çıkılmaz ve işe bu kıyafetle gelinmez — kıyafet markayı temsil eder; dışarıda görülmesi markanın kontrolsüz bir ortamda temsil edilmesi demektir.',
+  'operations-14': 'Personel iş esnasında isimlik takmak zorundadır — isimlik, misafire kiminle konuştuğunu bilme ve kişisel bir bağ kurma imkânı verir.',
+  'operations-15': 'Buz makinesi HER GECE temizlenir — buz su kaynaklı olduğu için bakteri üremesine en açık ekipmanlardan biridir; günlük temizlik bu riski sıfıra yakın tutar.',
+  'operations-16': 'Espresso makinesinin süt köpürtme çubukları Pully Milk ile temizlenir — süt kalıntısı hem bakteri üretir hem bir sonraki içeceğe koku/tat bulaşmasına yol açar.',
+  'operations-17': "Kahve öğütücüler haftada bir Pully Grind ile detaylı temizlenir — çekirdek yağı zamanla öğütücüde birikir ve eski kahvenin acı tadını yeni öğütülen kahveye karıştırır.",
+  'operations-18': 'Limonata azaldığında kalan başka kaba aktarılır, makine temizlenmeden üzerine yenisi eklenmez — üzerine ekleme yapmak, eski ve yeni limonatanın karışıp ikisinin de tazeliğini bozmasına yol açar.',
+  'operations-19': "Şube açılış-kapanış saatleri genel olarak 08:30-23:30'dur (lokasyona göre değişebilir) — bu saat bandı, misafirin hangi şubeye gittiğinde ne bulacağını bilmesini sağlayan bir tutarlılıktır.",
+  'operations-20': 'Açılış tamamlandığında şube fotoğrafları "1401 Standartlar" WhatsApp grubuna gönderilir — bu, merkezin her şubenin açılışını uzaktan, günlük olarak görebildiği basit ama etkili bir denetim yöntemidir.',
+  'operations-21': "Personel indirimi KerzzPOS satış fiyatı üzerinden %20'dir — bu oran yalnızca personelin kendisi ve birinci derece yakınları için geçerlidir, sabit ve herkese eşit uygulanan bir kuraldır."
+};
+
 const fromAos = (bank, ids) =>
   QUESTION_BANKS[bank]
     .filter((q) => !ids || ids.includes(Number(q.id.split('-')[1])))
-    .map((q) => ({ type: 'single', prompt: q.questionText, options: q.options, answer: q.options.indexOf(q.correctAnswer), explanation: '' }));
+    .map((q) => ({
+      type: 'single', prompt: q.questionText, options: q.options, answer: q.options.indexOf(q.correctAnswer),
+      explanation: AOS_EXPLANATIONS[q.id] || ''
+    }));
 
 /* ------------------------------------------------------------------ */
 /* 1. Oryantasyon                                                      */
@@ -121,55 +213,64 @@ const orientation = {
 /* 2. İçecek Standartları — reçetelerden otomatik                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Modüller, 2026 menüsünün kendi kategori yapısını izler (bkz.
+ * source/recipes-2026.json). Ders sırası menüdeki sırayla aynıdır —
+ * alfabetik değil: menü, Ristretto → Espresso → Macchiato gibi
+ * öğrenme sırasını zaten doğru kuruyor.
+ */
 const CATEGORY_MODULES = [
-  { id: 'sicak-kahveler', title: 'Sıcak Kahveler', cats: ['Sıcak Kahveler'], description: 'Espresso bazlı sıcak kahvelerin ölçü, bardak ve hazırlanış standartları.' },
-  { id: 'demleme-yoresel', title: 'Demleme ve Yöresel Kahveler', cats: ['Demlenmiş Kahveler', 'Yöresel Kahveler'], description: 'Filtre, demleme yöntemleri ve geleneksel kahvelerimiz.' },
-  { id: 'soguk-kahveler', title: 'Soğuk Kahveler', cats: ['Soğuk Kahveler'], description: 'Buzlu ve blender\'lı kahvelerin porsiyonlama standartları.' },
-  { id: 'soguk-icecekler', title: 'Soğuk İçecekler', cats: ['Soğuk İçecekler'], description: 'Limonata, frozen, milkshake ve diğer soğuk içecekler.' },
-  { id: 'sicak-icecekler', title: 'Sıcak İçecekler ve Çaylar', cats: ['Sıcak İçecekler', 'Bitki Çayları'], description: 'Sıcak çikolata, salep, çay ve bitki çayları.' }
+  { id: 'italyan-klasikler', title: 'İtalyan Klasikler', cats: ['İtalyan Klasikler'], description: 'Her espresso bazlı içeceğin temeli: ristretto, espresso, macchiato, cortado.' },
+  { id: 'sicak-kahveler', title: 'Sıcak Kahveler', cats: ['Sıcak Kahveler'], description: 'Latte, cappuccino, mocha ve aromalı sıcak kahvelerin ölçü ve bardak standartları.' },
+  { id: 'demleme-turk', title: 'Demleme ve Türk Kahveleri', cats: ['3. Nesil Demleme', 'Geleneksel Türk Kahveleri'], description: 'Batch brew, V60/Chemex, cold drip ve geleneksel Türk kahvelerimiz.' },
+  { id: 'soguk-kahveler', title: 'Soğuk Kahveler, Frappe ve Matcha', cats: ['Soğuk Kahveler', 'Frappe & Matcha'], description: 'Buzlu kahveler, frappe ve matcha içeceklerinin porsiyonlama standartları.' },
+  { id: 'sicak-icecekler', title: 'Sıcak İçecekler ve Kids Menu', cats: ['Sıcak İçecekler', 'Kids Menu'], description: 'Sıcak çikolata, chai, sahlep, matcha ve çocuk menüsü.' },
+  { id: 'soguk-icecekler', title: 'Soğuk İçecekler', cats: ['Soğuk İçecekler'], description: 'Limonatalar, milkshake, mix içecekler ve affogato.' }
 ];
 
-const titleCase = (s) => s.toLocaleLowerCase('tr').replace(/(^|\s|-)(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase('tr'));
 const slug = (s) => s.toLocaleLowerCase('tr').replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-function parseRecipe(r) {
-  let text = (r.instructions || '').trim();
-  const cupMatch = text.match(/^(\d+\s*OZ)\s*(BARDAK|KUPA|FİNCAN|FINCAN)?/i);
-  const cup = cupMatch ? `${cupMatch[1].replace(/\s+/, ' ').toUpperCase()} ${cupMatch[2] ? titleCase(cupMatch[2]) : 'Bardak'}` : null;
-  if (cupMatch) text = text.slice(cupMatch[0].length).trim();
-  let note = null;
-  const pi = text.search(/Porsiyonlama\s*:/i);
-  if (pi >= 0) {
-    note = text.slice(pi).replace(/Porsiyonlama\s*:\s*/i, '').trim();
-    text = text.slice(0, pi).trim();
+/**
+ * 2026 menüsünde bardak/porsiyon bilgisi ürün adının parantezinde:
+ * "Chestnut Latte (Kestaneli - 8 oz / 12 oz)" → ad + alt başlık + porsiyon.
+ */
+function parseName(full) {
+  const m = full.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  if (!m) return { title: full.trim(), cup: null };
+  const base = m[1].trim();
+  let cup = null, note = null;
+  for (const part of m[2].split(/\s*-\s*/)) {
+    if (/\b(oz|ml|tek|duble)\b/i.test(part)) cup = part.trim();
+    else note = part.trim();
   }
-  const steps = text.split(/(?<=[.!])\s*(?=\p{Lu})|\.\s+/u).map((s) => s.replace(/\.$/, '').trim()).filter((s) => s.length > 2);
-  return { cup, steps, note };
+  return { title: note ? `${base} (${note})` : base, cup };
 }
 
 function recipeLesson(r, order) {
-  const { cup, steps, note } = parseRecipe(r);
-  const name = titleCase(r.name);
+  const { title, cup } = parseName(r.name);
+  const steps = (r.tech || '').split('\n').map((s) => s.trim()).filter((s) => s.length > 2);
   const blocks = [
-    SPEC([...(cup ? [['Bardak', cup]] : []), ...r.ingredients.map((i) => [titleCase(i.name), i.amount])]),
+    SPEC([...(cup ? [['Porsiyon', cup]] : []), ...r.ing.map((i) => [i.name, i.amt])]),
     ...(steps.length ? [H('Hazırlanışı'), STEPS(...steps)] : []),
-    ...(note ? [TIP(`**Porsiyonlama:** ${note}`)] : []),
     TIP('Ürünü teslim etmeden önce standarda ve sunuma uygunluğunu **gözle kontrol et**. Standart dışı ürün misafire sunulmaz.')
   ];
-  return { id: `r-${slug(r.name)}`, title: name, durationMin: 2, order, blocks, _recipe: r, _cup: cup };
+  return { id: `r-${slug(r.name)}`, title, durationMin: 2, order, blocks, _recipe: r, _cup: cup, _title: title };
 }
 
-/** Reçetelerden sınav soruları: malzeme ölçüsü ve bardak boyu. */
+/**
+ * Reçetelerden sınav soruları: malzeme ölçüsü ve porsiyon.
+ * Açıklama, doğru cevabı tekrar etmek yerine önce ÖLÇÜNÜN NEDEN önemli
+ * olduğunu söyler, sonra reçetenin tamamını hatırlatır.
+ */
 function recipeQuestions(lessons, allRecipes) {
   const out = [];
   const amountsByIngredient = new Map();
-  allRecipes.forEach((r) => r.ingredients.forEach((i) => {
+  allRecipes.forEach((r) => r.ing.forEach((i) => {
     const k = i.name.toLocaleLowerCase('tr').trim();
     if (!amountsByIngredient.has(k)) amountsByIngredient.set(k, new Set());
-    amountsByIngredient.get(k).add(i.amount.trim());
+    amountsByIngredient.get(k).add(i.amt.trim());
   }));
-  const cups = [...new Set(lessons.map((l) => l._cup).filter(Boolean))];
-  const allCups = ['8 OZ Bardak', '12 OZ Bardak', '16 OZ Bardak', '4 OZ Bardak', ...cups];
+  const allCups = [...new Set(allRecipes.map((r) => parseName(r.name).cup).filter(Boolean))];
 
   const numericVariants = (amount) => {
     const m = amount.match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/);
@@ -180,25 +281,34 @@ function recipeQuestions(lessons, allRecipes) {
     return [n - step, n + step, n + 2 * step, n - 2 * step].filter((x) => x > 0).map((x) => `${Math.round(x)} ${unit}`.trim());
   };
 
+  const recipeLine = (r) => r.ing.map((i) => `${i.name} ${i.amt}`).join(', ');
+
   for (const l of lessons) {
     const r = l._recipe;
-    const name = titleCase(r.name);
-    const measurable = r.ingredients.filter((i) => /\d/.test(i.amount));
+    const name = l._title;
+    const measurable = r.ing.filter((i) => /\d/.test(i.amt));
     // En belirleyici iki malzeme: önce espresso/süt dışı olanlar (şurup, toz, sos), sonra ana malzemeler.
     const ranked = [...measurable].sort((a, b) => {
-      const base = (x) => /espresso|süt|su$|buz/i.test(x.name) ? 1 : 0;
+      const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
     }).slice(0, 2);
     for (const ing of ranked) {
-      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amount.trim() && /\d/.test(a));
-      const wrong = [...new Set([...pool, ...numericVariants(ing.amount)])].filter((a) => a.replace(/\s/g, '') !== ing.amount.replace(/\s/g, '')).slice(0, 3);
+      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
+      const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
       if (wrong.length < 3) continue;
-      out.push(Q(`${name} reçetesinde ${titleCase(ing.name).toLocaleLowerCase('tr')} ölçüsü nedir?`, ing.amount.trim(), wrong,
-        `${name}: ${r.ingredients.map((i) => `${titleCase(i.name)} ${i.amount}`).join(', ')}.`));
+      out.push(Q(
+        `${name} reçetesinde ${ing.name.toLocaleLowerCase('tr')} ölçüsü nedir?`,
+        ing.amt.trim(), wrong,
+        `Ölçü, 1401'in imzasıdır: aynı içecek her şubede, her baristada aynı tatta çıkmalı — fazlası da azı da misafirin tanıdığı lezzeti bozar. ${name}: ${recipeLine(r)}.`
+      ));
     }
     if (l._cup) {
-      const wrong = [...new Set(allCups)].filter((c) => c !== l._cup).slice(0, 3);
-      if (wrong.length === 3) out.push(Q(`${name} hangi bardakta servis edilir?`, l._cup, wrong, `${name} ${l._cup} ile servis edilir.`));
+      const wrong = allCups.filter((c) => c !== l._cup).slice(0, 3);
+      if (wrong.length === 3) out.push(Q(
+        `${name} hangi porsiyonda servis edilir?`,
+        l._cup, wrong,
+        `Bardak boyu sadece sunum değil, oran meselesidir: aynı espresso farklı hacimde farklı yoğunlukta içilir. ${name} → ${l._cup}.`
+      ));
     }
   }
   return out;
@@ -206,9 +316,9 @@ function recipeQuestions(lessons, allRecipes) {
 
 const drinks = {
   id: 'icecek-standartlari', title: 'İçecek Standartları', icon: 'coffee',
-  description: 'Menüdeki her içeceğin ölçüsü, bardağı ve hazırlanışı. Misafire giden her bardak aynı olmalı.',
+  description: '2026 menüsündeki her içeceğin ölçüsü, porsiyonu ve hazırlanışı. Misafire giden her bardak aynı olmalı.',
   modules: CATEGORY_MODULES.map((cm) => {
-    const recipes = RECIPES.filter((r) => cm.cats.includes(r.category)).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+    const recipes = RECIPES.filter((r) => cm.cats.includes(r.cat));
     const lessons = recipes.map((r, i) => recipeLesson(r, i + 1));
     return {
       id: cm.id, title: cm.title, description: cm.description, passScore: 80, examSize: 15,
@@ -472,3 +582,30 @@ const operations = {
 };
 
 export const CURRICULUM = [orientation, drinks, guest, operations];
+
+/**
+ * İç içe müfredatı Firestore koleksiyonlarına birebir karşılık gelen düz
+ * listelere çevirir. Hem seed betiği hem de panelin "Müfredatı güncelle"
+ * eylemi aynı çıktıyı kullanır — tek doğruluk kaynağı.
+ */
+export function flattenCurriculum(curriculum = CURRICULUM) {
+  const tracks = [], modules = [], lessons = [], questions = [];
+  curriculum.forEach((tr, ti) => {
+    tracks.push({ id: tr.id, title: tr.title, description: tr.description, icon: tr.icon, order: ti + 1, published: true });
+    tr.modules.forEach((m, mi) => {
+      modules.push({
+        id: m.id, trackId: tr.id, title: m.title, description: m.description, order: mi + 1,
+        passScore: m.passScore, examSize: Math.min(m.examSize, m.questions.length),
+        prerequisiteId: m.prerequisiteId || null, published: true, questionCount: m.questions.length
+      });
+      m.lessons.forEach((l, li) => lessons.push({
+        id: l.id, moduleId: m.id, title: l.title, order: li + 1, durationMin: l.durationMin, blocks: l.blocks, published: true
+      }));
+      m.questions.forEach((q, qi) => {
+        if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
+        questions.push({ id: `${m.id}-q${String(qi + 1).padStart(3, '0')}`, moduleId: m.id, imageUrl: '', ...q });
+      });
+    });
+  });
+  return { tracks, modules, lessons, questions };
+}

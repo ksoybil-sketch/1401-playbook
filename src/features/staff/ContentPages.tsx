@@ -9,6 +9,7 @@ import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toas
 import * as t from '../../ui/tokens';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { compressImage } from '../../lib/media';
+import { loadCurriculumFile, planCurriculum, publishCurriculum, type PublishPlan, type PublishProgress } from '../../api/publishCurriculum';
 import type { Lesson, LessonBlock, Module, Question, Track } from '../../../shared/types';
 
 const TRACK_ICONS: IconName[] = ['coffee', 'book', 'users', 'store', 'shield', 'package', 'cap', 'award', 'clipboard', 'flag'];
@@ -31,11 +32,21 @@ export const ContentPage: React.FC = () => {
   const { tracks, modules, lessons } = useContent();
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null);
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
+  const [syncOpen, setSyncOpen] = useState(false);
 
   return (
     <Page wide>
       <PageTitle title="İçerik" subtitle="Eğitim yolları, modüller, dersler ve soru bankası."
-        action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setEditTrack({})}><Icon name="plus" size={15} /> Eğitim yolu</button>} />
+        action={
+          <div className="flex gap-2">
+            <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
+              <Icon name="refresh" size={15} /> Müfredatı güncelle
+            </button>
+            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setEditTrack({})}><Icon name="plus" size={15} /> Eğitim yolu</button>
+          </div>
+        } />
+
+      <CurriculumSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
 
       {tracks.length === 0 && <Empty icon="layers" text="Henüz eğitim yolu yok." />}
 
@@ -82,6 +93,121 @@ export const ContentPage: React.FC = () => {
       <TrackSheet value={editTrack} onClose={() => setEditTrack(null)} nextOrder={tracks.length ? Math.max(...tracks.map((x) => x.order)) + 1 : 1} />
       <ModuleSheet value={editModule} onClose={() => setEditModule(null)} />
     </Page>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Müfredat güncelleme: uygulamaya gömülü müfredatı Firestore'a yazar   */
+/* ------------------------------------------------------------------ */
+
+const COL_LABELS: Record<string, string> = {
+  tracks: 'Eğitim yolu', modules: 'Modül', lessons: 'Ders', questions: 'Soru'
+};
+
+const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
+  const [plan, setPlan] = useState<PublishPlan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<PublishProgress | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (!open) { setPlan(null); setErr(''); setProgress(null); return; }
+    let alive = true;
+    setBusy(true);
+    (async () => {
+      try {
+        const file = await loadCurriculumFile();
+        const p = await planCurriculum(file);
+        if (alive) setPlan(p);
+      } catch (e) {
+        if (alive) setErr(e instanceof Error ? e.message : 'Müfredat okunamadı.');
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [open]);
+
+  const apply = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const file = await loadCurriculumFile();
+      const res = await publishCurriculum(file, setProgress);
+      toast(`${res.written} belge yazıldı, ${res.removed} belge silindi`, 'positive');
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Yükleme başarısız.');
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
+  const pct = progress ? Math.round((progress.done / Math.max(progress.total, 1)) * 100) : 0;
+  const totalRemove = plan ? Object.values(plan.counts).reduce((s, c) => s + c.remove, 0) : 0;
+
+  return (
+    <Sheet open={open} title="Müfredatı güncelle" onClose={busy ? () => {} : onClose}
+      footer={
+        <>
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={onClose} disabled={busy}>Vazgeç</button>
+          <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={apply} disabled={busy || !plan}>
+            {busy && progress ? 'Yükleniyor…' : 'Uygula'}
+          </button>
+        </>
+      }>
+      <p className="text-[13px] text-fg-2 leading-relaxed">
+        Uygulamanın içindeki hazır müfredatı veritabanına yazar. Menüden çıkmış dersler ve
+        sorular silinir. Panelden eklediğin soru fotoğrafları ve yayın/taslak durumları korunur,
+        ancak <strong className="text-crema">ders metinlerinde elle yaptığın değişiklikler üzerine yazılır</strong>.
+      </p>
+
+      {busy && !progress && <div className="flex justify-center py-4"><Spinner /></div>}
+
+      {progress && (
+        <div className={t.field}>
+          <div className="flex justify-between text-[12px] text-fg-2">
+            <span>{progress.label}</span><span className="tnum">%{pct}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-panel-3 overflow-hidden">
+            <div className="h-full bg-crema transition-all duration-200" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {plan && !progress && (
+        <>
+          <div className="flex items-center gap-2">
+            <Badge tone="neutral">{plan.season} sezonu</Badge>
+            <span className="text-[12px] text-fg-3 tnum">{plan.version}</span>
+          </div>
+
+          <div className={t.listGroup}>
+            {Object.entries(plan.counts).map(([col, c]) => (
+              <div key={col} className={`${t.listRow} cursor-default`}>
+                <div className="flex-1 text-[13px] font-medium">{COL_LABELS[col] || col}</div>
+                <div className="flex gap-1.5">
+                  {c.add > 0 && <Badge tone="positive">+{c.add} yeni</Badge>}
+                  {c.update > 0 && <Badge tone="neutral">{c.update} güncellenecek</Badge>}
+                  {c.remove > 0 && <Badge tone="negative">−{c.remove} silinecek</Badge>}
+                  {c.add + c.update + c.remove === 0 && <span className="text-[12px] text-fg-3">değişiklik yok</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {totalRemove > 0 && plan.removedTitles.length > 0 && (
+            <div className={t.field}>
+              <span className={t.label}>Silinecek ders ve modüller</span>
+              <div className="text-[12px] text-fg-3 leading-relaxed">{plan.removedTitles.join(' · ')}</div>
+            </div>
+          )}
+        </>
+      )}
+
+      <ErrorText>{err}</ErrorText>
+    </Sheet>
   );
 };
 

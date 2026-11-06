@@ -59,8 +59,11 @@ src/api/backend.ts        Hesap açma, eşleştirme, PIN, davet, sınav başlat/
 src/api/firebase.ts       Firebase init + yönetici oturumunu bozmayan ikinci oturum (secondaryAuth)
 src/lib/media.ts          Ders fotoğrafı sıkıştırma (Storage yerine Firestore'a gömülü)
 firestore.rules           Rol bazlı erişim — kimlik users/{uid}.role'den okunur
-scripts/content.mjs       Başlangıç müfredatı (İşletme Manueli + Personel Eğitim Konuları + AOS reçeteleri)
+scripts/content.mjs       Müfredat kaynağı (İşletme Manueli + Personel Eğitim Konuları + 2026 reçeteleri)
+scripts/build-curriculum.mjs  Müfredatı src/generated/curriculum.json'a yazar (build adımı)
+scripts/extract-2026.mjs  Sezon menüsü HTML'inden reçeteleri çıkarır (tek seferlik)
 scripts/seed.mjs          Emülatöre / gerçek projeye yükleme
+src/api/publishCurriculum.ts  Panelden "Müfredatı güncelle" — yöneticinin kendi oturumuyla yazar
 src/features/device       Telefon eşleştirme, barista seçimi, PIN, davet, ilk kurulum
 src/features/barista      Bugün, Akademi, ders, sınav, sonuçlar, ekibim
 src/features/staff        Genel bakış, mağazalar, baristalar, görevler, içerik editörü
@@ -73,5 +76,15 @@ blaze/                    Sunucu kodu (Cloud Functions) ve eski kurallar — kul
 2. `.env.production` içine `VITE_FB_*` değerlerini yaz (`firebase apps:sdkconfig WEB <appId>` ile alınır).
 3. `firebase deploy --only firestore,hosting` (rules, indexes, web paneli).
 4. İlk yönetici hesabı: yayındaki adreste `#/kurulum` sayfasından (yalnızca hiç yönetici yokken çalışır) ya da `node scripts/seed.mjs --production --content-only` ile müfredat yükledikten sonra uygulamadaki "İlk kurulum" ekranından.
-5. Müfredat: `node scripts/seed.mjs --production --content-only`.
+5. Müfredat: panele yönetici olarak gir → **İçerik → Müfredatı güncelle**. Uygulamanın içine gömülü müfredat (`src/generated/curriculum.json`) yöneticinin kendi oturumuyla yazılır; menüden çıkmış ders ve sorular silinir, panelden eklenen soru fotoğrafları ve yayın durumları korunur. Betik ya da servis hesabı anahtarı gerekmez.
 6. Android: `npx cap add android && npm run build && npx cap sync android`.
+
+### Sezon güncellemesi (reçeteler değiştiğinde)
+
+1. Yeni menü dosyasından reçeteleri çıkar: `node scripts/extract-2026.mjs "<menü html>"`.
+2. `scripts/content.mjs` içindeki `CATEGORY_MODULES` eşlemesini gözden geçir (yeni kategori geldiyse).
+3. `npm run curriculum` ile kontrol et, `npm run build && firebase deploy --only hosting` ile yayına al.
+4. Panelden **İçerik → Müfredatı güncelle** → onay ekranındaki "silinecek" listesini oku → **Uygula**.
+
+`node scripts/seed.mjs --production --content-only --refresh-token-file <dosya>` hâlâ çalışır ama
+günlük kullanımda gerekmez; panel yolu tercih edilir.

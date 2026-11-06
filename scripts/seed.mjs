@@ -14,7 +14,7 @@
  * şifre formülleri src/api/backend.ts ile birebir aynı olmalı.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { CURRICULUM } from './content.mjs';
+import { CURRICULUM, flattenCurriculum } from './content.mjs';
 
 // .env.production'ı elle yükle (ekstra bağımlılık eklememek için).
 if (existsSync('.env.production')) {
@@ -53,29 +53,7 @@ export const TEST = {
   inviteCode: '246810'
 };
 
-function flatten() {
-  const tracks = [], modules = [], lessons = [], questions = [];
-  CURRICULUM.forEach((tr, ti) => {
-    tracks.push({ id: tr.id, title: tr.title, description: tr.description, icon: tr.icon, order: ti + 1, published: true });
-    tr.modules.forEach((m, mi) => {
-      modules.push({
-        id: m.id, trackId: tr.id, title: m.title, description: m.description, order: mi + 1,
-        passScore: m.passScore, examSize: Math.min(m.examSize, m.questions.length),
-        prerequisiteId: m.prerequisiteId || null, published: true, questionCount: m.questions.length
-      });
-      m.lessons.forEach((l, li) => lessons.push({
-        id: l.id, moduleId: m.id, title: l.title, order: li + 1, durationMin: l.durationMin, blocks: l.blocks, published: true
-      }));
-      m.questions.forEach((q, qi) => {
-        if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
-        questions.push({ id: `${m.id}-q${String(qi + 1).padStart(3, '0')}`, moduleId: m.id, imageUrl: '', ...q });
-      });
-    });
-  });
-  return { tracks, modules, lessons, questions };
-}
-
-const data = flatten();
+const data = flattenCurriculum(CURRICULUM);
 
 if (DRY) {
   for (const m of data.modules) {
@@ -107,7 +85,7 @@ function argVal(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-let writeAll, auth, db;
+let writeAll, deleteStale, auth, db;
 
 if (EMULATOR) {
   // Emülatörde kimlik sorunu yok (FIRESTORE_EMULATOR_HOST env'i Admin SDK'yı
@@ -126,29 +104,56 @@ if (EMULATOR) {
     }
     console.log(`  ${col}: ${items.length}`);
   };
+  deleteStale = async (col, keepIds) => {
+    const snap = await db.collection(col).get();
+    const stale = snap.docs.filter((d) => !keepIds.has(d.id));
+    for (let i = 0; i < stale.length; i += 400) {
+      const batch = db.batch();
+      stale.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
+  };
 } else {
   // Gerçek projede servis hesabı anahtarı aramak yerine, zaten var olan bir
   // yönetici hesabının e-posta/şifresiyle REST API üzerinden yazılır —
   // firestore.rules zaten bu hesabın "admin" rolünü doğrular.
   const email = argVal('--email');
   const password = argVal('--password');
+  // Şifreyi hiç paylaşmadan çalıştırmak için: panelde açık oturumun yenileme
+  // belirteci bir dosyaya konur, buradan kısa ömürlü bir idToken üretilir.
+  const tokenFile = argVal('--refresh-token-file');
   const apiKey = process.env.VITE_FB_API_KEY;
   const projectId = process.env.VITE_FB_PROJECT_ID;
-  if (!email || !password) {
-    console.error('Gerçek projede --email <yönetici e-postası> --password <şifre> gerekli.');
+  if (!tokenFile && (!email || !password)) {
+    console.error('Gerçek projede --email <yönetici e-postası> --password <şifre>');
+    console.error('veya --refresh-token-file <dosya> gerekli.');
     process.exit(1);
   }
   if (!apiKey || !projectId) {
     console.error('.env.production okunamadı — VITE_FB_API_KEY / VITE_FB_PROJECT_ID eksik.');
     process.exit(1);
   }
-  const signIn = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true })
-  }).then((r) => r.json());
-  if (!signIn.idToken) throw new Error('Giriş başarısız: ' + JSON.stringify(signIn.error || signIn));
-  const idToken = signIn.idToken;
+  let idToken;
+  if (tokenFile) {
+    const refreshToken = readFileSync(tokenFile, 'utf8').trim();
+    const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken })
+    }).then((r) => r.json());
+    if (!res.id_token) throw new Error('Oturum belirteci yenilenemedi: ' + JSON.stringify(res.error || res));
+    idToken = res.id_token;
+    console.log('Açık panel oturumu kullanıldı (şifre kullanılmadı).');
+  } else {
+    const signIn = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    }).then((r) => r.json());
+    if (!signIn.idToken) throw new Error('Giriş başarısız: ' + JSON.stringify(signIn.error || signIn));
+    idToken = signIn.idToken;
+  }
 
   const toValue = (v) => {
     if (v === null || v === undefined) return { nullValue: null };
@@ -177,6 +182,35 @@ if (EMULATOR) {
     }
     console.log(`  ${col}: ${items.length}`);
   };
+
+  /** Müfredatta artık yer almayan belgeleri siler (menü değişince eski reçeteler kalmasın). */
+  deleteStale = async (col, keepIds) => {
+    const ids = [];
+    let pageToken = '';
+    do {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${col}`
+        + `?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
+      if (!res.ok) throw new Error(`${col} listelenemedi: ${res.status} ${await res.text()}`);
+      const body = await res.json();
+      (body.documents || []).forEach((d) => ids.push(d.name.split('/').pop()));
+      pageToken = body.nextPageToken || '';
+    } while (pageToken);
+
+    const stale = ids.filter((id) => !keepIds.has(id));
+    for (let i = 0; i < stale.length; i += 400) {
+      const writes = stale.slice(i, i + 400).map((id) => ({
+        delete: `projects/${projectId}/databases/(default)/documents/${col}/${id}`
+      }));
+      const res = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes })
+      });
+      if (!res.ok) throw new Error(`${col} silinemedi: ${res.status} ${await res.text()}`);
+    }
+    if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
+  };
 }
 
 console.log('Müfredat yükleniyor…');
@@ -184,6 +218,12 @@ await writeAll('tracks', data.tracks);
 await writeAll('modules', data.modules);
 await writeAll('lessons', data.lessons);
 await writeAll('questions', data.questions);
+
+// Menü/müfredat değiştiğinde eskisinden kalan belgeleri temizle.
+console.log('Eski içerik temizleniyor…');
+for (const [col, items] of [['tracks', data.tracks], ['modules', data.modules], ['lessons', data.lessons], ['questions', data.questions]]) {
+  await deleteStale(col, new Set(items.map((i) => i.id)));
+}
 
 if (EMULATOR && !CONTENT_ONLY) {
   console.log('Test hesapları…');

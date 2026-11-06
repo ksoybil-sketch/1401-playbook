@@ -1,0 +1,1571 @@
+[
+ {
+  "cat": "İtalyan Klasikler",
+  "name": "Ristretto",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 ml"
+   }
+  ],
+  "tech": "Öğütülmüş kahveyi portafiltreye alın. Portafiltredeki kahveyi tamper ile tampleyin.\n15-17 saniyede 20 ml kahve elde edin."
+ },
+ {
+  "cat": "İtalyan Klasikler",
+  "name": "Espresso",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   }
+  ],
+  "tech": "Öğütülmüş kahveyi portafiltreye alın. Portafiltredeki kahveyi tamper ile tampleyin.\n24-27 saniyede 40 ml kahve elde edin."
+ },
+ {
+  "cat": "İtalyan Klasikler",
+  "name": "Espresso Macchiato",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Süt Köpüğü",
+    "amt": "1 Tatlı Kaşığı"
+   }
+  ],
+  "tech": "Öğütülmüş kahveyi portafiltreye alın. Portafiltredeki kahveyi tamper ile tampleyin.\n24-27 saniyede 40 ml kahve elde edin. Üzerine sadece 1 tatlı kaşığı kadar sütün köpüğünden ekleyerek servis edin."
+ },
+ {
+  "cat": "İtalyan Klasikler",
+  "name": "Espresso Cortado",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Süt",
+    "amt": "40 ml"
+   }
+  ],
+  "tech": "Espresso'yu standart olarak demleyin. Demlediğiniz espresso miktarı kadar ısıtıp krema kıvamına getirdiğiniz sütü (40 ml) ilave edin. Cortado Espresso / Süt Oranı = 1:1"
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Caffè Americano (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 / 60 ml"
+   },
+   {
+    "name": "Sıcak Su",
+    "amt": "200 / 270 ml"
+   }
+  ],
+  "tech": "Ölçekli suyu bardağa ekleyin. Kaynar pozisyonda olmadığına dikkat edin (çok sıcak ise 10 saniye bekleyin). Ardından espresso'yu suyun üzerine ekleyerek servis edin.\nASLA espresso üzerine su eklemeyin; mutlaka suyun üzerine espresso eklenmelidir."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Caffè Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   }
+  ],
+  "tech": "Ristretto (8 oz) veya Espresso (12 oz) hazırlayın. Soğuk sütü pitcher'ın boğum çizgisine kadar ekleyin. Sütü 65°C'ye kadar ısıtın (diğer elinizle pitcher'ı kontrol edin, eliniz yandıktan sonra 65 dereceye gelmiş demektir). Kahvenin üzerine ısıttığınız sütü latte art yaparak servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Cappuccino (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   }
+  ],
+  "tech": "Ristretto (8 oz) veya Espresso (12 oz) hazırlayın. Soğuk sütü pitcher boğum çizgisine kadar ekleyin. Sütü 65°C'ye kadar ısıtın. Buhar çubuğunu sütün içine çok daldırmadan sütün havalanıp köpürmesini sağlayın. Kahvenin üzerine iki parmak kalınlığında kadifemsi krema olacak şekilde sütü dökün."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Flat White (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "60 / 80 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "120 / 160 ml"
+   }
+  ],
+  "tech": "Double shot espresso hazırlayın. Tıpkı Latte'deki gibi sütü mikro köpükle kıvamlandırın fakat kalın köpük oluşturmayın. Espresso üzerine ekleyin.\nÖnemli Kural: Flat White farkı, tam olarak 'Espresso Miktarı x 2 Katı Süt Miktarı' oranından gelir."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Caffè Mocha (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Çikolata Sos",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Ristretto (8 oz) veya Espresso (12 oz) hazırlayın. Çikolata sosunu kahveyle birlikte fincanda iyice karıştırın. Isıttığınız 65°C sütü üzerine yarım parmak krema kalacak şekilde döküp servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "White Chocolate Mocha (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Beyaz Çikolata Sos",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Beyaz çikolata sosunu espresso shot ile sıcakken homojen olana dek karıştırın. Isıttığınız sütü ekleyip latte art ile servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Caramel Macchiato (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Karamel Sos",
+    "amt": "15 / 20 ml"
+   },
+   {
+    "name": "Vanilya Şurubu",
+    "amt": "5 / 10 ml"
+   }
+  ],
+  "tech": "Vanilya şurubu ve karamel sosu espresso ile karıştırın. 65°C ısıtılmış sütü üzerine ekleyip yüzeyde krema oluşturun."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Toffee Nut Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Karamel Sos",
+    "amt": "15 / 25 ml"
+   },
+   {
+    "name": "Fındık Şurubu",
+    "amt": "5 / 10 ml"
+   }
+  ],
+  "tech": "Fındık şurubu ve karamel sosunu espresso ile homojen karıştırın. Isıtılmış süt ile yarım parmak krema olacak şekilde latte art yaparak servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Pumpkin Spice Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Balkabağı Şurubu",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Balkabağı şurubunu taze çekilmiş espresso ile bardakta karıştırın. 65°C sütü ilave edip servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Gingerbread Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Gingerbread Şurubu",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Zencefilli kurabiye şurubunu kahveyle birleştirin. Isıtılmış sütü yarım parmak krema ile dökerek servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Salted Caramel Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Tuzlu Karamel Şurubu",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Tuzlu karamel şurubunu espresso shot ile bağlayın. Isıttığınız sütü ekleyip servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Chestnut Latte (Kestaneli - 8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Kestane Şurubu",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Kestane şurubunu kahveyle bardakta çırpın. 65°C sütü üzerine latte art yaparak dökün."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Burnt Popcorn Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "180 / 230 ml"
+   },
+   {
+    "name": "Salted Caramel Sifon Krema",
+    "amt": "40 / 200 gr"
+   },
+   {
+    "name": "Popcorn Şurubu",
+    "amt": "10 / 20 ml"
+   },
+   {
+    "name": "Vanilya Şurubu",
+    "amt": "5 / 10 ml"
+   }
+  ],
+  "tech": "Şurupları ve kahveyi fincanda birleştirin. Sütü ısıtıp ilave edin. Krema sifonundaki tuzlu karamel kremasını sıkıp üzerine 5 adet karamelize popcorn garnişi koyun, hafif tarçın serperek servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Pistachio Latte (Antep Fıstıklı - 8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Antep Fıstığı Sosu",
+    "amt": "25 / 40 ml"
+   }
+  ],
+  "tech": "Bardağa antep fıstığı sosunu koyun, üzerine espressoyu çekip homojenleştirin. Isıtılmış süt ile latte art yaparak servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Protein Latte (12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Sıcak Yulaf Sütü",
+    "amt": "250 ml"
+   },
+   {
+    "name": "Whey Protein Tozu",
+    "amt": "25 gr"
+   }
+  ],
+  "tech": "Protein tozunu shakera koyun. 30-40 ml ılık süt ekleyip topak kalmayana kadar çalkalayın. Fincana protein karışımını döküp üzerine espressoyu ekleyin; kalan sütü ısıtıp ekleyin (kesilmeyi önlemek için maksimum 65°C olmalıdır)."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Lotus Biscoff Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Lotus Biscoff Sos",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Lotus sosu espresso shot ile fincanda pürüzsüzleşene dek karıştırın. Isıtılmış sütü ekleyip servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Black Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Fo Eclipse Sos",
+    "amt": "20 / 30 ml"
+   }
+  ],
+  "tech": "Eclipse sosunu ve soğuk sütü pitcherda birleştirip buhar çubuğunda 65°C'ye kadar ısıtın. Kahvenin üzerine art yaparak dökün."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Tahinli Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "200 / 270 ml"
+   },
+   {
+    "name": "Çifte Kavrulmuş Tahin",
+    "amt": "30 / 40 gr"
+   },
+   {
+    "name": "Bal (Balparmak Saşe)",
+    "amt": "Misafir Tercihine Göre"
+   }
+  ],
+  "tech": "Tahin ve espressoyu bardağa alıp iyice çırpın. Isıtılmış sütü ekleyin. Bal ilavesini misafirin talebine göre (az/çok) ayarlayıp servis edin."
+ },
+ {
+  "cat": "Sıcak Kahveler",
+  "name": "Spanish Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "180 / 250 ml"
+   },
+   {
+    "name": "Condensed Milk (Yoğunlaştırılmış Süt)",
+    "amt": "25 / 40 ml"
+   }
+  ],
+  "tech": "Bardağın tabanına yoğunlaştırılmış sütü koyun, üzerine espressoyu ekleyip hafif karıştırın. Isıtılmış süt ile tamamlayarak servis edin."
+ },
+ {
+  "cat": "3. Nesil Demleme",
+  "name": "Filtre Kahve (Batch Brew - 8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Filtre Çekirdek",
+    "amt": "90 gr (1:17 Oran)"
+   },
+   {
+    "name": "Demleme Su Miktarı",
+    "amt": "1600 ml"
+   }
+  ],
+  "tech": "90 gr taze öğütülmüş filtre kahve çekirdeği ile 1.6 litrelik demleme yapın.\nMaksimum bekleme ve tazelik süresi demleme sonrası 30 dakikadır."
+ },
+ {
+  "cat": "3. Nesil Demleme",
+  "name": "Sütlü Filtre Kahve (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Filtre Çekirdek",
+    "amt": "90 gr (1:17 Oran)"
+   },
+   {
+    "name": "Demleme Su Miktarı",
+    "amt": "1600 ml"
+   },
+   {
+    "name": "Sıcak Süt",
+    "amt": "Misafir Tercihine Göre"
+   }
+  ],
+  "tech": "Demlenen taze filtre kahveye misafirin tercih ettiği süt çeşidini ve oranını ekleyerek servis edin."
+ },
+ {
+  "cat": "3. Nesil Demleme",
+  "name": "V60 / Chemex (Pour Over - 8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "20 gr (1:17 Oran)"
+   },
+   {
+    "name": "95°C Sıcak Su",
+    "amt": "340 ml"
+   }
+  ],
+  "tech": "Filtre kağıdını sıcak suyla ıslatıp durulayın. Kahveyi ekleyin. 3 kademeli dairesel döküş yapın:\n1. Kademe (Ön Demleme): 80 ml\n2. Kademe: 230 ml'ye tamamlayın\n3. Kademe: 340 ml'ye tamamlayın.\nToplam süre 3.5 - 4 dakikadır. Mutlaka hassas terazi ve sayaç kullanın."
+ },
+ {
+  "cat": "3. Nesil Demleme",
+  "name": "Cold Drip (Soğuk Kule Demleme - 250 ml)",
+  "ing": [
+   {
+    "name": "Kalın Öğütülmüş Kahve",
+    "amt": "250 gr (1:10 Oran)"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "2500 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Hazne"
+   }
+  ],
+  "tech": "Kahveyi kalın derecede öğütüp orta hazneye yerleştirin. Üst hazneye buz ve suyu koyun. Musluğu her 3 saniyede 1 damla damlayacak şekilde kalibre edin. 8-10 saatlik demleme sonrası 250 ml porsiyonlayıp buz ile servis edin."
+ },
+ {
+  "cat": "Geleneksel Türk Kahveleri",
+  "name": "Geleneksel Türk Kahvesi (Tek / Duble)",
+  "ing": [
+   {
+    "name": "Taze Çekilmiş Türk Kahvesi",
+    "amt": "9 / 18 gr"
+   },
+   {
+    "name": "Su",
+    "amt": "Otomatik Dozaj"
+   }
+  ],
+  "tech": "Kahveyi cezveye alın, tek veya duble seçeneğiyle makinede pişirin. Fincana aktarıp yanında 330 ml su ve 1 adet lokum ile servis edin.\nŞeker Ölçüsü: Az şekerli 1 küp, orta 2 küp, şekerli 3 küp şeker."
+ },
+ {
+  "cat": "Geleneksel Türk Kahveleri",
+  "name": "Mihrimah Sultan Kahvesi (Sütlü Türk Kahvesi)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Türk Kahvesi",
+    "amt": "9 gr"
+   },
+   {
+    "name": "Süt",
+    "amt": "70 ml"
+   }
+  ],
+  "tech": "Geleneksel bakır cezvede süt ve kahveyi birleştirip ocakta 2 - 2.5 dakika kısık ateşte pişirin. Kaynama noktasına ulaşmadan kabarma anında ateşten alıp fincana dökün. Yanında su ve lokumla servis edin."
+ },
+ {
+  "cat": "Geleneksel Türk Kahveleri",
+  "name": "Osmanlı Dibek Kahvesi (Tek / Duble)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Dibek Kahvesi",
+    "amt": "9 / 18 gr"
+   },
+   {
+    "name": "Süt",
+    "amt": "90 / 180 ml"
+   }
+  ],
+  "tech": "Cezvede süt ve dibek kahvesini 2 - 2.5 dakika pişirin. Kabarma noktasında alıp fincana dökün. 330 ml su ve lokumla ikram edin."
+ },
+ {
+  "cat": "Geleneksel Türk Kahveleri",
+  "name": "Menengiç Kahvesi (Tek / Duble)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Menengiç Kahvesi",
+    "amt": "9 / 18 gr"
+   },
+   {
+    "name": "Süt",
+    "amt": "90 / 180 ml"
+   }
+  ],
+  "tech": "Cezvede süt ve menengiç kahvesini kısık ateşte kabarıncaya dek pişirin. Fincana alıp su ve lokum ile servis edin."
+ },
+ {
+  "cat": "Kids Menu",
+  "name": "Patlayan Şeker (8 oz)",
+  "ing": [
+   {
+    "name": "Toz Sıcak Çikolata",
+    "amt": "30 gr"
+   },
+   {
+    "name": "Süt",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Sifon Krema",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Fo Patlayan Şeker Sosu",
+    "amt": "25 ml"
+   },
+   {
+    "name": "Bonibon Şeker Parçacıkları",
+    "amt": "Garniş"
+   }
+  ],
+  "tech": "Sıcak çikolatayı buhar çubuğunda sütle hazırlayın. Üzerine şekilli sifon krema sıkın, patlayan şeker sosunu dairesel gezdirin ve ezilmiş bonibonlarla süsleyip servis edin."
+ },
+ {
+  "cat": "Kids Menu",
+  "name": "Kids Caramel Latte (Kafeinsiz Decaf - 8 oz)",
+  "ing": [
+   {
+    "name": "Kafeinsiz Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Decaf Espresso Shot",
+    "amt": "20 ml"
+   },
+   {
+    "name": "Sıcak Süt",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Karamel Şurubu",
+    "amt": "20 ml"
+   }
+  ],
+  "tech": "Decaf çekirdek ile 20 ml Ristretto çekin. Karamel şurubuyla harmanlayıp 65°C ısıtılmış süt ile latte art yaparak servis edin."
+ },
+ {
+  "cat": "Sıcak İçecekler",
+  "name": "Sıcak Çikolata (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Toz Sıcak Çikolata",
+    "amt": "30 / 50 gr"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "230 / 330 ml"
+   }
+  ],
+  "tech": "Malzemeleri pitcher'a koyun. Buhar çubuğunu dibe kadar daldırıp kaynayana kadar yoğun kıvamda ısıtın. Fincana alıp servis edin."
+ },
+ {
+  "cat": "Sıcak İçecekler",
+  "name": "Chai Tea Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Toz Chai Latte",
+    "amt": "30 / 50 gr"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "230 / 330 ml"
+   },
+   {
+    "name": "Toz Tarçın",
+    "amt": "2 gr"
+   }
+  ],
+  "tech": "Toz karışımı sütle pitcherda homojenize edip buhar çubuğunda ısıtın. Üzerine 2 gr toz tarçın serpip servis edin."
+ },
+ {
+  "cat": "Sıcak İçecekler",
+  "name": "Geleneksel Sahlep (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Toz Sahlep",
+    "amt": "30 / 50 gr"
+   },
+   {
+    "name": "Sıcak (Isıtılmış) Süt",
+    "amt": "230 / 330 ml"
+   },
+   {
+    "name": "Toz Tarçın",
+    "amt": "2 gr"
+   }
+  ],
+  "tech": "Sahlep tozunu ve sütü pitcherda kıvam alana dek kaynatın. Üzerine toz tarçın serperek ikram edin."
+ },
+ {
+  "cat": "Sıcak İçecekler",
+  "name": "Matcha Latte (8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Toz Matcha",
+    "amt": "5 / 7 gr"
+   },
+   {
+    "name": "Sıcak Süt",
+    "amt": "230 / 330 ml"
+   },
+   {
+    "name": "65°C Sıcak Su",
+    "amt": "30 / 40 ml"
+   }
+  ],
+  "tech": "Matcha tozunu chawan kabına alın. 65°C sıcak suyla bambu chasen çırpıcı kullanarak 1 dakika boyunca 'W' hareketleriyle pürüzsüz kıvama getirin. Bardağa döküp 65°C sütle art yaparak servis edin."
+ },
+ {
+  "cat": "Sıcak İçecekler",
+  "name": "Ube Latte (Mor Patates - 8 oz / 12 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "20 / 40 ml"
+   },
+   {
+    "name": "Sıcak Süt",
+    "amt": "150 / 230 ml"
+   },
+   {
+    "name": "65°C Sıcak Su",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Vanilya Şurubu",
+    "amt": "5 / 10 ml"
+   },
+   {
+    "name": "Toz Ube",
+    "amt": "Standart Ölçek"
+   }
+  ],
+  "tech": "Ube tozunu 30 ml sıcak suyla çırpın, ardından vanilya şurubu ekleyin. Fincandaki espressoya ube karışımını katıp üzerine ısıtılmış süt ile latte art yapın."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Americano (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "60 ml"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağı silme buz doldurun. Sırasıyla soğuk su ve en üste espresso shot ekleyerek katmanlı servis edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağı silme buz doldurun. 220 ml soğuk sütü ekleyin ve en üste espresso shot'ı dökerek servis edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Mocha (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Çikolata Sos",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Espresso shot içine çikolata sosunu ekleyip eritin. Bardağa silme buz ve sütü koyun, ardından çikolatalı kahveyi ilave edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced White Chocolate Mocha (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Beyaz Çikolata Sos",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Espressoyu beyaz çikolata sosu ile karıştırın. Silme buz ve soğuk süt dolu bardağa ekleyip servis edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Caramel Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Karamel Sos",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Karamel sosunu espresso ile homojen hale getirin. Silme buz ve süt eklenmiş bardağa döküp servis edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Lotus Biscoff Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Lotus Biscoff Sos",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Lotus sosu espressoyla karıştırın. Bardağa sırasıyla silme buz, süt ve lotuslu kahve karışımını ekleyin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Toffee Nut Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Fındık Şurubu",
+    "amt": "10 ml"
+   },
+   {
+    "name": "Karamel Şurubu",
+    "amt": "20 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Şurupları espresso içine ekleyip karıştırın. Bardağa buz ve süt koyup kahve karışımını ilave edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Salted Caramel Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Tuzlu Karamel Sos",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Tuzlu karamel sosunu espresso ile çırpın. Buz ve süt dolu bardağa dökerek sunun."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Protein Shake (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Alpro Yulaf Sütü",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Whey Protein Tozu",
+    "amt": "30 gr"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Shakerda yulaf sütü ve protein tozunu 15 saniye çalkalayın. Bardağa buz koyup espressoyu ekleyin, üzerine proteinli sütü döküp hafifçe karıştırın."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Spanish Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Condensed Milk",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Espresso shot'ı yoğunlaştırılmış süt (condensed milk) üzerine çekip karıştırın. Bardağa buz, süt ve kahveli karışımı sırasıyla ekleyin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Iced Pistachio Latte (Antep Fıstıklı - 16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Antep Fıstığı Sosu",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Vanilya Şurubu",
+    "amt": "20 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Fıstık sosu ve vanilya şurubu üzerine espresso shot çekin. Bardağın iç kenarlarına fıstık sosuyla dekor yapın, buz ve süt ekleyip kahveyi üzerine dökün."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Chocolate Clouds (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Icehot Çikolata Kreması",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Hindistan Cevizi Suyu",
+    "amt": "150 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağa silme buz koyun. Sırasıyla hindistan cevizi suyu, ardından yavaşça espresso shot ve en üste Icehot çikolata kreması ekleyin. Kakao tozu serperek servis edin."
+ },
+ {
+  "cat": "Soğuk Kahveler",
+  "name": "Mont Blanc (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Portakal Şurubu",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "100 ml"
+   },
+   {
+    "name": "Icehot Vanilya Kreması",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Portakal şurubunu bardağa koyup üzerine silme buz doldurun. Sırasıyla espresso, soğuk su ve en üste Icehot vanilya kremasını ekleyin. Kurutulmuş portakal dilimiyle süsleyin.\n*Icehot Vanilya: Su, Icehot bazı ve vanilya şurubu blenderda 50 sn karıştırılarak hazırlanır."
+ },
+ {
+  "cat": "Frappe & Matcha",
+  "name": "Caramel Almond Frappe (16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "170 ml"
+   },
+   {
+    "name": "Karamel Sos",
+    "amt": "25 ml"
+   },
+   {
+    "name": "Badem Şurubu",
+    "amt": "15 ml"
+   },
+   {
+    "name": "Frappe Tozu",
+    "amt": "50 gr"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Tüm malzemeleri blendera koyup 20 saniye pürüzsüzleşene dek çekin. Bardağa döküp servis edin.\nPorsiyonlama İpucu: Bardağı silme buzla doldurun, buzun yarısına gelecek kadar süt ekleyip blendera aktarabilirsiniz."
+ },
+ {
+  "cat": "Frappe & Matcha",
+  "name": "Honey Berry Frappe (16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Honey Berry Sos",
+    "amt": "50 ml"
+   },
+   {
+    "name": "Frappe Tozu",
+    "amt": "50 gr"
+   },
+   {
+    "name": "Sifon Krema",
+    "amt": "1 Ölçü"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Süt, sos, frappe tozu ve buzu blenderda 20 saniye çekin. Bardağa doldurup bombe krema sıkın; üzerine 10 ml Honey Berry sos gezdirerek servis edin."
+ },
+ {
+  "cat": "Frappe & Matcha",
+  "name": "Iced Matcha Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Su",
+    "amt": "50 ml"
+   },
+   {
+    "name": "Toz Matcha",
+    "amt": "5 gr"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "250 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Matcha tozunu 50 ml soğuk su ile 1 dakika boyunca chasen veya çırpıcı ile balçık kıvamına getirin. Bardağa silme buz ve süt koyup hazırladığınız matchayı üzerine ekleyin."
+ },
+ {
+  "cat": "Frappe & Matcha",
+  "name": "Iced Strawberry Matcha Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Su",
+    "amt": "50 ml"
+   },
+   {
+    "name": "Toz Matcha",
+    "amt": "7 gr"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "220 ml"
+   },
+   {
+    "name": "Çilek Sos",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Matchayı suyla çırpın. Bardağın tabanına çilek sosu koyup sütle hafif harmanlayın, buz ekleyin ve en üste yeşil matcha katmanını dökün."
+ },
+ {
+  "cat": "Frappe & Matcha",
+  "name": "Ube Matcha Latte (16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Su",
+    "amt": "30 ml"
+   },
+   {
+    "name": "Toz Matcha",
+    "amt": "3 gr"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "150 ml"
+   },
+   {
+    "name": "Ube Icehot Kreması",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağa buz doldurun. Çırpılmış matchayı buzun üzerine ekleyin. Sütü yavaşça ilave edin. En üste mor renkli Ube Icehot karışımını katman olarak ekleyin.\n*Ube Icehot: Beyaz çikolata sosu, Ube tozu, su ve Icehot blenderda 50 sn çırpılır."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Cranberry Hibiscus (16 oz)",
+  "ing": [
+   {
+    "name": "Cranberry Easy Mix",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Kurutulmuş Turna Yemişi",
+    "amt": "8 Adet"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "150 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Mix, su ve buzu shakerda kuvvetlice çalkalayın. Bardağa döküp üzerine 8 adet kurutulmuş turna yemişi garnişi ekleyin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Kuzu Kulağı Mix (16 oz)",
+  "ing": [
+   {
+    "name": "Grass Easy Mix",
+    "amt": "60 ml"
+   },
+   {
+    "name": "WS Satsuma Easy Mix",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "150 ml"
+   },
+   {
+    "name": "Menta Cubano Şurubu",
+    "amt": "10 ml"
+   },
+   {
+    "name": "Taze Nane & Limon",
+    "amt": "3 Yaprak Nane / 2 Dilim Limon"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Tüm sıvı malzemeleri shakerda buzla çalkalayın. Bardağa alıp taze nane yaprakları ve limon dilimleri ile süsleyin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Cool Lime Premium (16 oz)",
+  "ing": [
+   {
+    "name": "Cool Lime Base (Easy Mix)",
+    "amt": "50 ml"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "250 ml"
+   },
+   {
+    "name": "Menta Cubano Şurubu",
+    "amt": "10 ml"
+   },
+   {
+    "name": "Kuru Lime Dilimi",
+    "amt": "1 Adet"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Cool lime bazı, nane şurubu ve suyu shakerda buzla çalkalayın. 1 dilim kuru lime garnişi ile servis edin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Taze Limonata (Lemonade Fresh - 16 oz)",
+  "ing": [
+   {
+    "name": "Limonata",
+    "amt": "250 ml"
+   },
+   {
+    "name": "Taze Limon Dilimi",
+    "amt": "2 Dilim"
+   },
+   {
+    "name": "Taze Nane",
+    "amt": "3 Yaprak"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağı ilk boğumuna kadar buz doldurun. Üzerine limonatayı ekleyip 2 dilim limon ve 3 yaprak taze nane ile servis edin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Mango Limonata (16 oz)",
+  "ing": [
+   {
+    "name": "Limonata",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Mango Püresi",
+    "amt": "30 gr"
+   },
+   {
+    "name": "Limon & Taze Nane",
+    "amt": "1 Dilim Limon / 3 Dal Nane"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Limonata ve mango püresini shakerda homojenleşene dek çalkalayın. Silme buzlu bardağa döküp limon ve nane ile servis edin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Ube Limonata (16 oz)",
+  "ing": [
+   {
+    "name": "Limonata",
+    "amt": "180 ml"
+   },
+   {
+    "name": "Ube Icehot Kreması",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Buzlu limonatayı hazırlayın. Üzerine yavaşça mor Ube Icehot karışımını dökerek çift renkli sunumla servis edin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Fruity Milkshake (Orman Meyveli - 16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Süt",
+    "amt": "170 ml"
+   },
+   {
+    "name": "Sade Dondurma",
+    "amt": "100 ml"
+   },
+   {
+    "name": "Orman Meyvesi Püresi",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Sifon Krema",
+    "amt": "1 Ölçü"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Bardağın iç çeperine püre ile dekor yapın. Dondurma, püre, süt ve buzu blenderda karıştırıp bardağa dökün. Üzerine krema ve kurutulmuş meyveler ekleyin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Darky Milkshake (Kakaolu & Drop Çikolatalı - 16 oz)",
+  "ing": [
+   {
+    "name": "Öğütülmüş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Espresso Shot",
+    "amt": "40 ml (İsteğe Bağlı)"
+   },
+   {
+    "name": "Soğuk Süt",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Frappe Tozu",
+    "amt": "50 gr"
+   },
+   {
+    "name": "Bitter Parça Drop Çikolata",
+    "amt": "50 gr"
+   },
+   {
+    "name": "Çikolata Sosu",
+    "amt": "40 ml"
+   },
+   {
+    "name": "Dekor Sos",
+    "amt": "Halka Süsleme"
+   },
+   {
+    "name": "Krema",
+    "amt": "1 Ölçü"
+   }
+  ],
+  "tech": "Blenderda süt, frappe tozu, çikolata sos, kahve ve drop çikolatayı 20 saniye çekin. Bardağa çikolata dekoru yapın, karışımı döküp krema ve drop çikolata parçalarıyla süsleyin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Chilly Passion (Acılı Çarkıfelek - 16 oz)",
+  "ing": [
+   {
+    "name": "Passion Fruit Sos (Easy Mix)",
+    "amt": "80 ml"
+   },
+   {
+    "name": "Soğuk Su",
+    "amt": "200 ml"
+   },
+   {
+    "name": "Tabasco Sos",
+    "amt": "5 Damla"
+   },
+   {
+    "name": "Kurutulmuş Acı Biber",
+    "amt": "Garniş"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Passion sosu ve suyu bardağa alıp karıştırın. İçine tam 5 damla Tabasco damlatın. Silme buz doldurup kuru acı biber ile süsleyerek servis edin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Ginger & Cinnamon Mix (16 oz)",
+  "ing": [
+   {
+    "name": "Soğuk Süt",
+    "amt": "250 ml"
+   },
+   {
+    "name": "Frappe Tozu",
+    "amt": "50 gr"
+   },
+   {
+    "name": "Gingerbread Şurubu",
+    "amt": "20 ml"
+   },
+   {
+    "name": "Toz Tarçın",
+    "amt": "2 gr"
+   },
+   {
+    "name": "Buz",
+    "amt": "Silme Bardak"
+   }
+  ],
+  "tech": "Tarçın haricindeki tüm malzemeleri blenderda pürüzsüzleşene kadar karıştırıp buzlu bardağa dökün. Üzerine toz tarçın serpin."
+ },
+ {
+  "cat": "Soğuk İçecekler",
+  "name": "Italian Affogato",
+  "ing": [
+   {
+    "name": "Taze Çekilmiş Kahve",
+    "amt": "18 gr"
+   },
+   {
+    "name": "Taze Ristretto Shot",
+    "amt": "20 ml"
+   },
+   {
+    "name": "Sade / Vanilyalı Sert Dondurma",
+    "amt": "3 Top"
+   }
+  ],
+  "tech": "Geniş bir kadehe veya dondurma kasesine 3 top sert kıvamda vanilyalı dondurma koyun. Hemen servisten önce üzerine sıcak taze çekilmiş Ristretto shot gezdirerek sunun."
+ }
+]
