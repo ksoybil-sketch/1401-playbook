@@ -9,7 +9,7 @@ import { Icon } from '../../ui/Icon';
 import { Avatar, ErrorText, Spinner, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
-import { DemoStaffNotice, DemoPairNotice } from './DemoNotice';
+import { DemoStaffNotice, DemoPairNotice, DemoPinHint } from './DemoNotice';
 import type { Barista } from '../../../shared/types';
 
 const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
@@ -144,6 +144,8 @@ export const StoreHome: React.FC = () => {
           <h1 className="text-[22px] font-bold">Kim çalışıyor?</h1>
           <p className="text-[13px] text-fg-3 mt-1">Adına dokun ve PIN'ini gir.</p>
         </div>
+
+        <DemoPinHint />
 
         {loading ? (
           <div className="flex justify-center py-10"><Spinner /></div>

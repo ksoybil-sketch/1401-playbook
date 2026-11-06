@@ -22,6 +22,8 @@ service cloud.firestore {
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function myRole() { return signedIn() ? me().role : null; }
     function isStaff() { return myRole() in ['ops', 'admin']; }
+    /** Yalnızca uygulama yürütücüsü; sınav kaydı silmek gibi geri dönüşsüz işler. */
+    function isAdmin() { return myRole() == 'admin'; }
     function isStoreSession() { return myRole() in ['store', 'barista', 'lead']; }
     function isBarista() { return myRole() in ['barista', 'lead']; }
     function isLead() { return myRole() == 'lead'; }
@@ -98,7 +100,10 @@ service cloud.firestore {
       allow update: if isBarista() && resource.data.baristaId == myBaristaId()
         && resource.data.submittedAt == null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submittedAt', 'correct', 'score', 'passed', 'mistakes']);
-      allow delete: if false;
+      // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
+      // Yalnızca admin, hatalı/deneme kayıtlarını temizlemek ve demo
+      // ortamını sıfırlamak için silebilir.
+      allow delete: if isAdmin();
     }
 
     match /progress/{baristaId} {

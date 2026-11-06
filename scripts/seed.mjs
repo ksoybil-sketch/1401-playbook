@@ -34,7 +34,12 @@ const DRY = args.has('--dry-run');
 
 /* Test hesapları — yalnızca yerel emülatör. */
 export const TEST = {
-  staff: { email: 'k.soybil@1401coffee.com', password: '192535', name: 'Cenk Girginol' },
+  staff: { email: 'k.soybil@1401coffee.com', password: '192535', name: 'Kahve Operasyonu' },
+  /** Demoda tam yetkili (admin) diğer Kahve Operasyonu hesapları. */
+  staffExtra: [
+    { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğurcan Gürbüz' },
+    { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol' }
+  ],
   stores: [
     { id: 'moda-cadde', name: 'Moda Cadde', city: 'İstanbul' },
     { id: 'cubuklu', name: 'Çubuklu', city: 'İstanbul' },
@@ -42,16 +47,16 @@ export const TEST = {
     { id: 'bagdat', name: 'Bağdat Caddesi', city: 'İstanbul' }
   ],
   baristas: [
-    { id: 'demo-ayse', name: 'Ayşe Demir', storeId: 'moda-cadde', role: 'lead', pin: '2580' },
-    { id: 'demo-mehmet', name: 'Mehmet Kaya', storeId: 'moda-cadde', role: 'barista', pin: '1470' },
-    { id: 'demo-zeynep', name: 'Zeynep Arslan', storeId: 'moda-cadde', role: 'barista', pin: '3690' },
+    { id: 'demo-ayse', name: 'Ayşe Demir', storeId: 'moda-cadde', role: 'lead', pin: '1925' },
+    { id: 'demo-mehmet', name: 'Mehmet Kaya', storeId: 'moda-cadde', role: 'barista', pin: '1925' },
+    { id: 'demo-zeynep', name: 'Zeynep Arslan', storeId: 'moda-cadde', role: 'barista', pin: '1925' },
     { id: 'demo-yeni', name: 'Deniz Aydın', storeId: 'moda-cadde', role: 'barista', pin: null },
-    { id: 'demo-can', name: 'Can Yıldız', storeId: 'cubuklu', role: 'lead', pin: '2468' },
-    { id: 'demo-burak', name: 'Burak Çetin', storeId: 'cubuklu', role: 'barista', pin: '9512' },
-    { id: 'demo-elif', name: 'Elif Şahin', storeId: 'pendik', role: 'lead', pin: '1357' },
-    { id: 'demo-sude', name: 'Sude Korkmaz', storeId: 'pendik', role: 'barista', pin: '7531' },
-    { id: 'demo-emir', name: 'Emir Polat', storeId: 'bagdat', role: 'lead', pin: '8520' },
-    { id: 'demo-nisa', name: 'Nisa Güneş', storeId: 'bagdat', role: 'barista', pin: '4826' }
+    { id: 'demo-can', name: 'Can Yıldız', storeId: 'cubuklu', role: 'lead', pin: '1925' },
+    { id: 'demo-burak', name: 'Burak Çetin', storeId: 'cubuklu', role: 'barista', pin: '1925' },
+    { id: 'demo-elif', name: 'Elif Şahin', storeId: 'pendik', role: 'lead', pin: '1925' },
+    { id: 'demo-sude', name: 'Sude Korkmaz', storeId: 'pendik', role: 'barista', pin: '1925' },
+    { id: 'demo-emir', name: 'Emir Polat', storeId: 'bagdat', role: 'lead', pin: '1925' },
+    { id: 'demo-nisa', name: 'Nisa Güneş', storeId: 'bagdat', role: 'barista', pin: '1925' }
   ],
   /** Telefonu bağlamak için sabit eşleştirme kodu (Moda Cadde). */
   pairingCode: '140114',
@@ -341,12 +346,20 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
   const now = Date.now();
   await writeAll('stores', TEST.stores.map((s) => ({ ...s, active: true, createdAt: now })));
 
-  // --- Yönetici -------------------------------------------------------
+  // --- Yöneticiler -----------------------------------------------------
   const staff = await ensureUser(TEST.staff.email, TEST.staff.password, TEST.staff.name);
   await setDoc(`users/${staff.uid}`, { role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
   // Kurallar config/bootstrap'ın üzerine yazılmasına izin vermez; demo
   // yeniden kurulduğunda belge zaten yerindedir, hata yutulur.
   await setDoc('config/bootstrap', { uid: staff.uid, at: now }).catch(() => {});
+
+  // Demoyu birden çok kişi aynı anda denesin diye her yöneticinin kendi
+  // hesabı var; hepsi tam yetkili (admin).
+  for (const extra of TEST.staffExtra || []) {
+    const acc = await ensureUser(extra.email, extra.password, extra.name);
+    await setDoc(`users/${acc.uid}`, { role: 'admin', name: extra.name, email: extra.email, active: true, createdAt: now });
+    console.log(`  yönetici: ${extra.email}`);
+  }
 
   // --- Baristalar: her birinin kendi Auth hesabı var -------------------
   const lessonIds = (mid) => data.lessons.filter((l) => l.moduleId === mid).map((l) => l.id);
