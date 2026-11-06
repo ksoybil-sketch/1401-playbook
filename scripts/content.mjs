@@ -30,6 +30,50 @@ const WARN = (text) => ({ type: 'warning', text });
 const STEPS = (...items) => ({ type: 'steps', items });
 const SPEC = (rows) => ({ type: 'spec', rows: rows.map(([label, value]) => ({ label, value })) });
 const CHECK = (prompt, options, answer, explanation) => ({ type: 'check', prompt, options, answer, explanation });
+const IMG = (url, caption) => ({ type: 'image', url, caption });
+
+/**
+ * Ürün fotoğrafları.
+ *
+ * Spark planında Firebase Storage yok, bu yüzden görseller derse gömülü
+ * data URL olarak taşınır (Firestore belge sınırı 1 MiB; en büyüğü 41 KB).
+ * Kaynak dosyalar scripts/source/photos altında, saydam arka planlı WebP.
+ */
+const photoCache = new Map();
+function photo(name) {
+  if (!photoCache.has(name)) {
+    const file = join(here, `source/photos/${name}.webp`);
+    photoCache.set(name, `data:image/webp;base64,${readFileSync(file).toString('base64')}`);
+  }
+  return photoCache.get(name);
+}
+
+/**
+ * Hangi reçete dersine hangi fotoğraf gider. Menü çekiminden gelen
+ * dosyalarda üç birebir kopya vardı (americano=filtre kahve,
+ * caramel macchiato=salted caramel, cortado=latte); her görsel yalnızca
+ * gerçekten ait olduğu derste kullanılıyor — yanlış referans fotoğraf,
+ * fotoğrafsız dersten daha kötüdür.
+ */
+const LESSON_PHOTOS = {
+  'r-caff-americano-8-oz-12-oz': 'americano',
+  'r-caff-latte-8-oz-12-oz': 'latte',
+  'r-flat-white-8-oz-12-oz': 'flatwhite',
+  'r-caff-mocha-8-oz-12-oz': 'mocha',
+  'r-white-chocolate-mocha-8-oz-12-oz': 'whitemocha',
+  'r-caramel-macchiato-8-oz-12-oz': 'caramelmacchiato',
+  'r-toffee-nut-latte-8-oz-12-oz': 'toffeenut',
+  'r-pumpkin-spice-latte-8-oz-12-oz': 'pumpkin',
+  'r-gingerbread-latte-8-oz-12-oz': 'gingerbread',
+  'r-chestnut-latte-kestaneli-8-oz-12-oz': 'kestaneli',
+  'r-burnt-popcorn-latte-8-oz-12-oz': 'popcorn',
+  'r-lotus-biscoff-latte-8-oz-12-oz': 'lotus',
+  'r-spanish-latte-8-oz-12-oz': 'spanish',
+  'r-matcha-latte-8-oz-12-oz': 'matcha',
+  'r-cranberry-hibiscus-16-oz': 'cranberry',
+  'r-chilly-passion-acili-carkifelek-16-oz': 'chillypassion',
+  'r-kuzu-kulagi-mix-16-oz': 'kuzukulagi'
+};
 
 /** Soru: ilk seçenek doğru cevaptır (sınavda sunucu karıştırır). */
 const Q = (prompt, correct, wrong, explanation) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation });
@@ -249,12 +293,16 @@ function parseName(full) {
 function recipeLesson(r, order) {
   const { title, cup } = parseName(r.name);
   const steps = (r.tech || '').split('\n').map((s) => s.trim()).filter((s) => s.length > 2);
+  const id = `r-${slug(r.name)}`;
+  const pic = LESSON_PHOTOS[id];
   const blocks = [
+    // Fotoğraf en üstte: barista önce hedefi görsün, sonra ölçüleri okusun.
+    ...(pic ? [IMG(photo(pic), `Doğru sunum: ${title}`)] : []),
     SPEC([...(cup ? [['Porsiyon', cup]] : []), ...r.ing.map((i) => [i.name, i.amt])]),
     ...(steps.length ? [H('Hazırlanışı'), STEPS(...steps)] : []),
     TIP('Ürünü teslim etmeden önce standarda ve sunuma uygunluğunu **gözle kontrol et**. Standart dışı ürün misafire sunulmaz.')
   ];
-  return { id: `r-${slug(r.name)}`, title, durationMin: 2, order, blocks, _recipe: r, _cup: cup, _title: title };
+  return { id, title, durationMin: 2, order, blocks, _recipe: r, _cup: cup, _title: title };
 }
 
 /**
@@ -380,6 +428,7 @@ const guest = {
             ]),
             H('Hizmet standartları'),
             P('- **Hızlı ve doğru servis:** Siparişler standart sürede ve hatasız hazırlanır.\n- **Hijyen ve düzen:** Masa, sandalye, bar ve servis alanları her an tertemiz.\n- **Görsel sunum:** Misafir bardağı eline almadan önce **görür** — kahve köpüğünün kıvamı dahi ilk memnuniyeti belirler.'),
+            IMG(photo('latteart'), 'Köpük parlak ve pürüzsüz, desen net: misafirin ilk gördüğü şey bu.'),
             TIP('**1401 İmzası:** Temiz fincan, doğru servis sıcaklığı, lekesiz camlar ve samimi bir güleryüz. Bunlar kampanya değil, her gün aynı kalması gereken standartlarımızdır.'),
             CHECK('Hangisi 1401 İmzası\'nın bir parçası DEĞİLDİR?', ['Misafire en pahalı ürünü önermek', 'Temiz fincan', 'Doğru servis sıcaklığı', 'Lekesiz camlar'], 0, '1401 İmzası bir kalite standardıdır, satış taktiği değil.')
           ]

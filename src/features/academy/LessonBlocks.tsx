@@ -89,7 +89,9 @@ export const LessonBlocks: React.FC<{ blocks: LessonBlock[] }> = ({ blocks }) =>
         case 'image':
           return (
             <figure key={i} className="flex flex-col gap-2">
-              <img src={b.url} alt={b.caption || ''} className="w-full rounded-xl border border-line bg-panel" loading="lazy" />
+              {/* Ürün fotoğrafları saydam ve farklı oranlarda; germek yerine
+                  ortala ve yüksekliği sınırla, küçük görseller bulanıklaşmasın. */}
+              <img src={b.url} alt={b.caption || ''} className="w-full max-h-80 object-contain mx-auto rounded-xl border border-line bg-panel" loading="lazy" />
               {b.caption && <figcaption className="text-[12px] text-fg-3 text-center">{b.caption}</figcaption>}
             </figure>
           );
