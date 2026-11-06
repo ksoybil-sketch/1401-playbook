@@ -9,6 +9,7 @@ import { Icon } from '../../ui/Icon';
 import { Avatar, ErrorText, Spinner, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
+import { DemoStaffNotice, DemoPairNotice } from './DemoNotice';
 import type { Barista } from '../../../shared/types';
 
 const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
@@ -54,6 +55,7 @@ export const PairScreen: React.FC = () => {
   return (
     <Shell>
       <Brand sub="Barista eğitim ve standartlar" />
+      <DemoPairNotice />
       <div className="flex flex-col items-center gap-2 text-center max-w-[320px]">
         <h1 className="text-[17px] font-semibold">Mağaza telefonunu bağla</h1>
         <p className="text-[13px] text-fg-3 leading-relaxed">
@@ -304,6 +306,7 @@ export const StaffLogin: React.FC = () => {
   return (
     <Shell>
       <Brand sub="Kahve Operasyonu paneli" />
+      <DemoStaffNotice />
       <form onSubmit={submit} className="w-full max-w-[360px] flex flex-col gap-4">
         <label className={t.field}>
           <span className={t.label}>E-posta</span>

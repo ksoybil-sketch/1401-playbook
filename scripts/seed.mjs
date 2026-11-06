@@ -16,9 +16,10 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { CURRICULUM, flattenCurriculum } from './content.mjs';
 
-// .env.production'ı elle yükle (ekstra bağımlılık eklememek için).
-if (existsSync('.env.production')) {
-  for (const line of readFileSync('.env.production', 'utf8').split('\n')) {
+// Ortam dosyasını elle yükle (ekstra bağımlılık eklememek için).
+const envFile = process.argv.includes('--demo') ? '.env.demo' : '.env.production';
+if (existsSync(envFile)) {
+  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
     const m = line.match(/^\s*([\w.]+)\s*=\s*(.*)\s*$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
@@ -33,7 +34,7 @@ const DRY = args.has('--dry-run');
 
 /* Test hesapları — yalnızca yerel emülatör. */
 export const TEST = {
-  staff: { email: 'operasyon@1401.test', password: 'Playbook-Test-2026', name: 'Cenk Girginol' },
+  staff: { email: 'k.soybil@1401coffee.com', password: '192535', name: 'Cenk Girginol' },
   stores: [
     { id: 'moda-cadde', name: 'Moda Cadde', city: 'İstanbul' },
     { id: 'cubuklu', name: 'Çubuklu', city: 'İstanbul' },
@@ -73,15 +74,27 @@ if (DRY) {
 
 const EMULATOR = args.has('--emulator');
 const CONTENT_ONLY = args.has('--content-only');
+/**
+ * Demo modu: gerçek ama ayrı bir Firebase projesine (playbook-demo-1401)
+ * örnek şube ağını da yazar. Canlı projede test hesabı açmak hâlâ yasak;
+ * demo projesinde serbest, çünkü içindeki her şey örnektir.
+ */
+const DEMO = args.has('--demo');
 if (EMULATOR) {
   process.env.FIRESTORE_EMULATOR_HOST ||= '127.0.0.1:8080';
   process.env.FIREBASE_AUTH_EMULATOR_HOST ||= '127.0.0.1:9099';
-} else if (!args.has('--production')) {
-  console.error('Hedef belirt: --emulator ya da --production --content-only');
+} else if (!args.has('--production') && !DEMO) {
+  console.error('Hedef belirt: --emulator, --demo ya da --production --content-only');
   process.exit(1);
 }
-if (!EMULATOR && !CONTENT_ONLY) {
+if (!EMULATOR && !DEMO && !CONTENT_ONLY) {
   console.error('Gerçek projeye test hesapları yüklenmez. --content-only ekle.');
+  process.exit(1);
+}
+if (DEMO && process.env.VITE_FB_PROJECT_ID !== 'playbook-demo-1401') {
+  // Demo verisi yanlışlıkla canlı projeye yazılmasın.
+  console.error(`Demo modu yalnızca playbook-demo-1401 projesinde çalışır (şu an: ${process.env.VITE_FB_PROJECT_ID}).`);
+  console.error('Doğru kullanım: npm run seed:demo');
   process.exit(1);
 }
 
@@ -90,7 +103,7 @@ function argVal(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-let writeAll, deleteStale, auth, db;
+let writeAll, deleteStale, setDoc, addDoc, delDoc, ensureUser, signInAs;
 
 if (EMULATOR) {
   // Emülatörde kimlik sorunu yok (FIRESTORE_EMULATOR_HOST env'i Admin SDK'yı
@@ -99,8 +112,16 @@ if (EMULATOR) {
   const { getFirestore } = await import('firebase-admin/firestore');
   const { getAuth } = await import('firebase-admin/auth');
   initializeApp({ projectId: 'demo-playbook' });
-  db = getFirestore();
-  auth = getAuth();
+  const db = getFirestore();
+  const auth = getAuth();
+  setDoc = (path, value) => db.doc(path).set(value);
+  addDoc = (col, value) => db.collection(col).add(value);
+  delDoc = (path) => db.doc(path).delete();
+  signInAs = async () => undefined;
+  ensureUser = async (email, password, displayName) => {
+    try { return await auth.getUserByEmail(email); }
+    catch { return auth.createUser({ email, password, displayName }); }
+  };
   writeAll = async (col, items) => {
     for (let i = 0; i < items.length; i += 400) {
       const batch = db.batch();
@@ -123,8 +144,8 @@ if (EMULATOR) {
   // Gerçek projede servis hesabı anahtarı aramak yerine, zaten var olan bir
   // yönetici hesabının e-posta/şifresiyle REST API üzerinden yazılır —
   // firestore.rules zaten bu hesabın "admin" rolünü doğrular.
-  const email = argVal('--email');
-  const password = argVal('--password');
+  const email = argVal('--email') || (DEMO ? TEST.staff.email : undefined);
+  const password = argVal('--password') || (DEMO ? TEST.staff.password : undefined);
   // Şifreyi hiç paylaşmadan çalıştırmak için: panelde açık oturumun yenileme
   // belirteci bir dosyaya konur, buradan kısa ömürlü bir idToken üretilir.
   const tokenFile = argVal('--refresh-token-file');
@@ -139,7 +160,7 @@ if (EMULATOR) {
     console.error('.env.production okunamadı — VITE_FB_API_KEY / VITE_FB_PROJECT_ID eksik.');
     process.exit(1);
   }
-  let idToken;
+  let idToken, adminUid;
   if (tokenFile) {
     const refreshToken = readFileSync(tokenFile, 'utf8').trim();
     const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${apiKey}`, {
@@ -156,9 +177,43 @@ if (EMULATOR) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, returnSecureToken: true })
     }).then((r) => r.json());
-    if (!signIn.idToken) throw new Error('Giriş başarısız: ' + JSON.stringify(signIn.error || signIn));
-    idToken = signIn.idToken;
+    if (!signIn.idToken && DEMO) {
+      // Demo projesi boşken yönetici hesabı henüz yok: kendini kaydeder.
+      // firestore.rules ilk yöneticinin kendi users/{uid} belgesini yalnızca
+      // config/bootstrap yokken yazmasına izin verir.
+      const up = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      }).then((r) => r.json());
+      if (!up.idToken) throw new Error('Demo yöneticisi açılamadı: ' + JSON.stringify(up.error || up));
+      idToken = up.idToken;
+      adminUid = up.localId;
+      console.log('Demo yöneticisi oluşturuldu.');
+    } else {
+      if (!signIn.idToken) throw new Error('Giriş başarısız: ' + JSON.stringify(signIn.error || signIn));
+      idToken = signIn.idToken;
+      adminUid = signIn.localId;
+    }
   }
+
+  /** Bir hesabı açar; zaten varsa girer. Demo verisini kurmak için yeterli. */
+  ensureUser = async (mail, pass, displayName) => {
+    const body = JSON.stringify({ email: mail, password: pass, returnSecureToken: true });
+    const head = { 'Content-Type': 'application/json' };
+    let r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, { method: 'POST', headers: head, body }).then((x) => x.json());
+    if (!r.localId) {
+      r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, { method: 'POST', headers: head, body }).then((x) => x.json());
+    }
+    if (!r.localId) throw new Error(`Hesap açılamadı (${mail}): ` + JSON.stringify(r.error || r));
+    if (displayName && r.idToken) {
+      await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`, {
+        method: 'POST', headers: head,
+        body: JSON.stringify({ idToken: r.idToken, displayName, returnSecureToken: false })
+      });
+    }
+    return { uid: r.localId };
+  };
 
   const toValue = (v) => {
     if (v === null || v === undefined) return { nullValue: null };
@@ -167,6 +222,40 @@ if (EMULATOR) {
     if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
     if (Array.isArray(v)) return { arrayValue: { values: v.map(toValue) } };
     return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, vv]) => [k, toValue(vv)])) } };
+  };
+
+  const docName = (path) => `projects/${projectId}/databases/(default)/documents/${path}`;
+  const commit = async (writes, what, asToken) => {
+    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${asToken || idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ writes })
+    });
+    if (!res.ok) throw new Error(`${what} yazılamadı: ${res.status} ${await res.text()}`);
+  };
+  const fieldsOf = (value) => Object.fromEntries(Object.entries(value).map(([k, v]) => [k, toValue(v)]));
+  setDoc = (path, value) => commit([{ update: { name: docName(path), fields: fieldsOf(value) } }], path);
+  delDoc = (path) => commit([{ delete: docName(path) }], path);
+  addDoc = (col, value, asToken) => {
+    const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    return commit([{ update: { name: docName(`${col}/${id}`), fields: fieldsOf(value) } }], col, asToken);
+  };
+
+  /**
+   * Başka bir hesap adına belirteç alır. Sınav denemesini yalnızca baristanın
+   * kendisi yazabilir (firestore.rules) — demo geçmişini kurmak için kuralları
+   * gevşetmek yerine her baristanın kendi oturumu kullanılır.
+   */
+  const tokenCache = new Map();
+  signInAs = async (mail, pass) => {
+    if (tokenCache.has(mail)) return tokenCache.get(mail);
+    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: mail, password: pass, returnSecureToken: true })
+    }).then((x) => x.json());
+    if (!r.idToken) throw new Error(`Oturum açılamadı (${mail}): ` + JSON.stringify(r.error || r));
+    tokenCache.set(mail, r.idToken);
+    return r.idToken;
   };
 
   writeAll = async (col, items) => {
@@ -216,6 +305,17 @@ if (EMULATOR) {
     }
     if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
   };
+
+  if (DEMO && adminUid) {
+    // Müfredat yazmak "admin" rolü ister; rol belgesi her şeyden önce yazılır.
+    // İlk çalıştırmada kurallar bunu yalnızca config/bootstrap yokken kabul
+    // eder, sonraki çalıştırmalarda hesap zaten admin olduğu için geçer.
+    await setDoc(`users/${adminUid}`, {
+      role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: Date.now()
+    });
+    await setDoc('config/bootstrap', { uid: adminUid, at: Date.now() }).catch(() => {});
+    console.log('Demo yöneticisi yetkilendirildi.');
+  }
 }
 
 console.log('Müfredat yükleniyor…');
@@ -230,20 +330,23 @@ for (const [col, items] of [['tracks', data.tracks], ['modules', data.modules], 
   await deleteStale(col, new Set(items.map((i) => i.id)));
 }
 
-if (EMULATOR && !CONTENT_ONLY) {
+if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
+  // Demo yeniden kurulduğunda eski sınav denemeleri birikmesin: bu sayede
+  // "npm run seed:demo" tam bir sıfırlama olur, ekip ne yaparsa yapsın.
+  if (DEMO) {
+    console.log('Önceki demo sınavları siliniyor…');
+    await deleteStale('attempts', new Set());
+  }
   console.log('Test hesapları…');
   const now = Date.now();
   await writeAll('stores', TEST.stores.map((s) => ({ ...s, active: true, createdAt: now })));
 
-  async function ensureUser(email, password, displayName) {
-    try { return await auth.getUserByEmail(email); }
-    catch { return auth.createUser({ email, password, displayName }); }
-  }
-
   // --- Yönetici -------------------------------------------------------
   const staff = await ensureUser(TEST.staff.email, TEST.staff.password, TEST.staff.name);
-  await db.doc(`users/${staff.uid}`).set({ role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
-  await db.doc('config/bootstrap').set({ uid: staff.uid, at: now });
+  await setDoc(`users/${staff.uid}`, { role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
+  // Kurallar config/bootstrap'ın üzerine yazılmasına izin vermez; demo
+  // yeniden kurulduğunda belge zaten yerindedir, hata yutulur.
+  await setDoc('config/bootstrap', { uid: staff.uid, at: now }).catch(() => {});
 
   // --- Baristalar: her birinin kendi Auth hesabı var -------------------
   const lessonIds = (mid) => data.lessons.filter((l) => l.moduleId === mid).map((l) => l.id);
@@ -263,21 +366,22 @@ if (EMULATOR && !CONTENT_ONLY) {
     const email = `b-${b.id}-1@${ACCOUNT_DOMAIN}`;
     const password = b.pin ? pinPassword(b.id, b.pin) : invitePassword(TEST.inviteCode);
     const account = await ensureUser(email, password, b.name);
-    await db.doc(`users/${account.uid}`).set({ role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: now });
-    await db.doc(`baristas/${b.id}`).set({
+    await setDoc(`users/${account.uid}`, { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: now });
+    await setDoc(`baristas/${b.id}`, {
       name: b.name, storeId: b.storeId, role: b.role, phone: '', active: true,
       uid: account.uid, authEmail: email, accountSeq: 1,
       pinPending: !b.pin, startedAt: '2026-10-01', createdAt: now
     });
     const p = progressFor[b.id] || { lessons: [], modules: {} };
-    await db.doc(`progress/${b.id}`).set({
+    await setDoc(`progress/${b.id}`, {
       baristaId: b.id, storeId: b.storeId,
       lessons: Object.fromEntries(p.lessons.map((id, i) => [id, now - (p.lessons.length - i) * 3600000])),
       modules: Object.fromEntries(Object.entries(p.modules).map(([mid, score]) => [mid, { score, passedAt: now - 86400000 * 3 }])),
       updatedAt: now
     });
     if (!b.pin) {
-      await db.doc(`invites/${TEST.inviteCode}`).set({ baristaId: b.id, uid: account.uid, email, storeId: b.storeId, expiresAt: now + 30 * 86400000 });
+      await delDoc(`invites/${TEST.inviteCode}`).catch(() => {});
+      await setDoc(`invites/${TEST.inviteCode}`, { baristaId: b.id, uid: account.uid, email, storeId: b.storeId, expiresAt: now + 30 * 86400000 });
     }
   }
 
@@ -285,8 +389,9 @@ if (EMULATOR && !CONTENT_ONLY) {
   const deviceEmail = `tel-moda-cadde-1@${ACCOUNT_DOMAIN}`;
   const devicePassword = 'test-cihaz-sifresi';
   const device = await ensureUser(deviceEmail, devicePassword, 'Test telefon');
-  await db.doc(`users/${device.uid}`).set({ role: 'store', storeId: 'moda-cadde', active: true, paired: false, label: 'Mağaza telefonu', createdAt: now, lastSeenAt: null });
-  await db.doc(`pairingCodes/${TEST.pairingCode}`).set({ uid: device.uid, email: deviceEmail, password: devicePassword, storeId: 'moda-cadde', storeName: 'Moda Cadde', expiresAt: now + 30 * 86400000 });
+  await setDoc(`users/${device.uid}`, { role: 'store', storeId: 'moda-cadde', active: true, paired: false, label: 'Mağaza telefonu', createdAt: now, lastSeenAt: null });
+  await delDoc(`pairingCodes/${TEST.pairingCode}`).catch(() => {});
+  await setDoc(`pairingCodes/${TEST.pairingCode}`, { uid: device.uid, email: deviceEmail, password: devicePassword, storeId: 'moda-cadde', storeName: 'Moda Cadde', expiresAt: now + 30 * 86400000 });
 
   // --- Sınav geçmişi -----------------------------------------------------
   // Panelin raporları (haftalık sınav sayısı, en çok yanlış yapılan sorular)
@@ -330,13 +435,15 @@ if (EMULATOR && !CONTENT_ONLY) {
     const mod = data.modules.find((m) => m.id === mid);
     const total = mod ? mod.examSize : 10;
     const at = now - daysAgo * 86400000;
-    await db.collection('attempts').add({
+    const who = TEST.baristas.find((b) => b.id === bid);
+    const asToken = await signInAs(`b-${bid}-1@${ACCOUNT_DOMAIN}`, pinPassword(bid, who.pin));
+    await addDoc('attempts', {
       baristaId: bid, baristaName: nameOf[bid], storeId: storeOf[bid],
       moduleId: mid, moduleTitle: moduleTitle[mid] || mid,
       startedAt: at, submittedAt: at + 7 * 60000,
       total, correct: Math.round((score / 100) * total), score, passed,
       mistakes: mistakeItems(mid, wrong)
-    });
+    }, asToken);
   }
 
   // --- Görevler ----------------------------------------------------------
@@ -348,7 +455,7 @@ if (EMULATOR && !CONTENT_ONLY) {
     ['demo-5', 'lesson', 'rol-oyunlari', 'Rol oyunu: üç zor senaryo', 'Vardiya başında ekipçe canlandırın.', 'moda-cadde', 'demo-zeynep', -1]
   ];
   for (const [id, kind, targetId, title, note, storeId, baristaId, days] of assignments) {
-    await db.doc(`assignments/${id}`).set({
+    await setDoc(`assignments/${id}`, {
       kind, targetId, title, note, storeId, baristaId,
       dueAt: now + days * 86400000, createdAt: now - 86400000 * 4,
       createdBy: staff.uid, createdByName: TEST.staff.name
