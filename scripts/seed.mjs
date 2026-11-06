@@ -33,19 +33,24 @@ const DRY = args.has('--dry-run');
 
 /* Test hesapları — yalnızca yerel emülatör. */
 export const TEST = {
-  staff: { email: 'operasyon@1401.test', password: 'Playbook-Test-2026', name: 'Test Operasyon' },
+  staff: { email: 'operasyon@1401.test', password: 'Playbook-Test-2026', name: 'Cenk Girginol' },
   stores: [
     { id: 'moda-cadde', name: 'Moda Cadde', city: 'İstanbul' },
     { id: 'cubuklu', name: 'Çubuklu', city: 'İstanbul' },
-    { id: 'pendik', name: 'Pendik', city: 'İstanbul' }
+    { id: 'pendik', name: 'Pendik', city: 'İstanbul' },
+    { id: 'bagdat', name: 'Bağdat Caddesi', city: 'İstanbul' }
   ],
   baristas: [
     { id: 'demo-ayse', name: 'Ayşe Demir', storeId: 'moda-cadde', role: 'lead', pin: '2580' },
     { id: 'demo-mehmet', name: 'Mehmet Kaya', storeId: 'moda-cadde', role: 'barista', pin: '1470' },
     { id: 'demo-zeynep', name: 'Zeynep Arslan', storeId: 'moda-cadde', role: 'barista', pin: '3690' },
-    { id: 'demo-can', name: 'Can Yıldız', storeId: 'cubuklu', role: 'barista', pin: '2468' },
-    { id: 'demo-elif', name: 'Elif Şahin', storeId: 'pendik', role: 'barista', pin: '1357' },
-    { id: 'demo-yeni', name: 'Deniz Aydın', storeId: 'moda-cadde', role: 'barista', pin: null }
+    { id: 'demo-yeni', name: 'Deniz Aydın', storeId: 'moda-cadde', role: 'barista', pin: null },
+    { id: 'demo-can', name: 'Can Yıldız', storeId: 'cubuklu', role: 'lead', pin: '2468' },
+    { id: 'demo-burak', name: 'Burak Çetin', storeId: 'cubuklu', role: 'barista', pin: '9512' },
+    { id: 'demo-elif', name: 'Elif Şahin', storeId: 'pendik', role: 'lead', pin: '1357' },
+    { id: 'demo-sude', name: 'Sude Korkmaz', storeId: 'pendik', role: 'barista', pin: '7531' },
+    { id: 'demo-emir', name: 'Emir Polat', storeId: 'bagdat', role: 'lead', pin: '8520' },
+    { id: 'demo-nisa', name: 'Nisa Güneş', storeId: 'bagdat', role: 'barista', pin: '4826' }
   ],
   /** Telefonu bağlamak için sabit eşleştirme kodu (Moda Cadde). */
   pairingCode: '140114',
@@ -243,9 +248,15 @@ if (EMULATOR && !CONTENT_ONLY) {
   // --- Baristalar: her birinin kendi Auth hesabı var -------------------
   const lessonIds = (mid) => data.lessons.filter((l) => l.moduleId === mid).map((l) => l.id);
   const progressFor = {
-    'demo-ayse': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('siparis-ve-satis'), ...lessonIds('sicak-kahveler').slice(0, 8)], modules: { 'hos-geldin': 90, 'siparis-ve-satis': 83 } },
-    'demo-mehmet': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('sicak-kahveler').slice(0, 3)], modules: { 'hos-geldin': 80 } },
-    'demo-can': { lessons: lessonIds('hos-geldin').slice(0, 2), modules: {} }
+    'demo-ayse': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama'), ...lessonIds('siparis-ve-satis'), ...lessonIds('italyan-klasikler'), ...lessonIds('sicak-kahveler').slice(0, 12)], modules: { 'hos-geldin': 90, 'misafir-karsilama': 90, 'siparis-ve-satis': 83, 'italyan-klasikler': 88 } },
+    'demo-mehmet': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama'), ...lessonIds('italyan-klasikler'), ...lessonIds('sicak-kahveler').slice(0, 5)], modules: { 'hos-geldin': 80, 'misafir-karsilama': 80, 'italyan-klasikler': 90 } },
+    'demo-zeynep': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama').slice(0, 2)], modules: { 'hos-geldin': 100 } },
+    'demo-can': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama'), ...lessonIds('siparis-ve-satis'), ...lessonIds('italyan-klasikler'), ...lessonIds('sicak-kahveler'), ...lessonIds('demleme-turk').slice(0, 4)], modules: { 'hos-geldin': 100, 'misafir-karsilama': 90, 'siparis-ve-satis': 92, 'italyan-klasikler': 100, 'sicak-kahveler': 86 } },
+    'demo-burak': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('italyan-klasikler').slice(0, 2)], modules: { 'hos-geldin': 80 } },
+    'demo-elif': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama'), ...lessonIds('italyan-klasikler')], modules: { 'hos-geldin': 90, 'misafir-karsilama': 80, 'italyan-klasikler': 88 } },
+    'demo-sude': { lessons: lessonIds('hos-geldin').slice(0, 3), modules: {} },
+    'demo-emir': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama'), ...lessonIds('siparis-ve-satis'), ...lessonIds('italyan-klasikler'), ...lessonIds('sicak-kahveler').slice(0, 8)], modules: { 'hos-geldin': 100, 'misafir-karsilama': 100, 'siparis-ve-satis': 83, 'italyan-klasikler': 100 } },
+    'demo-nisa': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama').slice(0, 3)], modules: { 'hos-geldin': 80 } }
   };
 
   for (const b of TEST.baristas) {
@@ -277,11 +288,72 @@ if (EMULATOR && !CONTENT_ONLY) {
   await db.doc(`users/${device.uid}`).set({ role: 'store', storeId: 'moda-cadde', active: true, paired: false, label: 'Mağaza telefonu', createdAt: now, lastSeenAt: null });
   await db.doc(`pairingCodes/${TEST.pairingCode}`).set({ uid: device.uid, email: deviceEmail, password: devicePassword, storeId: 'moda-cadde', storeName: 'Moda Cadde', expiresAt: now + 30 * 86400000 });
 
-  // --- Örnek görev -------------------------------------------------------
-  await db.doc('assignments/demo-1').set({
-    kind: 'module', targetId: 'sicak-kahveler', title: 'Sıcak Kahveler sınavını geç', note: 'Yeni menü öncesi',
-    storeId: 'moda-cadde', baristaId: null, dueAt: now + 5 * 86400000, createdAt: now, createdBy: staff.uid, createdByName: TEST.staff.name
-  });
+  // --- Sınav geçmişi -----------------------------------------------------
+  // Panelin raporları (haftalık sınav sayısı, en çok yanlış yapılan sorular)
+  // ancak geçmiş denemelerle anlam kazanır; demoda son 30 gün doldurulur.
+  const nameOf = Object.fromEntries(TEST.baristas.map((b) => [b.id, b.name]));
+  const storeOf = Object.fromEntries(TEST.baristas.map((b) => [b.id, b.storeId]));
+  const moduleTitle = Object.fromEntries(data.modules.map((m) => [m.id, m.title]));
+  const qOf = (mid) => data.questions.filter((q) => q.moduleId === mid);
+
+  /** Belirli soruları yanlış yapılmış gibi kaydeder — rapor gerçekçi olsun. */
+  const mistakeItems = (mid, indexes) => qOf(mid).filter((_, i) => indexes.includes(i)).map((q) => ({
+    questionId: q.id, prompt: q.prompt, options: q.options,
+    given: (q.answer + 1) % q.options.length, answer: q.answer, explanation: q.explanation || ''
+  }));
+
+  const attempts = [
+    ['demo-ayse', 'hos-geldin', 1, 90, true, [3]],
+    ['demo-ayse', 'misafir-karsilama', 3, 90, true, [6]],
+    ['demo-ayse', 'siparis-ve-satis', 6, 83, true, [2, 9]],
+    ['demo-ayse', 'italyan-klasikler', 12, 88, true, [1]],
+    ['demo-mehmet', 'hos-geldin', 2, 80, true, [3, 7]],
+    ['demo-mehmet', 'italyan-klasikler', 4, 90, true, [1]],
+    ['demo-mehmet', 'siparis-ve-satis', 9, 58, false, [2, 4, 9, 11, 14]],
+    ['demo-zeynep', 'hos-geldin', 5, 100, true, []],
+    ['demo-zeynep', 'misafir-karsilama', 1, 60, false, [0, 6, 7, 9]],
+    ['demo-can', 'sicak-kahveler', 2, 86, true, [5, 18]],
+    ['demo-can', 'italyan-klasikler', 8, 100, true, []],
+    ['demo-can', 'siparis-ve-satis', 14, 92, true, [2]],
+    ['demo-burak', 'hos-geldin', 6, 80, true, [3, 7]],
+    ['demo-burak', 'italyan-klasikler', 2, 62, false, [1, 3, 5]],
+    ['demo-elif', 'misafir-karsilama', 4, 80, true, [6, 9]],
+    ['demo-elif', 'italyan-klasikler', 11, 88, true, [1]],
+    ['demo-sude', 'hos-geldin', 3, 70, false, [1, 3, 7]],
+    ['demo-emir', 'misafir-karsilama', 1, 100, true, []],
+    ['demo-emir', 'siparis-ve-satis', 5, 83, true, [2, 9]],
+    ['demo-emir', 'italyan-klasikler', 16, 100, true, []],
+    ['demo-nisa', 'hos-geldin', 7, 80, true, [3]],
+    ['demo-nisa', 'misafir-karsilama', 2, 50, false, [0, 6, 7, 9, 10]]
+  ];
+  for (const [bid, mid, daysAgo, score, passed, wrong] of attempts) {
+    const mod = data.modules.find((m) => m.id === mid);
+    const total = mod ? mod.examSize : 10;
+    const at = now - daysAgo * 86400000;
+    await db.collection('attempts').add({
+      baristaId: bid, baristaName: nameOf[bid], storeId: storeOf[bid],
+      moduleId: mid, moduleTitle: moduleTitle[mid] || mid,
+      startedAt: at, submittedAt: at + 7 * 60000,
+      total, correct: Math.round((score / 100) * total), score, passed,
+      mistakes: mistakeItems(mid, wrong)
+    });
+  }
+
+  // --- Görevler ----------------------------------------------------------
+  const assignments = [
+    ['demo-1', 'module', 'sicak-kahveler', 'Sıcak Kahveler sınavını geç', '2026 menüsü yayında — herkes bu hafta tamamlasın.', 'moda-cadde', null, 5],
+    ['demo-2', 'module', 'misafir-karsilama', 'Karşılama ve 1401 İmzası', 'Yeni modül; hafta sonu yoğunluğu öncesi bitsin.', 'cubuklu', null, 3],
+    ['demo-3', 'lesson', 'ozel-urun-saklama', 'Özel ürünlerin saklama standartları', 'Son denetimde soğuk zincir bulgusu çıktı.', 'pendik', 'demo-sude', -2],
+    ['demo-4', 'module', 'urun-kabul-depo', 'Ürün Kabul, Depo ve Teşhir', '', 'bagdat', null, 9],
+    ['demo-5', 'lesson', 'rol-oyunlari', 'Rol oyunu: üç zor senaryo', 'Vardiya başında ekipçe canlandırın.', 'moda-cadde', 'demo-zeynep', -1]
+  ];
+  for (const [id, kind, targetId, title, note, storeId, baristaId, days] of assignments) {
+    await db.doc(`assignments/${id}`).set({
+      kind, targetId, title, note, storeId, baristaId,
+      dueAt: now + days * 86400000, createdAt: now - 86400000 * 4,
+      createdBy: staff.uid, createdByName: TEST.staff.name
+    });
+  }
 
   console.log(`
 Hazır.
