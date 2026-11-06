@@ -337,6 +337,82 @@ const guest = {
   description: 'Siparişi doğru almak, doğru ürünü önermek ve her misafiri memnun uğurlamak.',
   modules: [
     {
+      id: 'misafir-karsilama', title: 'Karşılama, Sadakat ve 1401 İmzası', passScore: 80, examSize: 10,
+      description: 'Misafir kapıdan girdiği andan uğurlandığı ana kadar: karşılama, kişiselleştirme ve ekip uyumu.',
+      lessons: [
+        {
+          id: 'sadakat-4-etki', title: 'Sadakat neden her şeyden önemli?', durationMin: 2,
+          blocks: [
+            P('Bir şubenin cirosunu belirleyen şey yeni misafir sayısı değil, **geri dönen** misafir sayısıdır. Yeni misafir kazanmak reklam ister; geri dönen misafir ise sadece iyi bir deneyim ister.'),
+            SPEC([
+              ['Sadakat', 'Düzenli misafir şubenin kalbidir; 1 memnun misafir yanında dostlarını getirir.'],
+              ['Marka imajı', 'Kahve dünyasındaki rekabet güleryüz ve mükemmel hizmetle kazanılır.'],
+              ['Finansal etki', 'Tekrar eden ziyaretler cironun sürekliliğini sağlar.'],
+              ['Deneyim çemberi', 'Kapıdan girdiği andan uğurlandığı ana kadar her an kusursuz olmalıdır.']
+            ]),
+            H('"Deneyim çemberi" ne demek?'),
+            P('Misafirin aklında kalan şey ortalama deneyim değil, **en zayıf halkadır**. Kahve mükemmel olsa bile kirli bir masa, bekletilen bir sipariş ya da soğuk bir karşılama o ziyareti olumsuza çevirir. Bu yüzden zincirin tamamı senin sorumluluğundadır — sadece bardağın içi değil.'),
+            CHECK('Kahve harika çıktı ama misafir masasını kirli buldu. Deneyim nasıl hatırlanır?', ['Olumsuz — misafir en zayıf halkayı hatırlar', 'Olumlu — kahve iyiyse gerisi önemsizdir', 'Nötr — ikisi birbirini dengeler'], 0, 'Deneyim çemberinde tek bir kopuk halka tüm ziyareti belirler.')
+          ]
+        },
+        {
+          id: 'karsilama-iletisim', title: 'Karşılama ve doğru iletişim', durationMin: 3,
+          blocks: [
+            STEPS(
+              '**Sıcak karşılama:** Kapıdan giren HER misafire pozitif bir "Hoş geldiniz!" ile enerjiyi hissettir.',
+              '**Aktif dinleme:** Siparişi dikkatle dinle; misafir kendini özel ve değerli hissetsin.',
+              '**Empati kurma:** Kahvesini yanlış alan misafirin yerine kendini koy ve anında çözüm üret.'
+            ),
+            H('Neden "HER misafire"?'),
+            P('Karşılama bir ruh hâli değil, bir **standarttır**. Yoğunluk, yorgunluk ya da misafirin tanıdık olup olmaması bunu değiştirmez. Misafirin her ziyarette aynı karşılamayı bulacağını bilmesi, markaya duyduğu güvenin temelidir.'),
+            TIP('Kahve kültürü ipucu: Espresso ile Americano farkını rahatça anlatabilmelisin. Misafir bir şey sorduğunda tereddütsüz cevap vermek, sattığın üründen çok sana duyulan güveni artırır.'),
+            CHECK('Çok yoğun bir saatte kapıdan misafir girdi, elin dolu. Ne yaparsın?', ['Göz teması kurup "Hoş geldiniz" derim, hemen ilgileneceğimi belli ederim', 'İşim bitene kadar görmezden gelirim', 'Sıraya girmesini işaret ederim'], 0, 'Karşılama ertelenmez; bir saniyelik göz teması bile misafirin beklediğini hissetmesini engeller.')
+          ]
+        },
+        {
+          id: 'kisisellestirilmis-hizmet', title: 'Kişiselleştirilmiş hizmet ve 1401 İmzası', durationMin: 3,
+          blocks: [
+            P('Siparişi almak işin başlangıcıdır; misafiri **tanımak** sadakati kalıcı kılan şeydir. Kişiselleştirme, misafire "burada bir numara değilim" hissini verir.'),
+            SPEC([
+              ['Tercihleri hatırla', 'Müdavimin "şekersiz yulaf sütlü latte" tercihini bilmek fark yaratır.'],
+              ['İsimle hitap et', '"Ahmet Bey, bugün yine favori filtre kahvenizi mi hazırlayalım?"'],
+              ['Özel gün jesti', 'Doğum günü veya özel anlarda minik tatlı ikramı yap.']
+            ]),
+            H('Hizmet standartları'),
+            P('- **Hızlı ve doğru servis:** Siparişler standart sürede ve hatasız hazırlanır.\n- **Hijyen ve düzen:** Masa, sandalye, bar ve servis alanları her an tertemiz.\n- **Görsel sunum:** Misafir bardağı eline almadan önce **görür** — kahve köpüğünün kıvamı dahi ilk memnuniyeti belirler.'),
+            TIP('**1401 İmzası:** Temiz fincan, doğru servis sıcaklığı, lekesiz camlar ve samimi bir güleryüz. Bunlar kampanya değil, her gün aynı kalması gereken standartlarımızdır.'),
+            CHECK('Hangisi 1401 İmzası\'nın bir parçası DEĞİLDİR?', ['Misafire en pahalı ürünü önermek', 'Temiz fincan', 'Doğru servis sıcaklığı', 'Lekesiz camlar'], 0, '1401 İmzası bir kalite standardıdır, satış taktiği değil.')
+          ]
+        },
+        {
+          id: 'ekip-ici-koordinasyon', title: 'Ekip içi koordinasyon', durationMin: 2,
+          blocks: [
+            P('Servis hızı bireysel bir performans değil, **takım performansıdır**. Zincirdeki tek bir gecikme tüm akışı yavaşlatır.'),
+            SPEC([
+              ['Akıcı iletişim', 'Bar ve servis ekibi arasındaki seri iletişim servis hızını ikiye katlar.'],
+              ['Yoğun anda destek', 'Sipariş kuyruğunda birbirinin açığını kapatan takım mantığı.'],
+              ['İç atmosfer', 'Bar arkasındaki yüksek pozitif enerji doğrudan salona yansır.']
+            ]),
+            P('Yoğun saatte herkesin sadece kendi görevine bakması kuyruğu büyütür. İyi bir ekip, kimin ne iş yaptığından önce **misafirin beklemediğinden** emin olur.'),
+            TIP('Misafirler bar arkasındaki havayı hisseder. Gergin bir ekip güleryüz taklidi yapsa bile salon bunu sezer; ekip içi uyum aslında misafire sunulan ilk üründür.')
+          ]
+        }
+      ],
+      questions: [
+        Q('Misafir sadakatinin şube için en güçlü etkisi nedir?', 'Memnun misafir yanında yeni misafirler getirir', ['Sosyal medya reklam maliyetini sıfırlar', 'Ürün maliyetlerini düşürür', 'Personel sayısını azaltır'], 'Sadık misafir kendi gelmekle kalmaz, çevresine tavsiye eder — bu bedava ve güvenilir bir pazarlamadır. Bir şubenin en güçlü büyüme kaynağı reklam değil, memnun misafirin ağzından çıkan sözdür.'),
+        Q('"Deneyim çemberi" ilkesi neyi anlatır?', 'Kapıdan girişten uğurlamaya kadar her anın kusursuz olması gerektiğini', ['Sadece içeceğin kalitesinin önemli olduğunu', 'Misafirin çember şeklinde oturtulmasını', 'Günün belirli saatlerinde hizmet kalitesinin artırılmasını'], 'Misafir ortalama bir deneyimi değil, en zayıf halkayı hatırlar. Kahve mükemmel olsa bile kirli bir masa o ziyareti olumsuza çevirir — bu yüzden zincirin tamamı senin sorumluluğundadır.'),
+        Q('Kapıdan giren misafire karşılama ne zaman yapılır?', 'Yoğunluk ne olursa olsun her misafire, hemen', ['Sadece boş olduğunda', 'Sadece tanıdık müdavimlere', 'Sipariş vermeye yaklaştığında'], 'Karşılama bir ruh hâli değil standarttır. Misafirin her ziyarette aynı karşılamayı bulacağını bilmesi, markaya duyduğu güvenin temelidir.'),
+        Q('Müdavim bir misafirin "şekersiz yulaf sütlü latte" tercihini hatırlamak neden önemlidir?', 'Misafire özel ve tanınan biri olduğunu hissettirir', ['Siparişi daha hızlı girmeyi sağlar', 'Stok takibini kolaylaştırır', 'Daha pahalı ürün satmayı kolaylaştırır'], 'Siparişi almak işin başlangıcıdır; misafiri tanımak sadakati kalıcı kılan şeydir. Kişiselleştirme misafire "burada bir numara değilim" hissini verir — hız bunun yan faydasıdır, amacı değil.'),
+        Q('Aşağıdakilerden hangisi 1401 İmzası\'nın bir parçasıdır?', 'Temiz fincan ve doğru servis sıcaklığı', ['Her misafire kampanya anlatmak', 'En pahalı ürünü önermek', 'Siparişi mutlaka çift kontrol ettirmek'], '1401 İmzası; temiz fincan, doğru servis sıcaklığı, lekesiz camlar ve samimi güleryüz gibi HER ziyarette aynı kalması gereken kalite standartlarıdır — satış taktikleri değil.'),
+        Q('Misafirin bir içecekle ilgili ilk izlenimi neyle oluşur?', 'Görsel sunumla — köpüğün kıvamı dahil', ['İlk yudumun sıcaklığıyla', 'Fiyatıyla', 'Hazırlanma süresiyle'], 'Misafir bardağı eline almadan önce GÖRÜR. Lezzet doğru olsa bile kötü görünen bir sunum memnuniyeti daha ilk saniyede zedeler.'),
+        Q('Bar ve servis ekibi arasındaki hızlı iletişim neyi etkiler?', 'Servis hızını — zincirdeki tek gecikme tüm akışı yavaşlatır', ['Sadece bar personelinin iş yükünü', 'Sadece kasa kapanışını', 'Ürün maliyetini'], 'Servis hızı bireysel değil takım performansıdır. Bir halkadaki gecikme tüm zinciri yavaşlatır; bu yüzden iletişim hızı tek tek kişilerin hızından daha belirleyicidir.'),
+        Q('Yoğun saatte sipariş kuyruğu büyüdü. Doğru yaklaşım nedir?', 'Takım mantığıyla birbirinin açığını kapatmak', ['Herkesin yalnızca kendi görevine odaklanması', 'Yöneticinin gelmesini beklemek', 'Sipariş almayı geçici olarak durdurmak'], 'Herkesin sadece kendi görevine bakması kuyruğu büyütür. İyi bir ekip, kimin ne iş yaptığından önce misafirin beklemediğinden emin olur.'),
+        TF('Bar arkasındaki ekip atmosferi, misafirin salonda hissettiği havayı doğrudan etkiler.', true, 'Misafirler bar arkasındaki enerjiyi sezer. Gergin bir ekip güleryüz taklidi yapsa bile salon bunu hisseder; ekip içi uyum aslında misafire sunulan ilk üründür.'),
+        TF('Çok yoğun olunan saatlerde karşılama atlanabilir, önemli olan siparişin hızlı çıkmasıdır.', false, 'Karşılama ertelenebilir bir nezaket değil, bir standarttır. Bir saniyelik göz teması bile misafirin beklediğini hissetmesini engeller; hız ise karşılamanın alternatifi değil tamamlayıcısıdır.'),
+        TF('Misafirin adını bilmek ve kullanmak kişiselleştirilmiş hizmetin parçasıdır.', true, 'İsimle hitap, misafire tanındığını hissettiren en kısa yoldur; tercihini hatırlamak ve özel gün jestleriyle birlikte sadakati besleyen üç temel kişiselleştirme davranışından biridir.')
+      ]
+    },
+    {
       id: 'siparis-ve-satis', title: 'Sipariş ve Önerili Satış', passScore: 80, examSize: 12,
       description: 'Sipariş alma ve teslim etme prosedürleri, önerili satış teknikleri.',
       lessons: [
@@ -443,10 +519,45 @@ const guest = {
             P('**İndirim:** Kime ve ne oranda indirim yapılacağını Operasyon Müdürü belirler ve yazılı bildirir. Personel indirimi %20\'dir.'),
             TIP('İptal ve iade sayısı şubenin hizmet kalitesinin önemli bir göstergesidir.')
           ]
+        },
+        {
+          id: 'iletisim-kazalari', title: 'İletişim kazaları ve memnuniyet jestleri', durationMin: 3,
+          blocks: [
+            H('Asla yapılmaması gerekenler'),
+            P('- **Misafiri suçlamak:** Tartışmaya girmek veya alaycı, savunmacı bir dil kullanmak.\n- **Hatayı reddetmek:** "Bizde hata olmaz" gibi sert ifadelerle savunmaya geçmek.\n- **İlgisiz görünmek:** Sorunu dinlememek ya da çözümsüz bırakıp uzaklaşmak.\n- **Negatif dil:** "Kuralımız böyle, yapamayız" demek — yerine her zaman bir alternatif sun.'),
+            WARN('Bu dördü şikayeti çözmez, **büyütür**. Misafir çoğu zaman hatanın kendisine değil, hataya verilen tepkiye kızar.'),
+            H('Memnuniyeti artıran jestler'),
+            SPEC([
+              ['Küçük ikram', 'Çözülen şikayetin yanında minik bir kurabiye veya çikolata.'],
+              ['5 dakika takibi', 'Çözümü sunduktan 5 dakika sonra masaya uğrayıp "Yeni kahveniz nasıl oldu?" diye sor.'],
+              ['Kayıt ve takip', 'Yaşananı ekiple paylaş ki aynı hata tekrarlanmasın.']
+            ]),
+            TIP('**Proaktif yaklaşım:** Siparişi geciken bir masayı misafir sormadan fark edip gidip bilgi vermek, şikayetin doğmasını baştan engeller. En iyi şikayet yönetimi, hiç şikayet oluşmamasıdır.'),
+            CHECK('Yanlış çıkan kahveyi yenilediniz. Sırada ne var?', ['5 dakika sonra masaya uğrayıp sonucu sormak', 'Konuyu kapatıp bir daha açmamak', 'Misafir yeniden şikayet ederse ilgilenmek'], 0, 'Çözümü sunmak yarısıdır; çözümün işe yaradığını teyit etmek şikayeti memnuniyete çeviren adımdır.')
+          ]
+        },
+        {
+          id: 'rol-oyunlari', title: 'Rol oyunu: üç zor senaryo', durationMin: 4,
+          blocks: [
+            P('Kriz anında doğru cümleyi bulmak yetenek değil **tekrar** işidir. Ekipçe rol oyunu yapmak tepki hızını artırır. Aşağıdaki üç senaryoyu okuyup kendi cevabını seç, sonra vardiyada bir arkadaşınla canlandır.'),
+            H('Senaryo 1 — Öfkeli misafir'),
+            CHECK('Misafir sesini yükselterek "Yirmi dakikadır bekliyorum, rezalet!" diyor. İlk cümlen ne olur?', ['"Sizi çok iyi anlıyorum, beklediğiniz için özür dilerim — hemen ilgileniyorum."', '"Bugün çok yoğunuz, herkes bekliyor."', '"Siparişinizi ben almamıştım."'], 0, 'Önce empati ve özür; açıklama ve savunma misafiri daha da öfkelendirir. Gerekçe anlatmak sonra gelir, hiç gelmeyebilir de.'),
+            H('Senaryo 2 — Olmayan ürün'),
+            CHECK('Misafirin istediği tatlı bitmiş. Ne dersin?', ['"Bugün onu sunamadığımız için özür dilerim; yerine şunu öneririm, çok sevilen bir seçim."', '"O bitti."', '"Erken gelseydiniz kalmıştı."'], 0, 'Olumsuz cevap tek başına bırakılmaz; her "yok" bir alternatifle birlikte söylenir. Misafir ürünü değil, çözümsüzlüğü hatırlar.'),
+            H('Senaryo 3 — Yanlış ürün'),
+            CHECK('Misafir "Ben sütsüz istemiştim" diyor ama siparişte öyle bir not yok. Ne yaparsın?', ['Tartışmam, özür dileyip hemen yenisini hazırlarım', '"Sistemde öyle görünmüyor" diyerek siparişi gösteririm', 'Ücretini alıp yenisini yaparım'], 0, 'Kimin haklı olduğunu kanıtlamak misafiri kaybettirir. Hata bizde olmasa bile çözüm önce gelir; kaydı sonra ekiple değerlendirirsin.'),
+            TIP('Her rol oyunu sonunda tek bir soru sor: "Misafir bu masadan arkadaşına anlatacak bir şeyle mi kalktı?"')
+          ]
         }
       ],
       questions: [
         ...fromAos('complaints'),
+        Q('Şikayet çözüldükten sonra masaya 5 dakika içinde uğramanın amacı nedir?', 'Çözümün gerçekten işe yaradığını teyit etmek', ['Hesabı kapatmaya davet etmek', 'Yeni ürün önerisi yapmak', 'Masayı erken boşaltmak'], 'Çözümü sunmak işin yarısıdır. Misafir yeni ürünü de beğenmediyse ve kimse sormadıysa, şikayet çözülmüş değil sadece susturulmuş olur — takip, memnuniyeti doğrulayan adımdır.'),
+        Q('Misafir şikayet ettiğinde hangisi durumu büyüten bir davranıştır?', '"Bizde hata olmaz" diyerek savunmaya geçmek', ['Sözünü kesmeden dinlemek', 'Bildirdiği için teşekkür etmek', 'Alternatif bir çözüm sunmak'], 'Misafir çoğu zaman hatanın kendisine değil, hataya verilen tepkiye kızar. Hatayı reddetmek misafire "sen yanılıyorsun" demektir ve çözüm arayışını kavgaya dönüştürür.'),
+        Q('"Kuralımız böyle, yapamayız" demek yerine ne yapılmalıdır?', 'Mümkün olan bir alternatif sunmak', ['Yöneticiyi çağırıp uzaklaşmak', 'Kuralı daha ayrıntılı anlatmak', 'Misafirden yazılı talep istemek'], 'Negatif dil kapıyı kapatır. Misafir çoğu zaman tam olarak istediği şeyi değil, kendisi için bir çaba gösterildiğini görmek ister; alternatif sunmak bu çabanın kanıtıdır.'),
+        Q('Siparişi geciken bir masayı misafir sormadan bilgilendirmek ne sağlar?', 'Şikayetin hiç oluşmamasını — proaktif yaklaşım', ['Siparişin daha hızlı çıkmasını', 'Misafirin hesabı erken istemesini', 'Garson sayısının azaltılmasını'], 'En iyi şikayet yönetimi hiç şikayet oluşmamasıdır. Bekleyen misafir bilgilendirildiğinde bekleme süresi değişmez ama belirsizlik ortadan kalkar; misafiri asıl rahatsız eden belirsizliktir.'),
+        TF('Ekip içinde kriz senaryolarıyla rol oyunu yapmak, gerçek durumda tepki hızını artırır.', true, 'Kriz anında doğru cümleyi bulmak yetenek değil tekrar işidir. Önceden prova edilmiş bir cevap, baskı altında düşünmek zorunda kalmadan ağızdan çıkar.'),
+        TF('Yaşanan bir şikayeti ekiple paylaşmak gereksizdir; önemli olan o anda çözülmüş olmasıdır.', false, 'Paylaşılmayan hata tekrarlanır. Kayıt ve takip, tek bir misafirin yaşadığı sorunun diğerlerinin de başına gelmesini önleyen tek mekanizmadır.'),
         Q('Demleme gerektirmeyen bir sipariş en geç kaç dakikada hazırlanmalıdır?', '2 dakika', ['5 dakika', '10 dakika', '1 dakika'], 'Demleme gerektirmeyen 2 dk, demleme gerektiren 5 dk.'),
         Q('Hangisi memnuniyeti kontrol etmek için doğru bir sorudur?', '"Her şey arzu ettiğiniz gibi mi efendim?"', ['"Beğenmediniz mi?"', '"Problem mi var?"', '"Yine mi bir sorun var?"'], 'Olumsuz ve ön yargılı ifadelerden kaçınılır.'),
         Q('İkram yapma yetkisi kimdedir?', 'Operasyon Müdürü, Şube Müdürü ve Müdür Yardımcıları', ['Tüm baristalar', 'Sadece kasiyer', 'Vardiyadaki en kıdemli personel'], 'İkram yetkisi yalnızca yöneticilerdedir.'),
@@ -567,10 +678,47 @@ const operations = {
             P('- Dağınık veya ulaşılması zor ürünler\n- Kampanya ürünlerinin arkada kalması\n- Eksik veya yanlış etiket'),
             TIP('Teşhire her gün misafir gözüyle bak: temiz mi, dolu mu, etiketler doğru mu, SKT\'si yaklaşan var mı?')
           ]
+        },
+        {
+          id: 'ozel-urun-saklama', title: 'Özel ürünlerin saklama standartları', durationMin: 3,
+          blocks: [
+            P('Her ürün grubunun kendine ait bir düşmanı var: kahvenin nem ve ışık, sütün sıcaklık, şurubun ısı kaynağı, kuru gıdanın zemin teması. Saklama kuralları bu düşmanlara göre yazıldı.'),
+            H('Kahve çekirdekleri'),
+            P('- Serin, kuru ve **doğrudan güneş ışığı almayan** ortamda saklanır.\n- Nemden ve yüksek ısıdan korunur.\n- Paket açıldıktan sonra **hava almayan özel valfli kaplarda** tutulur.'),
+            H('Süt ve süt ürünleri'),
+            P('- Soğuk zincir muhafazası **asla bozulmaz (0–4°C)**.\n- Tezgahtaki sütler kullanım dışı anlarda soğutucuya geri konur.\n- **Bitkisel sütler ve hayvansal sütler ayrı alanlarda** saklanır.'),
+            H('Şuruplar ve soslar'),
+            P('- Orijinal ambalajında, **direkt ısı kaynağından uzakta** durur.\n- **Pompa uçları her gün** düzenli olarak hijyenik silinir.\n- Raf ömrü ve açılış tarihi etiketle takip edilir.'),
+            H('Kuru gıdalar ve unlular'),
+            P('- Yerden yüksekte, **havalandırmalı raflarda** muhafaza edilir.\n- Nem almaması için kapaklar her zaman tam kapalı kalır.\n- **Zeminle direkt temas kesinlikle yasaktır** (palet kullanımı).'),
+            WARN('Saklama alanlarının günlük ve haftalık temizlik kontrolü **vardiya amiri** sorumluluğundadır.'),
+            CHECK('Tezgahta duran açık süt, servis arasında 15 dakika kullanılmayacak. Ne yaparsın?', ['Soğutucuya geri koyarım', 'Tezgahta bırakırım, nasılsa birazdan kullanılacak', 'Üzerini kapatıp tezgahta bırakırım'], 0, 'Soğuk zincir dakikalarla ölçülür; kullanım dışı her an süt soğutucudadır.')
+          ]
+        },
+        {
+          id: 'vitrin-kasa-onu', title: 'Vitrin ve kasa önü stratejisi', durationMin: 2,
+          blocks: [
+            P('Vitrin bir depolama alanı değil, **sessiz bir satış elemanıdır**. Misafir sipariş vermeden önce gözüyle karar verir.'),
+            SPEC([
+              ['Hızlı tüketim', 'Kasa önünde atıştırmalıklar, kurabiyeler ve kahve kartları konumlandırılır.'],
+              ['Aydınlatma ve iştah', 'Vitrin camları lekesiz, aydınlatma ürün rengini canlı gösterecek sıcaklıkta.'],
+              ['Facing', 'Raflar ve vitrin her zaman dolu, hizalı ve ön yüzleri etiketiyle öne bakacak şekilde.']
+            ]),
+            WARN('Dağınık vitrin veya etiketleri eksik ürünler satışı **%40 düşürür**. Bu bir tahmin değil, ölçülmüş bir etkidir.'),
+            TIP('**Müşteri gözünden değerlendirme:** Her vardiyada bir kez bar arkasından çıkıp tezgahın önüne geç. Vitrin misafir gözüyle lezzetli ve davetkâr görünüyor mu? Bar arkasından her şey her zaman düzgün görünür — asıl test öndedir.'),
+            CHECK('Kasa önüne hangi ürün grubu konumlandırılır?', ['Küçük, hızlı tüketilen atıştırmalıklar ve kahve kartları', 'En pahalı demleme ekipmanları', 'Depodan yeni gelen kutular', 'Günün sonunda kalan tatlılar'], 0, 'Kasa önü, beklerken verilen ani kararların alanıdır; büyük ve pahalı ürünler orada karar verilemeyecek kadar düşündürür.')
+          ]
         }
       ],
       questions: [
         ...fromAos('logistics'),
+        Q('Açılmış kahve çekirdeği paketi nasıl saklanır?', 'Hava almayan özel valfli kapta, serin ve ışık almayan yerde', ['Orijinal paketinde ağzı katlanarak', 'Buzdolabında kapalı kapta', 'Tezgah üstünde ağzı açık kavanozda'], 'Kahvenin iki düşmanı nem ve oksijendir. Valfli kap, çekirdeğin saldığı karbondioksiti dışarı verirken dışarıdan hava almaz; bu yüzden ağzı katlanmış paket ya da sıradan kavanoz aromayı birkaç günde kaybettirir.'),
+        Q('Bitkisel sütler ile hayvansal sütler neden ayrı alanlarda saklanır?', 'Karışma ve çapraz bulaşmayı önlemek için', ['Bitkisel sütler daha soğuk ortam istediği için', 'Raf ömürleri aynı olduğu için', 'Maliyet takibini kolaylaştırmak için'], 'Ayrı saklama hem yanlış sütün yanlışlıkla kullanılmasını hem de alerjen açısından çapraz bulaşmayı önler. Yulaf sütü isteyen bir misafire inek sütü gitmesi sadece tat hatası değil, sağlık riskidir.'),
+        Q('Şurup pompalarının uçları ne sıklıkta temizlenir?', 'Her gün', ['Haftada bir', 'Şurup bitince', 'Ayda bir'], 'Pompa ucu, şekerli sıvının havayla buluştuğu yerdir; kuruyan şurup hem bakteri üretir hem dozajı bozar. Günlük temizlik bu yüzden şurup değişimine değil, günün kendisine bağlıdır.'),
+        Q('Kuru gıdaların zeminle direkt teması neden yasaktır?', 'Nem ve haşere riski oluşturduğu için — palet kullanılır', ['Zemini çizdiği için', 'Taşımayı zorlaştırdığı için', 'Sayımı zorlaştırdığı için'], 'Zemin hem temizlik suyundan nem hem de haşere geçişi için en riskli yüzeydir. Palet ve havalandırmalı raf, ürünü bu iki riskten aynı anda ayırır.'),
+        Q('Dağınık vitrin ve eksik etiketin satışa etkisi nedir?', 'Satışı yaklaşık %40 düşürür', ['Etkisi yoktur, ürün kalitesi belirleyicidir', 'Satışı yaklaşık %5 düşürür', 'Satışı artırır çünkü merak uyandırır'], 'Vitrin sessiz bir satış elemanıdır: misafir sipariş vermeden önce gözüyle karar verir. Görünmeyen ya da fiyatı belirsiz ürün, var olmayan üründür.'),
+        TF('Tezgahta duran süt, kullanım dışı anlarda soğutucuya geri konulmalıdır.', true, 'Soğuk zincir dakikalarla ölçülür. "Birazdan kullanacağım" diye tezgahta bırakılan süt, ısındığı her dakikada bozulma süresini kısaltır.'),
+        TF('Vitrin düzenini değerlendirmek için bar arkasından bakmak yeterlidir.', false, 'Bar arkasından her şey her zaman düzgün görünür. Asıl test, tezgahın önüne geçip misafirin gördüğü açıyı görmektir.'),
         ...fromAos('operations', [1, 2, 3]),
         Q('Akşam saat kaçtan sonra mal teslim alınmaz?', '17:30', ['20:00', '15:00', 'Saat sınırı yoktur'], 'Manuel: akşam 17:30\'dan sonra mal teslim alınmaz.'),
         Q('Donuk ürünler hangi sıcaklıkta çözdürülür?', '+5°C buzdolabında', ['Tezgahta oda sıcaklığında', 'Sıcak su içinde', 'Mikrodalgada'], 'Çözdürme yalnızca +5°C buzdolabında yapılır.'),
