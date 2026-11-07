@@ -89,6 +89,27 @@ Capacitor eklentisi, uygulama ikonu/adı veya `server.url` değişirse gerekir.
 Bedeli: uygulama açılışta internet ister. Dersler Firestore önbelleğinden çevrimdışı
 açılıyordu; bu kurulumda kabuk da ağdan geldiği için şube wifi'si yoksa uygulama açılmaz.
 
+**Önbellek başlıkları bu kurulumun parçasıdır** (`firebase.json` → `hosting.headers`):
+`index.html` için `no-cache`, `/assets/**` için bir yıl `immutable`. Sebebi: eksik bir
+dosya istendiğinde hosting 404 değil `index.html` döndürüyor (SPA rewrite'ı). Giriş
+sayfası önbellekte kalırsa, deploy'dan sonra telefon artık var olmayan bir JS dosyasını
+ister, cevap olarak HTML alır ve onu JavaScript sanıp çalıştırmaya çalışır — sonuç
+sessiz boş ekran. `no-cache` bu zinciri kırar; dosya adları özet taşıdığı için
+`/assets/**` uzun önbellekte güvenle durur. Bu başlıkları kaldırma.
+
+### 20 şubeye kurulum
+
+APK'yı her telefona tek tek kurmak gerekir (Play Store'a girilene kadar). Pratik yol:
+APK'yı bir indirme adresine koyup şubelere QR/link göndermek — USB ile dolaşmaktan
+hızlıdır. Telefonda "bilinmeyen kaynaklara izin ver" bir kez onaylanır.
+
+Ücretsiz Spark planının sınırı günde 50.000 Firestore okuması. 20 şube ≈ 100 barista
+için durum rahat: `src/api/firebase.ts` kalıcı yerel önbelleği (`persistentLocalCache`)
+açıyor ve dersler `onSnapshot` ile dinlendiği için ilk kurulumdan sonra yalnızca
+**değişen** belgeler okuma sayılır. Tek seferlik maliyet cihaz başına ≈420 belge
+(93 ders + 311 soru + modül/izlek); 20 telefonun hepsi aynı gün kurulsa ≈8.400 okuma.
+Sınıra yaklaştıran şey günlük kullanım değil, uygulama verisinin sık sık silinmesidir.
+
 İmzalama: `android/keystore.properties` ve `android/1401-playbook.keystore` depoya
 **girmez** (`.gitignore`). Bu iki dosya kaybolursa aynı uygulamanın güncellemesi
 yayınlanamaz — telefonlardaki uygulamayı silip yeni bir paket adıyla baştan kurmak
