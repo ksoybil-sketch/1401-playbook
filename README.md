@@ -119,6 +119,27 @@ gerekir. Yedek: **OneDrive → `1401 Playbook Yedek/android-imzalama`** (iki dos
 Play Store'a geçilirse imzalamayı Google üstlenir ve bu anahtar yalnızca yükleme
 anahtarı olarak kalır.
 
+### Demo ortamı
+
+Ayrı Firebase projesi (`playbook-demo-1401`), ayrı veri, canlıyla hiç teması yok.
+Ayarlar `.env.demo` içinde; giriş bilgileri ekranda yazılıdır
+(`src/features/device/DemoNotice.tsx`) ve bu dosya yalnızca `VITE_DEMO=true` ile
+derlenen pakete girer.
+
+```bash
+npm run seed:demo        # demo verisini sıfırdan yazar
+npm run deploy:demo      # demo derlemesi + deploy, sonra www'yu canlı derlemeye döndürür
+```
+
+`deploy:demo` sondaki `npm run build` adımıyla biter: **demo derlemesi `www/` içinde
+bırakılmaz.** Bırakılsa, sonraki `firebase deploy --only hosting` demo yapılandırmasını
+(demo Firebase projesi ve ekrandaki giriş bilgileri) canlıya gönderirdi. Bu zinciri
+elle kurmaktan kaçın — demo derlemesini her zaman bu betikle al.
+
+Demodaki eşleştirme kodu (`140114`) sabittir ve `pairDevice()` içinde **demoda
+silinmez** (`if (!DEMO)`), çünkü ekranda yazılı bir kodu birden fazla kişi kendi
+tarayıcısında dener. Canlıda kod tek kullanımlık kalır.
+
 ### Sezon güncellemesi (reçeteler değiştiğinde)
 
 1. Yeni menü dosyasından reçeteleri çıkar: `node scripts/extract-2026.mjs "<menü html>"`.

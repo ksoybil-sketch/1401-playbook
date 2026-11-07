@@ -36,6 +36,12 @@ const INVITE_TTL_MS = 7 * 86400000;
 const PAIRING_TTL_MS = 30 * 60000;
 const DAY_MS = 86400000;
 
+/**
+ * Demo ortamı (playbook-demo-1401). Yalnızca `.env.demo` ile derlenen pakette
+ * true'dur; canlı pakette bu değer hiç tanımlı olmadığı için false kalır.
+ */
+const DEMO = import.meta.env.VITE_DEMO === 'true';
+
 export const pinPassword = (baristaId: string, pin: string) => `pb-${baristaId}-${pin}`;
 export const invitePassword = (code: string) => `davet-${code}-1401`;
 
@@ -113,7 +119,10 @@ async function pairDevice(code: string, label: string): Promise<DeviceCreds> {
   if (!p || p.expiresAt < Date.now()) throw new AppError('Kod geçersiz ya da süresi dolmuş.');
   await signInWithEmailAndPassword(auth, p.email, p.password);
   await updateDoc(doc(db, 'users', p.uid), { paired: true, label, lastSeenAt: Date.now() });
-  await deleteDoc(doc(db, 'pairingCodes', code));
+  // Canlıda kod tek kullanımlıktır: kullanıldığı anda silinir.
+  // Demoda sabit kod (140114) ekranda yazılıdır ve birden fazla kişi kendi
+  // tarayıcısında denemek ister; silinirse ilk denemeden sonra demo kilitlenir.
+  if (!DEMO) await deleteDoc(doc(db, 'pairingCodes', code));
   return { uid: p.uid, email: p.email, password: p.password, storeId: p.storeId, storeName: p.storeName };
 }
 
