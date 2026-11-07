@@ -91,8 +91,12 @@ açılıyordu; bu kurulumda kabuk da ağdan geldiği için şube wifi'si yoksa u
 
 İmzalama: `android/keystore.properties` ve `android/1401-playbook.keystore` depoya
 **girmez** (`.gitignore`). Bu iki dosya kaybolursa aynı uygulamanın güncellemesi
-yayınlanamaz — yedeklenmeleri gerekir. Play Store'a geçilirse imzalamayı Google üstlenir
-ve bu anahtar yalnızca yükleme anahtarı olarak kalır.
+yayınlanamaz — telefonlardaki uygulamayı silip yeni bir paket adıyla baştan kurmak
+gerekir. Yedek: **OneDrive → `1401 Playbook Yedek/android-imzalama`** (iki dosya +
+`OKU-BENI.txt`). Yeni bir bilgisayarda bu iki dosyayı `android/` içine kopyalamak ve
+`keystore.properties` içindeki `storeFile` yolunu düzeltmek yeterlidir.
+Play Store'a geçilirse imzalamayı Google üstlenir ve bu anahtar yalnızca yükleme
+anahtarı olarak kalır.
 
 ### Sezon güncellemesi (reçeteler değiştiğinde)
 
