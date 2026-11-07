@@ -99,9 +99,20 @@ sessiz boş ekran. `no-cache` bu zinciri kırar; dosya adları özet taşıdığ
 
 ### 20 şubeye kurulum
 
-APK'yı her telefona tek tek kurmak gerekir (Play Store'a girilene kadar). Pratik yol:
-APK'yı bir indirme adresine koyup şubelere QR/link göndermek — USB ile dolaşmaktan
-hızlıdır. Telefonda "bilinmeyen kaynaklara izin ver" bir kez onaylanır.
+APK'yı her telefona tek tek kurmak gerekir (Play Store'a girilene kadar).
+Telefonda "bilinmeyen kaynaklara izin ver" bir kez onaylanır.
+
+Kurulum yönergesi sayfası hazır: `public/indir/index.html` → yayında `/indir/`.
+İndirme düğmesinin hedefi dışarıdan verilir, çünkü **APK Firebase Hosting'de
+barındırılamıyor**: Spark planı çalıştırılabilir dosyaları reddediyor
+(`Executable files are forbidden on the Spark billing plan`). Bu yüzden
+`firebase.json` → `hosting.ignore` içinde `**/*.apk` var; `public/` altına bir APK
+düşse bile deploy kırılmasın. APK'yı paylaşmanın yolları: OneDrive/Drive paylaşım
+linki (sayfadaki düğmeye bu adres yazılır), doğrudan WhatsApp ile göndermek, ya da
+Blaze planına geçmek.
+
+`npm run apk` çıktıyı `apk/1401-playbook.apk` konumuna kopyalar (bu klasör
+`.gitignore`'da).
 
 Ücretsiz Spark planının sınırı günde 50.000 Firestore okuması. 20 şube ≈ 100 barista
 için durum rahat: `src/api/firebase.ts` kalıcı yerel önbelleği (`persistentLocalCache`)

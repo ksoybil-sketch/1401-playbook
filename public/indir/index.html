@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>1401 Playbook — Kurulum</title>
+<style>
+  :root {
+    --ink: #14110F;
+    --paper: #F5F1EB;
+    --green: #3E6B4E;
+    --green-dark: #2F5340;
+    --muted: #6B625A;
+    --line: #DFD7CC;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    padding: 32px 16px 64px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  .mark {
+    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -.01em; }
+  .lede { color: var(--muted); margin: 0 0 28px; }
+  .btn {
+    display: block; text-align: center; text-decoration: none;
+    background: var(--green); color: #fff;
+    padding: 18px 20px; border-radius: 14px;
+    font-size: 18px; font-weight: 600;
+  }
+  .btn:active { background: var(--green-dark); }
+  .meta { color: var(--muted); font-size: 14px; text-align: center; margin: 12px 0 36px; }
+  h2 { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+  ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  li {
+    counter-increment: s; position: relative;
+    padding: 0 0 20px 44px; border-left: 1px solid var(--line);
+    margin-left: 13px;
+  }
+  li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  li::before {
+    content: counter(s); position: absolute; left: -14px; top: -2px;
+    width: 27px; height: 27px; border-radius: 50%;
+    background: var(--ink); color: var(--paper);
+    font-size: 14px; font-weight: 600;
+    display: grid; place-items: center;
+  }
+  li b { display: block; font-weight: 600; }
+  li span { color: var(--muted); font-size: 15px; }
+  .note {
+    margin-top: 36px; padding: 16px 18px;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    font-size: 15px; color: var(--muted);
+  }
+  .note b { color: var(--ink); }
+  footer { margin-top: 32px; text-align: center; font-size: 13px; color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #14110F; --ink: #F5F1EB; --muted: #A79D92; --line: #2E2821; }
+    .note { background: #1C1813; }
+    li::before { background: var(--paper); color: #14110F; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="mark">1401 Coffee</p>
+  <h1>Playbook uygulamasını kur</h1>
+  <p class="lede">Mağaza telefonuna kurulur. Baristalar ders, standart ve sınavlara buradan ulaşır.</p>
+
+  <a class="btn" href="1401-playbook.apk" download>Uygulamayı indir</a>
+  <p class="meta">Sürüm 1.0 &middot; 4 MB &middot; Android</p>
+
+  <h2>Kurulum</h2>
+  <ol>
+    <li>
+      <b>İndir</b>
+      <span>Yukarıdaki düğmeye dokun. İnen dosyaya bildirimden ya da "İndirilenler" klasöründen dokun.</span>
+    </li>
+    <li>
+      <b>İzin ver</b>
+      <span>Telefon "bu kaynaktan kuruluma izin verilmiyor" derse, açılan ayardan izni aç ve geri dön. Bu bir kez sorulur.</span>
+    </li>
+    <li>
+      <b>Eşleştir</b>
+      <span>Uygulamayı aç, Kahve Operasyonu'nun verdiği 6 haneli kodu gir. Kod 30 dakika geçerlidir ve tek kullanımlıktır.</span>
+    </li>
+    <li>
+      <b>Giriş</b>
+      <span>Barista adına dokunup 4 haneli PIN'ini girer. Telefon bir daha eşleştirme istemez.</span>
+    </li>
+  </ol>
+
+  <p class="note">
+    <b>Eşleştirme kodu nereden alınır?</b>
+    Kahve Operasyonu panelinde mağazanın sayfasındaki "Telefon bağla" düğmesinden.
+    Kod olmadan uygulama açılmaz.
+  </p>
+
+  <p class="note">
+    <b>Güncellemeler kendiliğinden gelir.</b>
+    Yeni ders ya da reçete eklendiğinde uygulamayı yeniden kurman gerekmez;
+    bir sonraki açılışta güncel hâli görürsün.
+  </p>
+
+  <footer>1401 Coffee &middot; Kahve Operasyonu</footer>
+</main>
+</body>
+</html>

@@ -10,7 +10,7 @@
     "curriculum": "node scripts/build-curriculum.mjs",
     "build": "node scripts/build-curriculum.mjs && tsc && vite build",
     "seed:demo": "node scripts/seed.mjs --demo",
-    "apk": "npx cap sync android && cd android && gradlew assembleRelease",
+    "apk": "npx cap sync android && cd android && gradlew assembleRelease && cd .. && node -e \"require('fs').copyFileSync('android/app/build/outputs/apk/release/app-release.apk','apk/1401-playbook.apk')\"",
     "deploy:demo": "node scripts/build-curriculum.mjs && tsc && vite build --mode demo && firebase deploy --only hosting,firestore --project playbook-demo-1401 && npm run build",
     "preview": "vite preview",
     "emulators": "firebase emulators:start --project demo-playbook --import=./.emulator-data --export-on-exit",
