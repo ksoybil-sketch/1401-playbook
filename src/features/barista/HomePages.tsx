@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
-import { TitleCard, BadgeGrid, TitleChip, useBadgeReport } from '../shared/Badges';
+import React, { useMemo, useState } from 'react';
+import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { badgeReport } from '../../lib/badges';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
-import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
+import { useQueryLive } from '../../hooks/useFirestore';
 import { assignmentDone, isOverdue, nextLesson, overallPercent, moduleState } from '../../lib/progress';
-import { Icon } from '../../ui/Icon';
+import { Icon, type IconName } from '../../ui/Icon';
+import { HUE, trackHue, type Hue } from '../../ui/palette';
+import { RECIPE_TRACK_ID } from '../../lib/search';
 import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { useBaristaSession, useMyAssignments, useMyAttempts, useMyBulletins, useMyProgress } from './useBaristaData';
+import { useBaristaSession, useMyAssignments, useMyBadgeReport, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
 import { AssignSheet } from '../shared/AssignSheet';
 import type { Assignment, Attempt, Barista, Progress } from '../../../shared/types';
@@ -27,117 +29,180 @@ function greeting() {
   return 'İyi akşamlar';
 }
 
+/** Ana sayfadaki renkli hızlı erişim kutusu. */
+const Tile: React.FC<{ to: string; hue: Hue; icon: IconName; label: string; title: string; hint?: string; badge?: number }> = ({ to, hue, icon, label, title, hint, badge }) => (
+  <Link to={to} className={`relative rounded-2xl border p-3.5 flex flex-col gap-2.5 min-h-[124px] active:scale-[0.98] transition-transform ${HUE[hue].tile}`}>
+    <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${HUE[hue].chip}`}><Icon name={icon} size={18} strokeWidth={1.9} /></span>
+    {!!badge && badge > 0 && (
+      <span className="absolute top-3 right-3 min-w-5 h-5 px-1.5 rounded-full bg-crema text-espresso text-[11px] font-bold flex items-center justify-center tnum">{badge > 9 ? '9+' : badge}</span>
+    )}
+    <div className="mt-auto min-w-0">
+      <div className={`text-[10.5px] font-semibold uppercase tracking-[0.06em] ${HUE[hue].text}`}>{label}</div>
+      <div className="text-[14px] font-semibold leading-snug line-clamp-2">{title}</div>
+      {hint && <div className="text-[11.5px] text-fg-3 mt-0.5 truncate">{hint}</div>}
+    </div>
+  </Link>
+);
+
 export const HomePage: React.FC = () => {
   const s = useBaristaSession();
   const { tracks, modules, lessons } = useContent();
   const { progress } = useMyProgress();
   const { items: assignments } = useMyAssignments();
+  const { items: bulletins, unread: unreadBulletins } = useMyBulletins();
+  const { report } = useMyBadgeReport();
   const pct = overallPercent(modules, lessons, progress);
   const next = nextLesson(tracks, modules, lessons, progress);
   const open = assignments.filter((a) => !assignmentDone(a, progress));
-  const passedCount = Object.keys(progress.modules || {}).length;
-  const publishedModules = modules.filter((m) => m.published).length;
+  const latestBulletin = bulletins.find((b) => !progress.bulletins?.[b.id]) || bulletins[0];
+  const pubModules = modules.filter((m) => m.published);
+  const recipeCount = lessons.filter((l) => l.published && pubModules.some((m) => m.id === l.moduleId && m.trackId === RECIPE_TRACK_ID)).length;
 
-  // Dersleri biten ama sınavı geçilmemiş modüller. Sınav bugüne kadar
-  // yalnızca modülün içine girilince görünüyordu; barista "sıradaki ne"
-  // diye bakarken sınavın hazır olduğunu göremiyordu.
-  const { items: bulletins, unread: unreadBulletins } = useMyBulletins();
-  const latestBulletin = bulletins.find((b) => !progress.bulletins?.[b.id]);
+  // Girmesi gereken sınav: önce atanmış olanlar, sonra dersleri biten modül,
+  // yoksa üzerinde çalıştığı modül (kaç ders kaldığıyla).
+  const exam = useMemo(() => {
+    const states = pubModules.map((m) => ({ mod: m, st: moduleState(m, lessons, progress) })).filter((x) => !x.st.locked && !x.st.passed);
+    const assigned = open.filter((a) => a.kind === 'module').map((a) => states.find((x) => x.mod.id === a.targetId)).filter(Boolean) as typeof states;
+    const ready = states.filter((x) => x.st.lessons.length > 0 && x.st.lessonsDone === x.st.lessons.length);
+    const pick = assigned.find((x) => x.st.lessonsDone === x.st.lessons.length) || ready[0] || assigned[0]
+      || (next ? states.find((x) => x.mod.id === next.module.id) : undefined);
+    if (!pick) return null;
+    const left = pick.st.lessons.length - pick.st.lessonsDone;
+    return { ...pick, ready: left === 0, left, assigned: assigned.includes(pick), readyCount: ready.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pubModules, lessons, progress, open, next]);
 
-  const examReady = modules
-    .filter((m) => m.published)
-    .map((m) => ({ mod: m, st: moduleState(m, lessons, progress) }))
-    .filter((x) => !x.st.locked && !x.st.passed && x.st.lessons.length > 0 && x.st.lessonsDone === x.st.lessons.length);
+  // En yakın iki rozet: kazanılmamışlar içinde ilerlemesi en yüksek olanlar.
+  const nearest = report.badges.filter((b) => !b.earned)
+    .sort((a, b) => b.progress[0] / b.progress[1] - a.progress[0] / a.progress[1]).slice(0, 2);
+  const earned = report.badges.filter((b) => b.earned);
+  const toNext = report.next ? Math.max(0, report.next.title.badges - report.earned) : 0;
+  const nextPct = report.next ? Math.round((report.next.reqs.filter((r) => r.met).length / report.next.reqs.length) * 100) : 100;
 
   return (
     <Page>
-      <div className="flex items-center gap-4">
-        <div className="flex-1">
-          <div className="text-[13px] text-fg-3">{greeting()},</div>
-          <h1 className="text-[24px] font-bold leading-tight">{s.name.split(' ')[0]}</h1>
-          <div className="text-[12px] text-fg-3 mt-1.5">{passedCount}/{publishedModules} modül tamamlandı</div>
+      {/* Kahraman kart: kim olduğun, unvanın, nereye gittiğin. */}
+      <Link to="/sonuclarim" className="rounded-3xl p-4 border border-[#D9A066]/25 bg-linear-to-br from-[#3A2618] via-[#22180F] to-[#16110D] flex flex-col gap-3.5 active:scale-[0.99] transition-transform">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] text-fg-2">{greeting()},</div>
+            <h1 className="text-[26px] font-bold leading-tight truncate">{s.name.split(' ')[0]}</h1>
+            <div className="flex items-center gap-2 mt-1.5">
+              {report.title ? <TitleChip report={report} size="md" /> : <span className="text-[12px] text-fg-3">İlk unvanın: Rookie</span>}
+              <span className="text-[12px] text-fg-3">{report.earned} rozet</span>
+            </div>
+          </div>
+          <Ring value={pct} size={76} stroke={7} color={HUE.amber.hex} />
         </div>
-        <Ring value={pct} size={72} />
-      </div>
+        {report.next && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-fg-2">Sıradaki unvan: <strong className="text-crema">{report.next.title.label}</strong></span>
+              <span className="text-fg-3">{toNext > 0 ? `${toNext} rozet kaldı` : 'Rozet sayısı tamam'}</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full rounded-full bg-linear-to-r from-[#D9A066] to-[#E07A6E] transition-[width] duration-700" style={{ width: `${nextPct}%` }} />
+            </div>
+          </div>
+        )}
+      </Link>
 
-      {/* Servis sırasında en çok ihtiyaç duyulan şey, ana ekranın en üstünde. */}
-      <Link
-        to="/receteler?focus=1"
-        className={`${t.input} flex items-center gap-2.5 text-fg-3 hover:border-line-2 hover:bg-panel-2`}
-      >
-        <Icon name="search" size={16} />
+      {/* Servis sırasında en çok ihtiyaç duyulan şey. */}
+      <Link to="/receteler?focus=1" className="h-12 rounded-2xl border border-line-2 bg-panel-2 flex items-center gap-3 px-4 text-fg-3 active:bg-panel-3">
+        <Icon name="search" size={18} />
         <span className="text-[15px]">İçecek ya da malzeme ara</span>
       </Link>
 
-      {unreadBulletins > 0 && (
-        <Link to="/bulten" className={`${t.cardInteractive} p-3.5 flex items-center gap-3`}>
-          <span className={t.iconChip('caution')}><Icon name="bell" size={16} /></span>
-          <div className="flex-1 min-w-0">
-            <div className="text-[14px] font-medium">
-              {unreadBulletins} yeni duyuru
-            </div>
-            <div className="text-[12px] text-fg-3 truncate">{latestBulletin?.title}</div>
-          </div>
-          <Icon name="chevronRight" size={16} className={t.rowChevron} />
-        </Link>
-      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Tile to="/receteler" hue="amber" icon="coffee" label="Reçeteler" title={`${recipeCount} içecek`} hint="Ölçü · bardak · hazırlanış" />
+        {exam ? (
+          <Tile to={exam.ready ? `/sinav/${exam.mod.id}` : `/modul/${exam.mod.id}`} hue="rose" icon="clipboard"
+            label={exam.ready ? 'Sınava hazırsın' : exam.assigned ? 'Atanan sınav' : 'Sıradaki sınav'}
+            title={exam.mod.title}
+            hint={exam.ready ? `${exam.mod.examSize} soru · ${Math.ceil(exam.mod.examSize * 1.5)} dk` : `Önce ${exam.left} ders`}
+            badge={exam.readyCount > 1 ? exam.readyCount : undefined} />
+        ) : (
+          <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" hint="Sonuçların ve rozetlerin" />
+        )}
+        {next ? (
+          <Tile to={`/ders/${next.lesson.id}`} hue="sky" icon="play" label="Kaldığın ders" title={next.lesson.title} hint={`${next.module.title} · ${next.lesson.durationMin} dk`} />
+        ) : (
+          <Tile to="/akademi" hue="sky" icon="cap" label="Akademi" title="Tüm dersler bitti" hint="Tekrar için Akademi'ye göz at" />
+        )}
+        <Tile to="/bulten" hue="mint" icon="bell" label={unreadBulletins ? 'Yeni duyuru' : 'Bülten'} title={latestBulletin?.title || 'Duyuru yok'}
+          hint={unreadBulletins ? `${unreadBulletins} okunmamış` : 'Hepsini okudun'} badge={unreadBulletins} />
+      </div>
 
-      {examReady.length > 0 && (
-        <Section label={`Sınava hazırsın · ${examReady.length}`}>
+      {open.length > 0 && (
+        <Section label={`Görevlerin · ${open.length}`}>
           <div className={t.listGroup}>
-            {examReady.map(({ mod, st }) => (
-              <Link key={mod.id} to={`/sinav/${mod.id}`} className={t.listRow}>
-                <span className={t.iconChip('caution')}><Icon name="clipboard" size={16} /></span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium truncate">{mod.title}</div>
-                  <div className="text-[12px] text-fg-3 mt-0.5 tnum">
-                    {st.lessons.length} ders tamam · {mod.examSize} soru · geçme %{mod.passScore}
-                  </div>
-                </div>
-                <Icon name="chevronRight" size={16} className={t.rowChevron} />
-              </Link>
-            ))}
+            {open.slice(0, 3).map((a) => <AssignmentRow key={a.id} a={a} progress={progress} />)}
           </div>
         </Section>
       )}
 
-      <Section label={`Görevlerin${open.length ? ` · ${open.length}` : ''}`}>
-        {open.length === 0 ? (
-          <Empty icon="check" text="Bekleyen görevin yok. Akademi'den kendi hızında devam edebilirsin." />
-        ) : (
-          <div className={t.listGroup}>
-            {open.map((a) => <AssignmentRow key={a.id} a={a} progress={progress} />)}
-          </div>
-        )}
+      <Section label={`Rozetlerin · ${earned.length}/${report.badges.length}`} action={<Link to="/sonuclarim" className="text-[12px] text-fg-2">Tümü</Link>}>
+        <Link to="/sonuclarim" className={`${t.card} p-3.5 flex flex-col gap-3`}>
+          {earned.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
+              {earned.map((b) => (
+                <span key={b.id} className="flex flex-col items-center gap-1 w-16 shrink-0">
+                  <span className="w-11 h-11 rounded-full flex items-center justify-center bg-linear-to-br from-[#E8B47E] to-[#C0794A] text-[#1A120C]"><Icon name={b.icon} size={19} strokeWidth={1.9} /></span>
+                  <span className="text-[10.5px] text-center leading-tight text-fg-2 line-clamp-2">{b.title}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[13px] text-fg-2">İlk rozetin Oryantasyon'u bitirince geliyor.</div>
+          )}
+          {nearest.map((b) => (
+            <div key={b.id} className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full flex items-center justify-center bg-panel-3 text-fg-3 shrink-0"><Icon name={b.icon} size={15} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between text-[12.5px]"><span className="font-medium">{b.title}</span><span className="text-fg-3 tnum">%{Math.round((b.progress[0] / b.progress[1]) * 100)}</span></div>
+                <div className="h-1.5 rounded-full bg-white/10 mt-1 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${(b.progress[0] / b.progress[1]) * 100}%`, background: HUE.violet.hex }} /></div>
+              </div>
+            </div>
+          ))}
+        </Link>
       </Section>
 
-      {next && (
-        <Section label="Kaldığın yerden devam et">
-          <Link to={`/ders/${next.lesson.id}`} className={`${t.cardInteractive} p-4 flex items-center gap-4`}>
-            <span className={`${t.iconChip('accent')} w-11 h-11 rounded-xl`}><Icon name="play" size={18} /></span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] text-fg-3 truncate">{next.module.title}</div>
-              <div className="text-[15px] font-semibold truncate">{next.lesson.title}</div>
-              <div className="text-[12px] text-fg-3 mt-0.5">{next.lesson.durationMin} dk</div>
-            </div>
-            <Icon name="chevronRight" size={16} className={t.rowChevron} />
-          </Link>
-        </Section>
-      )}
-
-      <Section label="Eğitim yolları">
-        <div className="grid grid-cols-2 gap-3">
-          {tracks.filter((x) => x.published).map((tr) => {
-            const mods = modules.filter((m) => m.trackId === tr.id && m.published);
+      <Section label="Eğitim yolların">
+        <div className="flex flex-col gap-2">
+          {tracks.filter((x) => x.published).map((tr, i) => {
+            const mods = pubModules.filter((m) => m.trackId === tr.id);
             const done = mods.filter((m) => moduleState(m, lessons, progress).passed).length;
+            const hue = HUE[trackHue(tr.id, i)];
             return (
-              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`${t.cardInteractive} p-3.5 flex flex-col gap-2.5`}>
-                <span className="text-[13px] font-semibold leading-snug line-clamp-2 min-h-[2.4em]">{tr.title}</span>
-                <ProgressBar value={mods.length ? (done / mods.length) * 100 : 0} />
-                <span className="text-[11px] text-fg-3 tnum">{done}/{mods.length} modül</span>
+              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`${t.cardInteractive} p-3 flex items-center gap-3`}>
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${hue.chip}`}><Icon name={(tr.icon as IconName) || 'book'} size={17} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between text-[13.5px]"><span className="font-semibold truncate">{tr.title}</span><span className="text-fg-3 tnum shrink-0 ml-2">{done}/{mods.length}</span></div>
+                  <div className="h-1.5 rounded-full bg-white/10 mt-1.5 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${mods.length ? (done / mods.length) * 100 : 0}%`, background: hue.hex }} /></div>
+                </div>
               </Link>
             );
           })}
+        </div>
+      </Section>
+
+      <Section label="Tüm bölümler">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { to: '/receteler', icon: 'coffee' as IconName, label: 'Reçeteler', hue: 'amber' as Hue },
+            { to: '/akademi', icon: 'cap' as IconName, label: 'Akademi', hue: 'sky' as Hue },
+            { to: '/bulten', icon: 'bell' as IconName, label: 'Bülten', hue: 'mint' as Hue },
+            { to: '/sonuclarim', icon: 'medal' as IconName, label: 'Rozetler ve sonuçlar', hue: 'violet' as Hue },
+            ...(isManager(s.role) ? [
+              { to: '/ekip', icon: 'users' as IconName, label: 'Ekibim', hue: 'rose' as Hue },
+              { to: '/talepler', icon: 'wrench' as IconName, label: 'Talepler', hue: 'sand' as Hue }
+            ] : [])
+          ].map((x) => (
+            <Link key={x.to} to={x.to} className={`${t.cardInteractive} p-3 flex flex-col items-center gap-2 text-center`}>
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${HUE[x.hue].chip}`}><Icon name={x.icon} size={18} /></span>
+              <span className="text-[12px] font-medium leading-tight">{x.label}</span>
+            </Link>
+          ))}
         </div>
       </Section>
     </Page>
@@ -169,14 +234,8 @@ const AssignmentRow: React.FC<{ a: Assignment; progress: Progress }> = ({ a, pro
 export const ResultsPage: React.FC = () => {
   const s = useBaristaSession();
   // Rozetler tüm sınav geçmişinden hesaplanır (bkz. src/lib/badges.ts).
-  const { items: attempts, loading } = useMyAttempts(300);
-  const { progress } = useMyProgress();
-  const { items: myTasks } = useMyAssignments();
-  const { data: me } = useDocLive<Barista>(`baristas/${s.baristaId}`);
-  const { tracks, modules, lessons } = useContent();
+  const { report, attempts: submitted, loading } = useMyBadgeReport();
   const [open, setOpen] = useState<string | null>(null);
-  const submitted = attempts.filter((a) => a.submittedAt && !a.voided);
-  const report = useBadgeReport({ tracks, modules, lessons, progress, attempts: submitted, assignments: myTasks, startedAt: me?.startedAt, createdAt: me?.createdAt });
 
   return (
     <Page>

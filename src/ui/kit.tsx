@@ -80,15 +80,15 @@ export const ProgressBar: React.FC<{ value: number; tone?: t.Tone; className?: s
   );
 };
 
-export const Ring: React.FC<{ value: number; size?: number; label?: string }> = ({ value, size = 56, label }) => {
-  const r = (size - 6) / 2;
+export const Ring: React.FC<{ value: number; size?: number; label?: string; color?: string; stroke?: number }> = ({ value, size = 56, label, color = '#6F9E7C', stroke = 5 }) => {
+  const r = (size - stroke - 1) / 2;
   const c = 2 * Math.PI * r;
   const v = Math.max(0, Math.min(100, value));
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={5} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#6F9E7C" strokeWidth={5} strokeLinecap="round"
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c - (v / 100) * c} className="transition-[stroke-dashoffset] duration-700" />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tnum">{label ?? `${Math.round(v)}%`}</span>

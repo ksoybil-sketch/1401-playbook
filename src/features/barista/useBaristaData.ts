@@ -3,7 +3,10 @@ import { db } from '../../api/firebase';
 import { useSession } from '../../store/session';
 import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
 import { EMPTY_PROGRESS } from '../../lib/progress';
-import type { Assignment, Attempt, Bulletin, Progress } from '../../../shared/types';
+import type { Assignment, Attempt, Barista, Bulletin, Progress } from '../../../shared/types';
+import { useMemo } from 'react';
+import { useContent } from '../../store/content';
+import { badgeReport, type BadgeReport } from '../../lib/badges';
 
 export function useBaristaSession() {
   const s = useSession((x) => x.session);
@@ -65,4 +68,23 @@ export function useMyAttempts(max = 30): { items: Attempt[]; loading: boolean } 
     `att-${s.baristaId}-${max}`
   );
   return { items: data, loading };
+}
+
+/**
+ * Baristanın rozet ve unvan raporu — tüm sınav geçmişinden hesaplanır
+ * (bkz. src/lib/badges.ts). Ana sayfa ve "Ben" aynı raporu kullanır.
+ */
+export function useMyBadgeReport(): { report: BadgeReport; attempts: Attempt[]; loading: boolean } {
+  const s = useBaristaSession();
+  const { tracks, modules, lessons } = useContent();
+  const { progress } = useMyProgress();
+  const { items: assignments } = useMyAssignments();
+  const { items: all, loading } = useMyAttempts(300);
+  const { data: me } = useDocLive<Barista>(`baristas/${s.baristaId}`);
+  const attempts = useMemo(() => all.filter((a) => a.submittedAt && !a.voided), [all]);
+  const report = useMemo(
+    () => badgeReport({ tracks, modules, lessons, progress, attempts, assignments, startedAt: me?.startedAt, createdAt: me?.createdAt }),
+    [tracks, modules, lessons, progress, attempts, assignments, me?.startedAt, me?.createdAt]
+  );
+  return { report, attempts, loading };
 }

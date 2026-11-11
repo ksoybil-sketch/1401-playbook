@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { HUE, type Hue } from '../../ui/palette';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { useStoreRequests, hasNewReply } from './RequestsPage';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
@@ -43,6 +44,9 @@ export const BaristaLayout: React.FC = () => {
   // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
   useEffect(() => { finalizeExpired(s.baristaId).catch(() => {}); }, [s.baristaId]);
 
+  // Yeni ekran her zaman en üstten açılır (önceki sayfanın kaydırması kalmasın).
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+
   // Ders ve sınav ekranları odaklı çalışır: alt menü gizlenir.
   const focused = pathname.startsWith('/ders/') || pathname.startsWith('/sinav/');
 
@@ -52,12 +56,14 @@ export const BaristaLayout: React.FC = () => {
   // Beş sekme sınırdır (telefonda 375px'de her biri ~70px). Mağaza
   // ve vardiya müdürünün "Ekibim" ve "Talepler" ekranları bu yüzden "Ben"
   // sekmesinin içinden açılır.
-  const nav: { to: string; label: string; icon: IconName; badge?: number }[] = [
-    { to: '/', label: 'Bugün', icon: 'home' },
-    { to: '/receteler', label: 'Reçeteler', icon: 'coffee' },
-    { to: '/akademi', label: 'Akademi', icon: 'cap' },
-    { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread },
-    { to: '/sonuclarim', label: 'Ben', icon: 'user', badge: replies }
+  // Her sekmenin rengi ana sayfadaki kutusuyla aynı: barista "turuncu =
+  // reçete" diye öğrenir, ekranlar arasında kaybolmaz.
+  const nav: { to: string; label: string; icon: IconName; badge?: number; hue: Hue; also?: string[] }[] = [
+    { to: '/', label: 'Bugün', icon: 'home', hue: 'sand' },
+    { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] },
+    { to: '/akademi', label: 'Akademi', icon: 'cap', hue: 'sky', also: ['/modul/'] },
+    { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread, hue: 'mint' },
+    { to: '/sonuclarim', label: 'Ben', icon: 'user', badge: replies, hue: 'violet', also: ['/ekip', '/talepler'] }
   ];
 
   return (
@@ -88,10 +94,12 @@ export const BaristaLayout: React.FC = () => {
                 to={n.to}
                 end={n.to === '/'}
                 className={({ isActive }) =>
-                  `flex-1 flex flex-col items-center justify-center gap-1 h-14 transition-colors ${isActive ? 'text-crema' : 'text-fg-3'}`
+                  `flex-1 flex flex-col items-center justify-center gap-1 h-14 transition-colors ${isActive || n.also?.some((p) => pathname.startsWith(p)) ? HUE[n.hue].text : 'text-fg-3'}`
                 }
               >
-                {({ isActive }) => (
+                {({ isActive: exact }) => {
+                  const isActive = exact || !!n.also?.some((p) => pathname.startsWith(p));
+                  return (
                   <>
                     <span className="relative">
                       <Icon name={n.icon} size={21} strokeWidth={isActive ? 1.9 : 1.5} />
@@ -103,7 +111,8 @@ export const BaristaLayout: React.FC = () => {
                     </span>
                     <span className={`text-[10px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{n.label}</span>
                   </>
-                )}
+                  );
+                }}
               </NavLink>
             ))}
           </div>

@@ -26,7 +26,7 @@ export const StaffLayout: React.FC = () => {
   const [more, setMore] = useState(false);
   useStaffTheme();
   useEffect(() => subscribe(), [subscribe]);
-  useEffect(() => setMore(false), [pathname]);
+  useEffect(() => { setMore(false); window.scrollTo(0, 0); }, [pathname]);
 
   const approver = can(s.role, 'approve');
   const pendingCount = approver

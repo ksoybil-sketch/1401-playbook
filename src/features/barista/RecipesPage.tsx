@@ -1,38 +1,54 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useContent } from '../../store/content';
-import { useMyProgress } from './useBaristaData';
 import { buildIndex, searchLessons, RECIPE_TRACK_ID, type LessonHit } from '../../lib/search';
+import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
-import { Page, Empty } from '../../ui/kit';
+import { Page, PageTitle, Empty } from '../../ui/kit';
+import { HUE } from '../../ui/palette';
 import * as t from '../../ui/tokens';
+import type { Lesson } from '../../../shared/types';
 
 /**
  * Reçeteler — servis sırasında kullanılan ekran.
  *
- * Akademi müfredatın yapısına göre düzenlidir (yol → modül → ders); bu
- * ekran ise tek bir işe hizmet eder: aradığın içeceği en hızlı biçimde
- * açmak. Arama ders adının yanında malzemeyi de kapsar.
+ * Reçete ders değildir: barista bir içeceği misafirin isteğini hatırlamak
+ * ya da ölçüye bakmak için açar. Bu yüzden reçete kendi sayfasında açılır
+ * (/recete/:id) — ders akışı, ilerleme çubuğu, "tamamladım" düğmesi yok,
+ * eğitim ilerlemesine de dokunmaz. Aynı içerik Akademi'de eğitim dersi
+ * olarak ayrıca durur; sınava hazırlanan barista oradan çalışır.
  */
 
-const LessonRow: React.FC<{ hit: LessonHit; done: boolean }> = ({ hit, done }) => (
-  <Link to={`/ders/${hit.lesson.id}`} className={t.listRow}>
-    <span className={t.iconChip(done ? 'positive' : 'neutral')}>
-      <Icon name={done ? 'check' : 'coffee'} size={16} />
-    </span>
-    <div className="flex-1 min-w-0">
-      <div className="text-[14px] font-medium truncate">{hit.lesson.title}</div>
-      <div className="text-[12px] text-fg-3 truncate">
-        {hit.matchedIngredient ? `İçinde: ${hit.matchedIngredient}` : hit.module.title}
+/** Dersin ilk görseli (menü fotoğrafı) — listede küçük resim olarak. */
+const photoOf = (l: Lesson) => {
+  const b = l.blocks?.find((x) => x.type === 'image');
+  return b && b.type === 'image' ? b.url : null;
+};
+
+const RecipeRow: React.FC<{ hit: LessonHit }> = ({ hit }) => {
+  const pic = photoOf(hit.lesson);
+  return (
+    <Link to={hit.isRecipe ? `/recete/${hit.lesson.id}` : `/ders/${hit.lesson.id}`} className={t.listRow}>
+      {pic ? (
+        <img src={pic} alt="" loading="lazy" className="w-11 h-11 rounded-xl object-cover shrink-0 bg-panel-3" />
+      ) : (
+        <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${hit.isRecipe ? HUE.amber.chip : 'bg-panel-3 text-fg-2'}`}>
+          <Icon name={hit.isRecipe ? 'coffee' : 'book'} size={18} />
+        </span>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="text-[15px] font-medium truncate">{hit.lesson.title}</div>
+        <div className="text-[12px] text-fg-3 truncate">
+          {hit.matchedIngredient ? `İçinde: ${hit.matchedIngredient}` : hit.module.title}
+        </div>
       </div>
-    </div>
-    <Icon name="chevronRight" size={16} className={t.rowChevron} />
-  </Link>
-);
+      <Icon name="chevronRight" size={16} className={t.rowChevron} />
+    </Link>
+  );
+};
 
 export const RecipesPage: React.FC = () => {
   const { tracks, modules, lessons } = useContent();
-  const { progress } = useMyProgress();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get('q') || '');
   const [cat, setCat] = useState<string>('hepsi');
@@ -65,14 +81,19 @@ export const RecipesPage: React.FC = () => {
     return [...picked].sort((a, b) => a.module.order - b.module.order || a.lesson.order - b.lesson.order);
   }, [index, cat]);
 
-  const isDone = (id: string) => !!progress.lessons?.[id];
   const recipeHits = results.filter((r) => r.isRecipe);
   const otherHits = results.filter((r) => !r.isRecipe);
 
   return (
     <Page>
       <div className="flex flex-col gap-3">
-        <h1 className={t.screenTitle}>Reçeteler</h1>
+        <div className="flex items-center gap-3">
+          <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${HUE.amber.chip}`}><Icon name="coffee" size={19} /></span>
+          <div>
+            <h1 className={t.screenTitle}>Reçeteler</h1>
+            <div className="text-[12px] text-fg-3">Ölçü, bardak ve hazırlanış — servis sırasında hızlıca bak.</div>
+          </div>
+        </div>
 
         <div className="relative">
           <Icon name="search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />
@@ -107,15 +128,15 @@ export const RecipesPage: React.FC = () => {
               <div className="flex flex-col gap-2">
                 <span className={t.sectionLabel}>Reçeteler · {recipeHits.length}</span>
                 <div className={t.listGroup}>
-                  {recipeHits.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+                  {recipeHits.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
                 </div>
               </div>
             )}
             {otherHits.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className={t.sectionLabel}>Diğer dersler · {otherHits.length}</span>
+                <span className={t.sectionLabel}>Akademi dersleri · {otherHits.length}</span>
                 <div className={t.listGroup}>
-                  {otherHits.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+                  {otherHits.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
                 </div>
               </div>
             )}
@@ -135,13 +156,70 @@ export const RecipesPage: React.FC = () => {
           </div>
 
           {browse.length === 0 ? (
-            <Empty icon="coffee" text="Bu kategoride yayında ders yok." />
+            <Empty icon="coffee" text="Bu kategoride yayında reçete yok." />
           ) : (
             <div className={t.listGroup}>
-              {browse.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+              {browse.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
             </div>
           )}
         </div>
+      )}
+    </Page>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Tek reçete                                                          */
+/* ------------------------------------------------------------------ */
+
+export const RecipeDetailPage: React.FC = () => {
+  const { lessonId } = useParams();
+  const navigate = useNavigate();
+  const { modules, lessons } = useContent();
+  const recipe = lessons.find((l) => l.id === lessonId);
+  const [zoom, setZoom] = useState(false);
+  if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
+  const mod = modules.find((m) => m.id === recipe.moduleId);
+  // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,
+  // dokununca büyür; bardak şeması ve ölçüler hemen görünür.
+  const pic = photoOf(recipe);
+  const blocks = (recipe.blocks || []).filter((b) => b.type !== 'image' || b.url !== pic);
+
+  return (
+    <Page>
+      <div className="flex items-center gap-3">
+        <button onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/receteler'))} className={t.iconBtn} aria-label="Geri">
+          <Icon name="chevronLeft" size={16} />
+        </button>
+        <span className={`text-[11px] font-semibold uppercase tracking-[0.06em] ${HUE.amber.text}`}>{mod?.title || 'Reçete'}</span>
+      </div>
+      <div className="flex items-center gap-4 -mt-1">
+        <h1 className="text-[26px] font-bold leading-tight flex-1">{recipe.title}</h1>
+        {pic && (
+          <button onClick={() => setZoom(true)} className="shrink-0" aria-label="Fotoğrafı büyüt">
+            <img src={pic} alt="" className="w-24 h-24 rounded-2xl object-cover border border-line bg-panel-3" />
+          </button>
+        )}
+      </div>
+
+      <LessonBlocks blocks={blocks} />
+
+      {zoom && pic && (
+        <button onClick={() => setZoom(false)} className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-5" aria-label="Kapat">
+          <img src={pic} alt={recipe.title} className="max-w-full max-h-full rounded-2xl" />
+        </button>
+      )}
+
+      {/* Reçete eğitim ilerlemesine sayılmaz; sınav Akademi'de. */}
+      {mod && (
+        <Link to={`/modul/${mod.id}`} className={`${t.cardInteractive} p-3.5 flex items-center gap-3 mt-2`}>
+          <span className={t.iconChip('neutral')}><Icon name="cap" size={16} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-medium">Akademi'de çalış</div>
+            <div className="text-[12px] text-fg-3 truncate">{mod.title} dersleri ve sınavı</div>
+          </div>
+          <Icon name="chevronRight" size={16} className={t.rowChevron} />
+        </Link>
       )}
     </Page>
   );

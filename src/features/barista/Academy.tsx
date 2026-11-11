@@ -7,6 +7,7 @@ import { moduleState, trackPercent } from '../../lib/progress';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, ProgressBar, Ring, Empty, Badge, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
+import { HUE, trackHue } from '../../ui/palette';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { MAX_EXAMS_PER_WEEK } from '../../../shared/types';
@@ -27,21 +28,22 @@ export const TracksPage: React.FC = () => {
         <Empty icon="cap" text="Henüz yayınlanmış eğitim yok." />
       ) : (
         <div className="flex flex-col gap-3">
-          {list.map((tr) => {
+          {list.map((tr, i) => {
             const pct = trackPercent(tr, modules, lessons, progress);
             const mods = publishedOnly(modules).filter((m) => m.trackId === tr.id);
+            const hue = HUE[trackHue(tr.id, i)];
             return (
-              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`${t.cardInteractive} p-4 flex items-center gap-4`}>
-                <span className={`${t.iconChip('accent')} w-11 h-11 rounded-xl`}><Icon name={(tr.icon as IconName) || 'book'} size={20} /></span>
+              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`rounded-2xl border p-4 flex items-center gap-4 active:scale-[0.99] transition-transform ${hue.tile}`}>
+                <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${hue.chip}`}><Icon name={(tr.icon as IconName) || 'book'} size={20} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-semibold">{tr.title}</div>
                   <div className="text-[12px] text-fg-3 mt-0.5 line-clamp-2">{tr.description}</div>
                   <div className="flex items-center gap-2 mt-2.5">
-                    <ProgressBar value={pct} className="flex-1" />
+                    <div className="h-1.5 rounded-full bg-white/10 overflow-hidden flex-1"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: hue.hex }} /></div>
                     <span className="text-[11px] text-fg-3 tnum w-16 text-right">{mods.length} modül</span>
                   </div>
                 </div>
-                <Ring value={pct} size={46} />
+                <Ring value={pct} size={46} color={hue.hex} />
               </Link>
             );
           })}
