@@ -10,10 +10,11 @@
  * Bu dosya yalnızca ilk yükleme içindir; sonrasında içerik uygulamadaki
  * İçerik editöründen yönetilir.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
+import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -39,6 +40,26 @@ const IMG = (url, caption) => ({ type: 'image', url, caption });
  * data URL olarak taşınır (Firestore belge sınırı 1 MiB; en büyüğü 41 KB).
  * Kaynak dosyalar scripts/source/photos altında, saydam arka planlı WebP.
  */
+/**
+ * Elle çizilmiş bardak görselleri (isteğe bağlı).
+ *
+ * `source/cup-art/<dersId>.svg` varsa, o reçetenin şeması otomatik
+ * çizilmek yerine bu dosyadan gelir. Dosya yoksa hiçbir şey değişmez —
+ * şema reçete verisinden üretilmeye devam eder. Toplu bir HTML'den
+ * aktarmak için: `node scripts/import-cup-art.mjs <dosya.html>`.
+ */
+function loadCupArt() {
+  const dir = join(here, 'source/cup-art');
+  if (!existsSync(dir)) return {};
+  const out = {};
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.svg')) continue;
+    out[f.replace(/\.svg$/, '')] = readFileSync(join(dir, f), 'utf8').trim();
+  }
+  return out;
+}
+setCupArt(loadCupArt());
+
 const photoCache = new Map();
 function photo(name) {
   if (!photoCache.has(name)) {
@@ -292,14 +313,21 @@ function parseName(full) {
 
 function recipeLesson(r, order) {
   const { title, cup } = parseName(r.name);
-  const steps = (r.tech || '').split('\n').map((s) => s.trim()).filter((s) => s.length > 2);
-  const id = `r-${slug(r.name)}`;
+  const id = recipeLessonId(r.name);
   const pic = LESSON_PHOTOS[id];
+  const schema = cupBlock(r, id);
+  const drawable = isDrawable(schema);
+  const { steps, notes } = buildSteps(r, schema);
   const blocks = [
-    // Fotoğraf en üstte: barista önce hedefi görsün, sonra ölçüleri okusun.
+    // Fotoğraf en üstte: barista önce hedefi görsün, sonra yapıyı.
     ...(pic ? [IMG(photo(pic), `Doğru sunum: ${title}`)] : []),
-    SPEC([...(cup ? [['Porsiyon', cup]] : []), ...r.ing.map((i) => [i.name, i.amt])]),
+    // Bardak şeması ölçüleri kendi listesinde taşır; şema çizilebiliyorsa
+    // ayrıca standart tablosu basmıyoruz — aynı sayılar iki kez yazılmasın.
+    ...(drawable
+      ? [schema]
+      : [SPEC([...(cup ? [['Porsiyon', cup]] : []), ...r.ing.map((i) => [i.name, i.amt])])]),
     ...(steps.length ? [H('Hazırlanışı'), STEPS(...steps)] : []),
+    ...(notes.length ? [TIP(`**Porsiyonlama.** ${notes.join(' ')}`)] : []),
     TIP('Ürünü teslim etmeden önce standarda ve sunuma uygunluğunu **gözle kontrol et**. Standart dışı ürün misafire sunulmaz.')
   ];
   return { id, title, durationMin: 2, order, blocks, _recipe: r, _cup: cup, _title: title };

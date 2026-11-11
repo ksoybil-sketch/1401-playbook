@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { LessonBlock } from '../../../shared/types';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
+import { CupDiagram } from './CupDiagram';
 
 /** **kalın** ve satır başı "- " madde işaretlerini destekleyen küçük metin biçimleyici. */
 export const RichText: React.FC<{ text: string }> = ({ text }) => {
@@ -146,6 +147,8 @@ export const LessonBlocks: React.FC<{ blocks: LessonBlock[] }> = ({ blocks }) =>
               ))}
             </div>
           );
+        case 'cup':
+          return <CupDiagram key={i} block={b} />;
         case 'check':
           return <CheckBlock key={i} block={b} />;
         default:

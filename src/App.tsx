@@ -7,6 +7,7 @@ import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, Bootstr
 import { BaristaLayout } from './features/barista/BaristaLayout';
 import { HomePage, ResultsPage, TeamPage } from './features/barista/HomePages';
 import { TracksPage, TrackPage, ModulePage, LessonPage } from './features/barista/Academy';
+import { RecipesPage } from './features/barista/RecipesPage';
 import { ExamPage } from './features/barista/ExamPage';
 import { StaffLayout } from './features/staff/StaffLayout';
 import { OverviewPage, StoresPage, StoreDetailPage, BaristasPage, BaristaDetailPage, TasksPage } from './features/staff/StaffPages';
@@ -61,6 +62,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
         <Routes>
           <Route element={<BaristaLayout />}>
             <Route index element={<HomePage />} />
+            <Route path="receteler" element={<RecipesPage />} />
             <Route path="akademi" element={<TracksPage />} />
             <Route path="akademi/:trackId" element={<TrackPage />} />
             <Route path="modul/:moduleId" element={<ModulePage />} />

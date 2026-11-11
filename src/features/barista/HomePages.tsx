@@ -35,6 +35,14 @@ export const HomePage: React.FC = () => {
   const passedCount = Object.keys(progress.modules || {}).length;
   const publishedModules = modules.filter((m) => m.published).length;
 
+  // Dersleri biten ama sınavı geçilmemiş modüller. Sınav bugüne kadar
+  // yalnızca modülün içine girilince görünüyordu; barista "sıradaki ne"
+  // diye bakarken sınavın hazır olduğunu göremiyordu.
+  const examReady = modules
+    .filter((m) => m.published)
+    .map((m) => ({ mod: m, st: moduleState(m, lessons, progress) }))
+    .filter((x) => !x.st.locked && !x.st.passed && x.st.lessons.length > 0 && x.st.lessonsDone === x.st.lessons.length);
+
   return (
     <Page>
       <div className="flex items-center gap-4">
@@ -45,6 +53,34 @@ export const HomePage: React.FC = () => {
         </div>
         <Ring value={pct} size={72} />
       </div>
+
+      {/* Servis sırasında en çok ihtiyaç duyulan şey, ana ekranın en üstünde. */}
+      <Link
+        to="/receteler?focus=1"
+        className={`${t.input} flex items-center gap-2.5 text-fg-3 hover:border-line-2 hover:bg-panel-2`}
+      >
+        <Icon name="search" size={16} />
+        <span className="text-[15px]">İçecek ya da malzeme ara</span>
+      </Link>
+
+      {examReady.length > 0 && (
+        <Section label={`Sınava hazırsın · ${examReady.length}`}>
+          <div className={t.listGroup}>
+            {examReady.map(({ mod, st }) => (
+              <Link key={mod.id} to={`/sinav/${mod.id}`} className={t.listRow}>
+                <span className={t.iconChip('caution')}><Icon name="clipboard" size={16} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium truncate">{mod.title}</div>
+                  <div className="text-[12px] text-fg-3 mt-0.5 tnum">
+                    {st.lessons.length} ders tamam · {mod.examSize} soru · geçme %{mod.passScore}
+                  </div>
+                </div>
+                <Icon name="chevronRight" size={16} className={t.rowChevron} />
+              </Link>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <Section label={`Görevlerin${open.length ? ` · ${open.length}` : ''}`}>
         {open.length === 0 ? (

@@ -624,6 +624,33 @@ const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => 
           <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`} onClick={() => onChange({ ...b, rows: [...b.rows, { label: '', value: '' }] })}><Icon name="plus" size={13} /> Satır</button>
         </div>
       );
+    case 'cup':
+      // Şema reçete verisinden üretiliyor (scripts/recipe-cup.mjs); katmanlar
+      // burada elle düzenlenmez — düzenlenirse "Müfredatı güncelle" ezer.
+      // Panelden değiştirilebilen tek şey, otomatik şemanın yerine geçecek
+      // hazır çizim.
+      return (
+        <div className="flex flex-col gap-2">
+          <div className={t.listGroup}>
+            {b.layers.map((l, i) => (
+              <div key={i} className={`${t.listRowStatic} justify-between`}>
+                <span className="text-[13px] text-fg-2">{l.name}</span>
+                <span className="text-[13px] font-semibold tnum">{l.text}</span>
+              </div>
+            ))}
+          </div>
+          <span className="text-[11px] text-fg-3">
+            {b.mode === 'karisim' ? 'Blenderda karışır' : b.vessel === 'cold' ? 'Buzlu — katmanlı' : 'Sıcak — katmanlı'}
+            {' · '}Ölçüler reçete dosyasından gelir, buradan değiştirilmez.
+          </span>
+          <textarea
+            className={`${t.textarea} min-h-20 font-mono text-[12px]`}
+            value={b.art || ''}
+            onChange={(e) => onChange({ ...b, art: e.target.value || undefined })}
+            placeholder="İsteğe bağlı: hazır çizim (SVG kaynağı). Boş bırakılırsa şema otomatik çizilir."
+          />
+        </div>
+      );
     case 'check':
       return (
         <div className="flex flex-col gap-2">
