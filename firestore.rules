@@ -155,8 +155,10 @@ service cloud.firestore {
       allow read: if isStaff()
         || (isBarista() && resource.data.baristaId == myBaristaId())
         || (isLead() && resource.data.storeId == myStoreId());
-      allow create: if isBarista() && request.resource.data.baristaId == myBaristaId()
-        && request.resource.data.submittedAt == null;
+      allow create: if (isBarista() && request.resource.data.baristaId == myBaristaId()
+        && request.resource.data.submittedAt == null)
+        // Geliştirici: demo ortamına örnek sınav geçmişi yazmak için.
+        || isAdmin();
       // Puanlama telefonda. Deneme açıkken (submittedAt == null) barista
       // cevaplarını kaydeder; bir kez de puanlayıp kapatır. Kapandıktan
       // sonra hiçbir alan değişmez.
@@ -199,8 +201,8 @@ service cloud.firestore {
     // --- Görevler ------------------------------------------------------
     match /assignments/{id} {
       allow read: if isStaff() || inStore(resource.data.storeId);
-      allow create: if (isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
-        && request.resource.data.createdBy == request.auth.uid;
+      allow create: if ((isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
+        && request.resource.data.createdBy == request.auth.uid) || isAdmin();
       // Görevi atayan değiştirir/siler; Kahve Operasyon Müdürü herkesinkini.
       allow update, delete: if isDirector()
         || (isStaff() && resource.data.createdBy == request.auth.uid)

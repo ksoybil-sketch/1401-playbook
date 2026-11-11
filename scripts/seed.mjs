@@ -458,15 +458,15 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     const mod = data.modules.find((m) => m.id === mid);
     const total = mod ? mod.examSize : 10;
     const at = now - daysAgo * 86400000;
-    const who = TEST.baristas.find((b) => b.id === bid);
-    const asToken = await signInAs(`b-${bid}-1@${ACCOUNT_DOMAIN}`, pinPassword(bid, who.pin));
+    // Geçmiş (teslim edilmiş) denemeyi barista hesabı açamaz — kurallar
+    // açık deneme ister. Örnek geçmiş, geliştirici hesabıyla yazılır.
     await addDoc('attempts', {
       baristaId: bid, baristaName: nameOf[bid], storeId: storeOf[bid],
       moduleId: mid, moduleTitle: moduleTitle[mid] || mid,
       startedAt: at, submittedAt: at + 7 * 60000,
       total, correct: Math.round((score / 100) * total), score, passed,
       mistakes: mistakeItems(mid, wrong)
-    }, asToken);
+    });
   }
 
   // --- Görevler ----------------------------------------------------------
