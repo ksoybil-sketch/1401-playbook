@@ -641,58 +641,18 @@ const guest = {
               'Çatal, bıçak ve kaşıkların **temiz ve lekesiz** olduğunu kontrol et.'
             ),
             WARN('Standart dışı ürün **kesinlikle** misafire sunulmaz. Yeniden hazırla.'),
-            TIP('Sunumda küçük detaylar fark yaratır: temiz fincan, doğru sıcaklık, yanında su veya küçük bir çikolata.')
-          ]
-        },
-        {
-          id: "siparis-teslim", title: "Siparişi teslim etme standartları", durationMin: 3,
-          blocks: [
-            P("Bar, ürünü hazırlamakla bitmiyor. Teslim anı, misafirin ürüne dair ilk ve çoğu zaman tek izlenimini aldığı andır."),
-            H("Gözle kontrol"),
-            P("Barista, hazırladığı ürünü teslim etmeden önce standartlara ve sunum kriterlerine uygunluk açısından **gözle kontrol eder**. Standart dışı ürün kesinlikle misafire sunulmaz."),
-            H("Servis sıcaklığı"),
+            H('Servis sıcaklığı'),
             SPEC([
-              ["Sıcak ürün", "Sıcak servis edilir, standartta belirlenen ısı aralığında"],
-              ["Soğuk ürün", "Soğuk servis edilir"],
-              ["Süt", "70 °C'yi GEÇMEZ"],
-              ["Fincan", "Aşırı ısıtılmaz"]
+              ['Sıcak ürün', 'Standartta belirlenen ısı aralığında, sıcak'],
+              ['Soğuk ürün', 'Soğuk'],
+              ['Süt', '70 °C\'yi **geçmez**'],
+              ['Fincan', 'Aşırı ısıtılmaz']
             ]),
-            WARN("Sütü 70 °C'nin üzerine çıkarmak teknik bir hatadır: süt proteini bozulur, tat yanık ve keskin olur, köpük tutmaz. Isıttığın sütü kurtarmanın yolu yoktur — yeniden başlamak gerekir."),
-            H("Servis malzemeleri"),
-            P("- Tabak ve bardaklar **çatlak, kırık ya da hasarlı** olmamalıdır.\n- Çatal, bıçak ve kaşıklar temiz ve **lekesiz** olmalıdır."),
-            TIP("Çatlak bir fincan yalnızca görüntü sorunu değildir: çatlak gıda artığı tutar ve temizlenemez. Fark ettiğin anda servis dışı bırak."),
-            CHECK("Hazırladığın latte'nin sütünü 75 °C'ye çıkardın. Ne yaparsın?", ["Yeniden hazırlarım", "Soğumasını bekleyip servis ederim", "Üzerine soğuk süt ekleyip dengelerim", "Fark etmez, servis ederim"], 0, "Aşırı ısınmış sütün tadı ve dokusu geri gelmez; soğutmak da karıştırmak da düzeltmez. Standart dışı ürün misafire sunulmaz.")
-          ]
-        }
-      ],
-      questions: [
-        Q("Süt ısıtılırken aşılmaması gereken sıcaklık nedir?", "70 °C", ["55 °C", "85 °C", "100 °C"], "70 °C'nin üzerinde süt proteini bozulur: tat yanık ve keskin olur, köpük tutmaz. Aşırı ısınmış sütü kurtarmanın yolu yoktur, yeniden başlamak gerekir."),
-        Q("Sütü fazla ısıttın. Doğru davranış nedir?", "Yeniden hazırlamak", ["Soğumasını beklemek", "Üzerine soğuk süt ekleyip dengelemek", "Köpüğü alıp servis etmek"], "Standart dışı ürün misafire sunulmaz. Aşırı ısınmış sütün tadı ve dokusu ne soğutmayla ne karıştırmayla geri gelir."),
-        Q("Servis malzemeleriyle ilgili standart nedir?", "Tabak ve bardaklar çatlak, kırık ya da hasarlı olmamalıdır", ["Küçük çatlaklar misafire dönük olmayacak şekilde kullanılabilir", "Yalnızca kırık olanlar ayrılır", "Hasarlı malzeme yoğun saatlerde kullanılabilir"], "Çatlak yalnızca görüntü sorunu değildir: çatlak gıda artığı tutar ve temizlenemez."),
-        Q("Barista ürünü teslim etmeden önce ne yapar?", "Standartlara ve sunuma uygunluğunu gözle kontrol eder", ["Doğrudan teslim eder, kontrol bardadır", "Yöneticiye onaylatır", "Misafire sorar"], "Standart dışı ürün kesinlikle misafire sunulmaz; teslim anı, ürünün son kontrol noktasıdır."),
-        Q("Fincanın aşırı ısıtılması neden hatadır?", "Teknik bir hatadır, servis standardının dışındadır", ["Fincan çatlayabilir", "Misafir elini yakabilir, başka sakıncası yok", "Hata değildir, tercih meselesidir"], "Servis sıcaklıkları standartta belirlenen aralıkta olmalıdır; fincanın aşırı ısıtılması da sütün 70 °C'yi geçmesi gibi teknik bir hatadır."),
-        TF("Soğuk servis edilmesi gereken bir ürün, yoğun saatte oda sıcaklığında sunulabilir.", false, "Sıcak servis edilmesi gereken ürün sıcak, soğuk servis edilmesi gereken ürün soğuk sunulur; yoğunluk bu standardı değiştirmez."),
-        TF("Çatal, bıçak ve kaşıkların lekesiz olması servis standardının parçasıdır.", true, "Temiz ve lekesiz olduğundan emin olunmalıdır; misafirin eline alacağı her şey ürünün parçasıdır."),
-        TF("Teslim anında yapılan gözle kontrol, barda yapılan hazırlığın yerine geçer.", false, "İkisi ayrı adımdır: hazırlık reçeteye, teslim kontrolü sunuma bakar. Gözle kontrol son süzgeçtir."),
-        ...fromAos('sales'),
-        Q('Misafir kasada hızlı hızlı konuşuyor. Nasıl cevap verirsin?', 'Onun temposuna uyarak net ve hızlı', ['Yavaş ve uzun açıklamalarla', 'Cevap vermeden siparişi girerim', 'Yavaşlaması için beklerim'], 'İletişim tarzına uyum sağlanır; hızlı konuşana yavaş cevap misafiri sıkar.'),
-        Q('Standart dışı hazırlanmış bir ürün fark ettin. Ne yaparsın?', 'Misafire sunmam, yeniden hazırlarım', ['Misafir fark etmezse sunarım', 'İndirim yaparak sunarım', 'Sorumlusuna sorup sunarım'], 'Standart dışı ürün kesinlikle misafire sunulmaz.'),
-        TF('Servis öncesinde bardak ve tabaklarda çatlak veya kırık olup olmadığı kontrol edilmelidir.', true, 'Hasarlı servis malzemesi kullanılmaz.')
-      ]
-    },
-    {
-      id: 'memnuniyet-sikayet', title: 'Memnuniyet ve Şikayet Yönetimi', passScore: 80, examSize: 12,
-      description: 'Memnuniyeti kontrol etmek, şikayeti 5 adımda çözmek, doğru cümleleri kullanmak.',
-      lessons: [
-        {
-          id: 'memnuniyet-kontrol', title: 'Memnuniyeti kontrol etmek', durationMin: 3,
-          blocks: [
-            P('Misafirin memnun olmadığını düşündüğünde sorunu anlamak için **pozitif bir üslupla** soru sor. Olumsuz ve ön yargılı ifadelerden kaçın.'),
-            SPEC([['Yanlış', '"Beğenmediniz mi?" / "Problem mi var?"'], ['Doğru', '"Her şey arzu ettiğiniz gibi mi efendim?"'], ['Doğru', '"Sizin için daha iyi nasıl yardımcı olabiliriz?"']]),
-            P('Memnuniyeti aktif olarak kontrol etmek seni **profesyonel, ilgili ve çözüm odaklı** gösterir; satışları da artırır.'),
-            TIP('Çözümden sonra misafire tekrar yaklaş: "Size yardımcı olmak bizim için çok değerliydi. Şu an her şey yolunda mı efendim?"'),
-            H('Küçük dokunuşlar'),
-            P('- Düzenli misafirin tercihini hatırla ("şekersiz latte").\n- İsmini biliyorsan kullan.\n- Uzun süredir bekleyen masaya biri gidip bilgi versin; sorunu beklemeden çöz.')
+            WARN('Sütü 70 °C\'nin üzerine çıkarmak teknik bir hatadır: süt proteini bozulur, tat yanık ve keskin olur, köpük tutmaz. Aşırı ısınmış sütü kurtarmanın yolu yoktur — yeniden başlamak gerekir.'),
+            TIP('Sunumda küçük detaylar fark yaratır: temiz fincan, doğru sıcaklık, yanında su veya küçük bir çikolata. Çatlak bir fincan ise yalnızca görüntü sorunu değildir — çatlak gıda artığı tutar ve temizlenemez.'),
+            CHECK('Hazırladığın latte\'nin sütünü 75 °C\'ye çıkardın. Ne yaparsın?',
+              ['Yeniden hazırlarım', 'Soğumasını bekleyip servis ederim', 'Üzerine soğuk süt ekleyip dengelerim', 'Fark etmez, servis ederim'], 0,
+              'Aşırı ısınmış sütün tadı ve dokusu geri gelmez; soğutmak da karıştırmak da düzeltmez. Standart dışı ürün misafire sunulmaz.')
           ]
         },
         {

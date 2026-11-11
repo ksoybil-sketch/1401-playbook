@@ -94,3 +94,37 @@ if (bankProblems.length) {
   process.exit(1);
 }
 console.log('✓ Soru havuzu denetimi: her modülde yeterli soru var');
+
+/* ------------------------------------------------------------------ */
+/* Kimlik çakışması                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * İki ders aynı kimliği taşıyamaz.
+ *
+ * Firestore'a yazarken kimlik belge adıdır: aynı kimlikli ikinci ders
+ * birincisinin ÜZERİNE yazar ve ilk dersin içeriği sessizce kaybolur.
+ * Derleme bunu fark etmez, panel de etmez — ancak ders açıldığında
+ * yanlış içerik görülür. Bu yüzden burada durduruluyor.
+ */
+const dupes = [];
+for (const [ad, liste] of [
+  ['eğitim yolu', data.tracks],
+  ['modül', data.modules],
+  ['ders', data.lessons],
+  ['soru', data.questions]
+]) {
+  const gorulen = new Set();
+  for (const x of liste) {
+    if (gorulen.has(x.id)) dupes.push(`${ad} kimliği iki kez kullanılmış: ${x.id}`);
+    gorulen.add(x.id);
+  }
+}
+
+if (dupes.length) {
+  console.error(`\n✗ Kimlik denetimi: ${dupes.length} çakışma\n`);
+  dupes.forEach((d) => console.error('   ' + d));
+  console.error('');
+  process.exit(1);
+}
+console.log('✓ Kimlik denetimi: çakışan kimlik yok');
