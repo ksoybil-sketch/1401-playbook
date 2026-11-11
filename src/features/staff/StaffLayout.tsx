@@ -11,6 +11,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/magazalar', label: 'Mağazalar', icon: 'store' },
   { to: '/baristalar', label: 'Baristalar', icon: 'users' },
   { to: '/gorevler', label: 'Görevler', icon: 'flag' },
+  { to: '/bulten', label: 'Bülten', icon: 'bell' },
   { to: '/icerik', label: 'İçerik', icon: 'layers' }
 ];
 

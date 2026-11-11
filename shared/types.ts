@@ -217,7 +217,38 @@ export interface Progress {
   lessons: Record<string, number>;
   /** moduleId → en iyi geçme sonucu */
   modules: Record<string, { score: number; passedAt: number }>;
+  /** bulletinId → okunma zamanı (ms). Okunmadı rozeti bunu sayar. */
+  bulletins?: Record<string, number>;
   updatedAt: number;
+}
+
+export type BulletinKind = 'duyuru' | 'kampanya' | 'liderlik';
+
+/**
+ * bulletins/{id} — Kahve Operasyonu'nun tüm mağazalara (ya da seçtiği
+ * mağazalara) duyurusu. Yeni kampanya, ayın latte art'ı, satış sıralaması.
+ *
+ * Ders değildir: sınavı, ilerlemesi, önkoşulu yoktur. Okundu bilgisi
+ * progress/{baristaId}.bulletins içinde tutulur.
+ */
+export interface Bulletin {
+  id: string;
+  kind: BulletinKind;
+  title: string;
+  /** **kalın** ve "- " madde işaretlerini destekler (RichText ile aynı). */
+  body: string;
+  /** Boş ya da yoksa tüm mağazalara gider. */
+  storeIds?: string[] | null;
+  /** Liderlik bülteni için sıralama satırları. */
+  rows?: { label: string; value: string }[];
+  /** Kampanya bitiş tarihi; geçince listede arşive düşer. */
+  expiresAt?: number | null;
+  published: boolean;
+  /** Üstte sabitlenmiş bülten. */
+  pinned?: boolean;
+  createdAt: number;
+  createdBy: string;
+  createdByName: string;
 }
 
 export type AssignmentKind = 'lesson' | 'module';

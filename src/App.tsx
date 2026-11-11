@@ -8,10 +8,12 @@ import { BaristaLayout } from './features/barista/BaristaLayout';
 import { HomePage, ResultsPage, TeamPage } from './features/barista/HomePages';
 import { TracksPage, TrackPage, ModulePage, LessonPage } from './features/barista/Academy';
 import { RecipesPage } from './features/barista/RecipesPage';
+import { BulletinsPage } from './features/barista/BulletinsPage';
 import { ExamPage } from './features/barista/ExamPage';
 import { StaffLayout } from './features/staff/StaffLayout';
 import { OverviewPage, StoresPage, StoreDetailPage, BaristasPage, BaristaDetailPage, TasksPage } from './features/staff/StaffPages';
 import { ContentPage, ModuleEditorPage, LessonEditorPage } from './features/staff/ContentPages';
+import { BulletinPage } from './features/staff/BulletinPages';
 
 export const App: React.FC = () => {
   const session = useSession((s) => s.session);
@@ -63,6 +65,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
           <Route element={<BaristaLayout />}>
             <Route index element={<HomePage />} />
             <Route path="receteler" element={<RecipesPage />} />
+            <Route path="bulten" element={<BulletinsPage />} />
             <Route path="akademi" element={<TracksPage />} />
             <Route path="akademi/:trackId" element={<TrackPage />} />
             <Route path="modul/:moduleId" element={<ModulePage />} />
@@ -85,6 +88,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="baristalar" element={<BaristasPage />} />
             <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />
             <Route path="gorevler" element={<TasksPage />} />
+            <Route path="bulten" element={<BulletinPage />} />
             <Route path="icerik" element={<ContentPage />} />
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
             <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />

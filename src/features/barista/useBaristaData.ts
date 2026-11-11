@@ -1,9 +1,9 @@
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useSession } from '../../store/session';
 import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
 import { EMPTY_PROGRESS } from '../../lib/progress';
-import type { Assignment, Attempt, Progress } from '../../../shared/types';
+import type { Assignment, Attempt, Bulletin, Progress } from '../../../shared/types';
 
 export function useBaristaSession() {
   const s = useSession((x) => x.session);
@@ -27,6 +27,35 @@ export function useMyAssignments(): { items: Assignment[]; loading: boolean } {
     .filter((a) => !a.baristaId || a.baristaId === s.baristaId)
     .sort((a, b) => (a.dueAt || Infinity) - (b.dueAt || Infinity));
   return { items, loading };
+}
+
+/** Bu mağazaya gelen, yayındaki ve süresi dolmamış bültenler. */
+export function useMyBulletins(): { items: Bulletin[]; unread: number; loading: boolean } {
+  const s = useBaristaSession();
+  const { progress } = useMyProgress();
+  // Yayın durumu ve mağaza hedefi burada süzülüyor: sorguya koymak
+  // bileşik dizin gerektirirdi, bülten sayısı ise avuç içi kadar.
+  const { data, loading } = useQueryLive<Bulletin>(
+    query(collection(db, 'bulletins'), orderBy('createdAt', 'desc'), limit(50)),
+    'bulletins'
+  );
+  const now = Date.now();
+  const items = data
+    .filter((b) => b.published)
+    .filter((b) => !b.expiresAt || b.expiresAt > now)
+    .filter((b) => !b.storeIds?.length || b.storeIds.includes(s.storeId))
+    .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.createdAt - a.createdAt);
+  const unread = items.filter((b) => !progress.bulletins?.[b.id]).length;
+  return { items, unread, loading };
+}
+
+/** Bülteni okundu olarak işaretler; zaten okunduysa hiçbir şey yazmaz. */
+export async function markBulletinRead(baristaId: string, bulletinId: string, already: boolean): Promise<void> {
+  if (already) return;
+  await updateDoc(doc(db, 'progress', baristaId), {
+    [`bulletins.${bulletinId}`]: Date.now(),
+    updatedAt: Date.now()
+  }).catch(() => {});
 }
 
 export function useMyAttempts(max = 30): { items: Attempt[]; loading: boolean } {

@@ -113,8 +113,22 @@ service cloud.firestore {
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
       allow update: if isStaff()
         || (isBarista() && myBaristaId() == baristaId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'updatedAt']));
       allow delete: if false;
+    }
+
+    // --- Bülten -------------------------------------------------------
+    // Kahve Operasyonu yazar, mağaza oturumları okur.
+    //
+    // Mağaza hedeflemesi (storeIds) güvenlik sınırı DEĞİL, görünürlük
+    // tercihidir: liste sorgusunu kurallarla mağazaya daraltmak, "tüm
+    // mağazalar" anlamına gelen null değerini de kapsayan ikinci bir sorgu
+    // gerektirirdi. Bülten içeriği zaten şirket içi duyuru; hedefleme
+    // arayüzde uygulanıyor.
+    match /bulletins/{id} {
+      allow read: if isStaff() || isStoreSession();
+      allow create, update: if isStaff() && request.resource.data.createdBy is string;
+      allow delete: if isStaff();
     }
 
     // --- Görevler ------------------------------------------------------
