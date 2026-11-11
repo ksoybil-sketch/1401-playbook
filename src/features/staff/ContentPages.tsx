@@ -30,24 +30,36 @@ const PublishBadge: React.FC<{ on: boolean }> = ({ on }) => <Badge tone={on ? 'p
 /* ------------------------------------------------------------------ */
 
 export const ContentPage: React.FC = () => {
+  const navigate = useNavigate();
   const { tracks, modules, lessons } = useContent();
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null);
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   return (
     <Page wide>
       <PageTitle title="İçerik" subtitle="Eğitim yolları, modüller, dersler ve soru bankası."
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
               <Icon name="refresh" size={15} /> Müfredatı güncelle
+            </button>
+            {/* Tek ders eklemek için modülün içine girmek gerekiyordu; en çok
+                kullanılan yol burası olduğu için düğme de burada duruyor. */}
+            <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setImporting(true)}>
+              <Icon name="upload" size={15} /> Dosyadan ders
             </button>
             <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setEditTrack({})}><Icon name="plus" size={15} /> Eğitim yolu</button>
           </div>
         } />
 
       <CurriculumSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
+      <ImportLessonSheet
+        open={importing}
+        onClose={() => setImporting(false)}
+        onCreated={(id) => { setImporting(false); navigate(`/icerik/ders/${id}`); }}
+      />
 
       {tracks.length === 0 && <Empty icon="layers" text="Henüz eğitim yolu yok." />}
 
@@ -384,8 +396,7 @@ export const ModuleEditorPage: React.FC = () => {
       <ImportLessonSheet
         open={importing}
         onClose={() => setImporting(false)}
-        moduleId={mod.id}
-        nextOrder={ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1}
+        fixedModuleId={mod.id}
         onCreated={(id) => { setImporting(false); navigate(`/icerik/ders/${id}`); }}
       />
     </Page>

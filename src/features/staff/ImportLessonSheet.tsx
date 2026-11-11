@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { addDoc, collection } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { errorText } from '../../api/backend';
+import { useContent } from '../../store/content';
 import { readSheet } from '../../lib/sheet';
 import { rowsToLesson, textToLesson, TEMPLATE_CSV, type ImportResult } from '../../lib/importLesson';
 import { LessonBlocks } from '../academy/LessonBlocks';
@@ -24,15 +25,36 @@ const ACCEPT = '.xlsx,.csv,.tsv,.txt,.pdf';
 export const ImportLessonSheet: React.FC<{
   open: boolean;
   onClose: () => void;
-  moduleId: string;
-  nextOrder: number;
+  /** Modül editöründen açıldığında sabit; İçerik sayfasından açıldığında seçilir. */
+  fixedModuleId?: string;
   onCreated: (lessonId: string) => void;
-}> = ({ open, onClose, moduleId, nextOrder, onCreated }) => {
+}> = ({ open, onClose, fixedModuleId, onCreated }) => {
+  const { tracks, modules, lessons } = useContent();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [fileName, setFileName] = useState('');
+  const [pickedModule, setPickedModule] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const moduleId = fixedModuleId || pickedModule;
+
+  /** Modüller, panelde göründükleri sırayla: yol → modül. */
+  const options = useMemo(
+    () =>
+      tracks
+        .flatMap((tr) =>
+          modules
+            .filter((m) => m.trackId === tr.id)
+            .map((m) => ({ id: m.id, label: `${tr.title} · ${m.title}` }))
+        ),
+    [tracks, modules]
+  );
+
+  const nextOrder = useMemo(() => {
+    const ls = lessons.filter((l) => l.moduleId === moduleId);
+    return ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1;
+  }, [lessons, moduleId]);
 
   const reset = () => { setResult(null); setError(null); setFileName(''); };
 
@@ -62,6 +84,7 @@ export const ImportLessonSheet: React.FC<{
 
   const save = async () => {
     if (!result || !result.blocks.length) return;
+    if (!moduleId) { setError('Dersin ekleneceği modülü seç.'); return; }
     setBusy(true);
     try {
       const r = await addDoc(collection(db, 'lessons'), {
@@ -110,7 +133,7 @@ export const ImportLessonSheet: React.FC<{
           )}
           <button
             onClick={save}
-            disabled={busy || !result || !result.blocks.length}
+            disabled={busy || !result || !result.blocks.length || !moduleId}
             className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}
           >
             {busy ? <Spinner size={16} /> : 'Taslak olarak ekle'}
@@ -129,6 +152,23 @@ export const ImportLessonSheet: React.FC<{
           e.target.value = '';
         }}
       />
+
+      {!fixedModuleId && (
+        <div className={t.field}>
+          <span className={t.label}>Hangi modüle eklensin</span>
+          <select
+            className={t.input}
+            value={pickedModule}
+            onChange={(e) => { setPickedModule(e.target.value); setError(null); }}
+          >
+            <option value="">Modül seç…</option>
+            {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          <span className="text-[11px] text-fg-3">
+            Ders bu modülün sonuna, taslak olarak eklenir.
+          </span>
+        </div>
+      )}
 
       {!result && (
         <button
