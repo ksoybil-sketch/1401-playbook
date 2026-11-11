@@ -36,8 +36,11 @@ export const BaristaLayout: React.FC = () => {
   // Ders ve sınav ekranları odaklı çalışır: alt menü gizlenir.
   const focused = pathname.startsWith('/ders/') || pathname.startsWith('/sinav/');
 
+  // Reçeteler, Akademi'den ayrı bir sekme: servis sırasında aranan şey
+  // müfredatın neresinde durduğu değil, içeceğin kendisi.
   const nav: { to: string; label: string; icon: IconName }[] = [
     { to: '/', label: 'Bugün', icon: 'home' },
+    { to: '/receteler', label: 'Reçeteler', icon: 'coffee' },
     { to: '/akademi', label: 'Akademi', icon: 'cap' },
     { to: '/sonuclarim', label: 'Sonuçlarım', icon: 'award' },
     ...(s.role === 'lead' ? [{ to: '/ekip', label: 'Ekibim', icon: 'users' as IconName }] : [])

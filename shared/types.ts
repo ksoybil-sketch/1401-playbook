@@ -99,8 +99,48 @@ export interface Module {
   questionCount?: number;
 }
 
+/** Bardak şemasındaki malzemenin görsel sınıfı — renk eşlemesi uygulamada. */
+export type CupTone =
+  | 'espresso' | 'sut' | 'kopuk' | 'buz' | 'su'
+  | 'sos' | 'cikolata' | 'toz' | 'matcha' | 'krema' | 'dekor' | 'doz' | 'diger';
+
+/** Ölçünün nasıl gösterileceği. `ml` dışındakiler hacimsizdir, bant çizilmez. */
+export type CupFill = 'ml' | 'silme' | 'dekor' | 'adet' | 'opsiyonel' | 'otomatik' | 'bilinmiyor';
+
+export interface CupLayer {
+  name: string;
+  tone: CupTone;
+  /** Bardaktaki sıra: 0 en altta. Üst dekor için 900+. */
+  order: number;
+  /** Küçük/büyük bardak için ml. Hacimsiz malzemede null. */
+  small: number | null;
+  large: number | null;
+  /** Ölçünün yazılı hâli: "200/270 ml", "Silme Bardak", "Garniş". */
+  text: string;
+  fill: CupFill;
+}
+
 export type LessonBlock =
   | { type: 'heading'; text: string }
+  /**
+   * Bardak şeması. Çizim derse gömülmez; blok yalnızca sırayı ve ölçüyü
+   * taşır, SVG'yi CupDiagram bileşeni üretir (bkz. scripts/recipe-cup.mjs).
+   * `art` doluysa şema yerine dışarıdan verilen çizim gösterilir.
+   */
+  | {
+      type: 'cup';
+      /** katman: sırayla dökülür · karisim: blenderda karışır, katman yok. */
+      mode: 'katman' | 'karisim';
+      vessel: 'hot' | 'cold' | 'demi';
+      sizes: { oz: number | null; ml: number }[];
+      layers: CupLayer[];
+      /** Bardağa girmeyen doz — öğütülmüş kahve. */
+      dose?: { name: string; text: string };
+      /** Malzeme listesinde olmayan, teknikte geçen köpük notu. */
+      foam?: string;
+      /** Dışarıdan verilen hazır çizim (SVG kaynağı). */
+      art?: string;
+    }
   | { type: 'text'; text: string }
   | { type: 'image'; url: string; caption?: string }
   | { type: 'video'; url: string; caption?: string }
