@@ -59,3 +59,38 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(`✓ Bardak şeması denetimi: ${checked} şemanın tamamı kurallara uyuyor`);
+
+/* ------------------------------------------------------------------ */
+/* Soru havuzu derinliği                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kopya, havuz darlığından doğar. İki sınavın ortak soru sayısı
+ * ≈ sınav² ÷ banka olduğundan, sınav bankanın üçte birini geçmemeli
+ * (bkz. examSizeFor, scripts/content.mjs). Sınav boyu en az 5 soru
+ * olduğu için bankada en az 15 soru gerekir; altındaki modül, formül
+ * ne yaparsa yapsın herkese benzer kâğıt dağıtır.
+ */
+const MIN_BANK = 15;
+const bankProblems = [];
+console.log('\nSoru havuzu:');
+for (const m of data.modules) {
+  const n = data.questions.filter((q) => q.moduleId === m.id).length;
+  const ratio = n / m.examSize;
+  const overlap = (m.examSize * m.examSize) / n;
+  const mark = n < MIN_BANK ? '✗' : ratio < 3 ? '!' : '·';
+  console.log(
+    `  ${mark} ${m.title.padEnd(36).slice(0, 36)} banka ${String(n).padStart(3)}` +
+    `  sınav ${String(m.examSize).padStart(2)}  oran ${ratio.toFixed(1)}x` +
+    `  iki barista ortak ≈ ${overlap.toFixed(1)}/${m.examSize}`
+  );
+  if (n < MIN_BANK) bankProblems.push(`${m.title}: bankada ${n} soru var, en az ${MIN_BANK} gerekiyor`);
+}
+
+if (bankProblems.length) {
+  console.error(`\n✗ Soru havuzu denetimi: ${bankProblems.length} modül yetersiz\n`);
+  bankProblems.forEach((p) => console.error('   ' + p));
+  console.error('');
+  process.exit(1);
+}
+console.log('✓ Soru havuzu denetimi: her modülde yeterli soru var');

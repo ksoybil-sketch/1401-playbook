@@ -49,6 +49,14 @@ const Card: React.FC<{ b: Bulletin; read: boolean; onOpen: () => void }> = ({ b,
 
       {open && (
         <div className="border-t border-line px-4 py-4 flex flex-col gap-3">
+          {b.imageUrl && (
+            <img
+              src={b.imageUrl}
+              alt=""
+              className="w-full max-h-72 object-contain rounded-xl border border-line bg-panel"
+              loading="lazy"
+            />
+          )}
           {b.body && <RichText text={b.body} />}
           {b.rows && b.rows.length > 0 && (
             <div className={t.listGroup}>

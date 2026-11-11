@@ -20,7 +20,7 @@ type CupBlock = Extract<LessonBlock, { type: 'cup' }>;
  * karamel şurubu ve çikolata sosu birbirine yakın üç kahverengidir ve
  * ayrışmadıklarında şema yanlış okunur.
  */
-const TONE: Record<CupTone, string> = {
+export const TONE: Record<CupTone, string> = {
   espresso: '#8A5226',
   sut: '#E6D9C5',
   kopuk: '#F4F0EA',
@@ -35,6 +35,22 @@ const TONE: Record<CupTone, string> = {
   doz: '#8A7868',
   diger: '#8C9BAE'
 };
+
+/** Panelde malzeme rengi seçmek için okunur adlar. */
+export const TONE_LABELS: { value: CupTone; label: string }[] = [
+  { value: 'espresso', label: 'Espresso' },
+  { value: 'sut', label: 'Süt' },
+  { value: 'kopuk', label: 'Köpük' },
+  { value: 'buz', label: 'Buz' },
+  { value: 'su', label: 'Su' },
+  { value: 'sos', label: 'Şurup/karamel' },
+  { value: 'cikolata', label: 'Çikolata' },
+  { value: 'toz', label: 'Toz' },
+  { value: 'matcha', label: 'Matcha' },
+  { value: 'krema', label: 'Krema' },
+  { value: 'dekor', label: 'Dekor' },
+  { value: 'diger', label: 'Diğer' }
+];
 
 /* ------------------------------------------------------------------ */
 /* Geometri                                                            */

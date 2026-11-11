@@ -1,4 +1,4 @@
-# 1401 Playbook
+# 1401 Campus
 
 1401 Coffee için barista eğitim, içecek ve işletme standartları, sınav ve görev uygulaması.
 Mağaza telefonlarında (Android) baristalar, bilgisayardan web panelinde Kahve Operasyonu kullanır.
@@ -111,7 +111,7 @@ düşse bile deploy kırılmasın. APK'yı paylaşmanın yolları: OneDrive/Driv
 linki (sayfadaki düğmeye bu adres yazılır), doğrudan WhatsApp ile göndermek, ya da
 Blaze planına geçmek.
 
-`npm run apk` çıktıyı `apk/1401-playbook.apk` konumuna kopyalar (bu klasör
+`npm run apk` çıktıyı `apk/1401-campus.apk` konumuna kopyalar (bu klasör
 `.gitignore`'da).
 
 Ücretsiz Spark planının sınırı günde 50.000 Firestore okuması. 20 şube ≈ 100 barista

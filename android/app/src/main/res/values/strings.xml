@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">1401 Playbook</string>
-    <string name="title_activity_main">1401 Playbook</string>
+    <string name="app_name">1401 Campus</string>
+    <string name="title_activity_main">1401 Campus</string>
     <string name="package_name">com.coffee1401.playbook</string>
     <string name="custom_url_scheme">com.coffee1401.playbook</string>
 </resources>

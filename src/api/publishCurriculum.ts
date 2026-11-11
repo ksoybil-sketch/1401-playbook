@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Lesson, Module, Question, Track } from '../../shared/types';
+import type { Lesson, LessonBlock, Module, Question, Track } from '../../shared/types';
 
 /**
  * Müfredatı panelden Firestore'a yazar.
@@ -118,6 +118,23 @@ export async function publishCurriculum(
           // Panelden yapılan düzenlemeler ezilmesin.
           if (typeof prev.published === 'boolean') data.published = prev.published;
           if (col === 'questions' && typeof prev.imageUrl === 'string' && prev.imageUrl) data.imageUrl = prev.imageUrl;
+
+          // Elle düzeltilmiş bardak şeması korunur. Reçete dosyasındaki
+          // gramaj yanlışsa Kahve Operasyonu panelden düzeltiyor; bu düzeltme
+          // bir sonraki sezon güncellemesinde sessizce geri alınmamalı.
+          // Düzeltmeyi geri almak için editörde malzemeleri silip dersi
+          // kaydetmek yeterli: `edited` işareti bloğun kendisinde duruyor.
+          if (col === 'lessons' && Array.isArray(prev.blocks) && Array.isArray(data.blocks)) {
+            const kept = (prev.blocks as LessonBlock[]).filter(
+              (x): x is Extract<LessonBlock, { type: 'cup' }> => !!x && x.type === 'cup' && !!x.edited
+            );
+            if (kept.length) {
+              let n = 0;
+              data.blocks = (data.blocks as LessonBlock[]).map((x) =>
+                x.type === 'cup' && kept[n] ? kept[n++] : x
+              );
+            }
+          }
         }
         batch.set(doc(db, col, id), data);
       }

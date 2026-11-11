@@ -12,7 +12,9 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/baristalar', label: 'Baristalar', icon: 'users' },
   { to: '/gorevler', label: 'Görevler', icon: 'flag' },
   { to: '/bulten', label: 'Bülten', icon: 'bell' },
-  { to: '/icerik', label: 'İçerik', icon: 'layers' }
+  // Yol adı /icerik kalıyor: değiştirmek panelde kayıtlı bağlantıları ve
+  // ders editörüne dönüş adreslerini kırardı. Görünen ad "Akademi".
+  { to: '/icerik', label: 'Akademi', icon: 'layers' }
 ];
 
 export function useStaffSession() {
@@ -34,7 +36,7 @@ export const StaffLayout: React.FC = () => {
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
           <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90" />
           <div className="leading-tight">
-            <div className="text-[14px] font-semibold">1401 Playbook</div>
+            <div className="text-[14px] font-semibold">1401 Campus</div>
             <div className="text-[11px] text-fg-3">Kahve Operasyonu</div>
           </div>
         </div>

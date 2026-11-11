@@ -1,5 +1,5 @@
 /**
- * 1401 Playbook — paylaşılan veri modeli.
+ * 1401 Campus — paylaşılan veri modeli.
  *
  * Firestore koleksiyonları:
  *   stores/{storeId}              Mağaza
@@ -140,6 +140,12 @@ export type LessonBlock =
       foam?: string;
       /** Dışarıdan verilen hazır çizim (SVG kaynağı). */
       art?: string;
+      /**
+       * Panelden elle düzenlendi. "Müfredatı güncelle" bu bloğu ezmez —
+       * aksi hâlde Kahve Operasyonu'nun düzelttiği gramaj, bir sonraki
+       * sezon güncellemesinde sessizce geri alınırdı.
+       */
+      edited?: boolean;
     }
   | { type: 'text'; text: string }
   | { type: 'image'; url: string; caption?: string }
@@ -241,6 +247,11 @@ export interface Bulletin {
   storeIds?: string[] | null;
   /** Liderlik bülteni için sıralama satırları. */
   rows?: { label: string; value: string }[];
+  /**
+   * Bültene eklenen görsel. Ders fotoğrafları gibi küçültülüp data URL
+   * olarak belgeye gömülür (Spark'ta Storage yok, bkz. src/lib/media.ts).
+   */
+  imageUrl?: string;
   /** Kampanya bitiş tarihi; geçince listede arşive düşer. */
   expiresAt?: number | null;
   published: boolean;

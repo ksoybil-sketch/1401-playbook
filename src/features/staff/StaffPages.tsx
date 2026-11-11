@@ -284,7 +284,7 @@ export const StoreDetailPage: React.FC = () => {
     setBusy(true);
     try {
       const r = await backend.createPairingCode(store.id, store.name);
-      setCode({ ...r, title: 'Telefon eşleştirme kodu', hint: `Mağaza telefonunda 1401 Playbook'u aç ve bu kodu gir. Telefon kalıcı olarak ${store.name} mağazasına bağlanır.` });
+      setCode({ ...r, title: 'Telefon eşleştirme kodu', hint: `Mağaza telefonunda 1401 Campus'u aç ve bu kodu gir. Telefon kalıcı olarak ${store.name} mağazasına bağlanır.` });
     } catch (e) { toast(errorText(e), 'negative'); }
     setBusy(false);
   };

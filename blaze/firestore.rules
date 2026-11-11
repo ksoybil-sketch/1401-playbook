@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// 1401 Playbook — Firestore güvenlik kuralları.
+// 1401 Campus — Firestore güvenlik kuralları.
 //
 // Kimlik custom claim'lerden okunur (bkz. functions/index.js):
 //   role: 'ops' | 'admin'            → Kahve Operasyonu (e-posta ile giriş)
