@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
+import { techniqueQuestions, serviceQuestion, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -93,7 +94,25 @@ const LESSON_PHOTOS = {
   'r-matcha-latte-8-oz-12-oz': 'matcha',
   'r-cranberry-hibiscus-16-oz': 'cranberry',
   'r-chilly-passion-acili-carkifelek-16-oz': 'chillypassion',
-  'r-kuzu-kulagi-mix-16-oz': 'kuzukulagi'
+  'r-kuzu-kulagi-mix-16-oz': 'kuzukulagi',
+  // 30 Eylül 2026 menü çekimi (Downloads/30 eylül menü görselleri). Yalnızca
+  // adı görünen ve müfredatta reçetesi olan içecekler; yiyecekler, DSC_/YVZ_
+  // adsız kareler, hazırlık sahnesi (Mathca_) ve reçetesi olmayan Bitki Çayı
+  // alınmadı. Fotoğrafı zaten olan dört içecekte mevcut dekupe kaldı.
+  // "Mathca Latte" karesi buzlu matcha (bardağa dökülüyor) → Iced Matcha.
+  'r-filtre-kahve-batch-brew-8-oz-12-oz': 'filtrekahve',
+  'r-ube-matcha-latte-16-oz': 'ubematcha',
+  'r-ube-limonata-16-oz': 'ubelimonata',
+  'r-black-latte-8-oz-12-oz': 'blacklatte',
+  'r-iced-matcha-latte-16-oz': 'icedmatcha',
+  'r-tahinli-latte-8-oz-12-oz': 'tahinli',
+  'r-mont-blanc-16-oz': 'montblanc',
+  'r-ube-latte-mor-patates-8-oz-12-oz': 'ubelatte',
+  'r-ristretto': 'ristretto',
+  'r-iced-latte-16-oz': 'icedlatte',
+  'r-italian-affogato': 'affogato',
+  'r-chocolate-clouds-16-oz': 'chocolateclouds',
+  'r-espresso-macchiato': 'espressomacchiato'
 };
 
 /** Soru: ilk seçenek doğru cevaptır (sınavda sunucu karıştırır). */
@@ -110,12 +129,26 @@ const LESSON_PHOTOS = {
  * herkese aynı kâğıt. Havuzu büyütmek kalıcı çözüm, bu formül de sınavın
  * havuzu tüketmesini engelliyor.
  */
+/**
+ * Elle yazılmış sorulara tür verir. Sınav, türler arasında dengeli seçildiği
+ * için (src/api/exam.ts) bu etiket sınavın tek tip sorudan oluşmasını önler:
+ * aynı modülde senaryo, yetki, zaman/sayı ve kural soruları karışık gelir.
+ */
+function classifyQuestion(prompt) {
+  const t = prompt.toLocaleLowerCase('tr');
+  if (/ne yaparsın|doğru yaklaşım|doğru davranış|hangi cümle|ne söylenir|nasıl davran|ilk adım nedir|durumunda|fark ettin|geldi\b|istiyor|şikayet etti/.test(t)) return 'durum';
+  if (/\bkim\b|kimler|kimde|yetki|kim belirler|kim verir|kim yapar|kime/.test(t)) return 'yetki';
+  if (/kaç|hangi gün|ne zaman|hangi sıklık|hangi saat|saat kaç|yüzde|süre|hangi yıl/.test(t)) return 'zaman';
+  if (/neden|ne anlama|ne demek|amacı|ilkesi|neyi anlatır|neyi ifade|etkisi nedir|sağladığı/.test(t)) return 'kavram';
+  return 'kural';
+}
+
 const MIN_EXAM = 5;
 export const examSizeFor = (hedef, banka) =>
   Math.max(Math.min(MIN_EXAM, banka), Math.min(hedef, Math.floor(banka / 3)));
 
-const Q = (prompt, correct, wrong, explanation) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation });
-const TF = (prompt, isTrue, explanation) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation });
+const Q = (prompt, correct, wrong, explanation, kind) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation, ...(kind ? { kind } : {}) });
+const TF = (prompt, isTrue, explanation, kind) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation, ...(kind ? { kind } : {}) });
 
 /**
  * AOS soru bankasından gelen 73 sorunun hiçbirinde açıklama yoktu (AOS'un
@@ -404,7 +437,7 @@ function recipeQuestions(lessons, allRecipes) {
     const ranked = [...measurable].sort((a, b) => {
       const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
-    }).slice(0, 4);
+    }).slice(0, 3);
     for (const ing of ranked) {
       const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
       const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
@@ -416,7 +449,7 @@ function recipeQuestions(lessons, allRecipes) {
       ));
     }
     if (l._cup) {
-      const wrong = allCups.filter((c) => c !== l._cup).slice(0, 3);
+      const wrong = allCups.filter((c) => c !== l._cup && !overlaps(c, l._cup)).slice(0, 3);
       if (wrong.length === 3) out.push(Q(
         `${name} hangi porsiyonda servis edilir?`,
         l._cup, wrong,
@@ -474,6 +507,25 @@ function recipeQuestions(lessons, allRecipes) {
       }
     }
   }
+
+  /* --- Ölçü dışı türler (bkz. scripts/question-gen.mjs) ------------- */
+  const SERVIS = ['Sıcak, 8 oz / 12 oz', 'Buzlu, 16 oz', 'Blenderda karıştırılarak, 16 oz',
+    'Sıcak, küçük fincanda', 'Sıcak, 12 oz', 'Buzlu, 12 oz', 'Sıcak, 8 oz', 'Buzlu, 12 oz / 16 oz'];
+  const moduleRecipes = lessons.map((l) => l._recipe);
+  const nameOf = (r) => lessons.find((l) => l._recipe === r)?._title || r.name;
+  lessons.forEach((l, i) => {
+    const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
+    const cup = l.blocks.find((b) => b.type === 'cup');
+    out.push(...techniqueQuestions(l._title, steps));
+    const sv = serviceQuestion(l._title, cup, l._cup, SERVIS); if (sv) out.push(sv);
+    const ig = ingredientToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf); if (ig) out.push(ig);
+    const so = stepOrderQuestion(l._title, steps, i % 2 === 1); if (so) out.push(so);
+  });
+
+  // Tür etiketi verilmemiş eski şablonlar
+  const kindOf = (p) => /ölçüsü nedir/.test(p) ? 'olcu' : /porsiyonda/.test(p) ? 'porsiyon' : /YOKTUR/.test(p) ? 'malzeme'
+    : /ilk adım/.test(p) ? 'adim' : /espresso bardağın/.test(p) ? 'katman' : 'genel';
+  out.forEach((q) => { if (!q.kind) q.kind = kindOf(q.prompt); });
   return out;
 }
 
@@ -1088,6 +1140,19 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       m.lessons.forEach((l, li) => lessons.push({
         id: l.id, moduleId: m.id, title: l.title, order: li + 1, durationMin: l.durationMin, blocks: l.blocks, published: true
       }));
+      // Ders içeriğinden türeyen sorular (tablolar, vakalar). Aynı metin varsa eklenmez.
+      const seen = new Set(m.questions.map((q) => q.prompt.toLocaleLowerCase('tr').trim()));
+      for (const l of m.lessons) {
+        for (const q of lessonDerivedQuestions(l)) {
+          const k = q.prompt.toLocaleLowerCase('tr').trim();
+          if (!seen.has(k) && q.options.length >= 2) { seen.add(k); m.questions.push(q); }
+        }
+      }
+      m.questions.forEach((q) => { if (!q.kind) q.kind = classifyQuestion(q.prompt); });
+      // Sınav boyu ve soru sayısı, türeyen sorular eklendikten SONRA hesaplanmalı.
+      const mm = modules[modules.length - 1];
+      mm.examSize = examSizeFor(m.examSize, m.questions.length);
+      mm.questionCount = m.questions.length;
       m.questions.forEach((q, qi) => {
         if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
         questions.push({ id: `${m.id}-q${String(qi + 1).padStart(3, '0')}`, moduleId: m.id, imageUrl: '', ...q });

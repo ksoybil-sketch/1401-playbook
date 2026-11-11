@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, USE_EMULATOR } from '../../api/firebase';
@@ -90,6 +91,12 @@ export const StoreHome: React.FC = () => {
     `baristas-${storeId}`
   );
   const ready = baristas.filter((b) => !b.pinPending).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  // Mağaza müdürü ve vardiya müdürleri üstte, ayrı bir satırda; baristalar
+  // altında yan yana. Önceden hepsi aynı ızgaradaydı ve müdür kalabalıkta
+  // kayboluyordu.
+  const rank = (b: Barista) => (b.role === 'lead' ? 0 : b.role === 'shift' ? 1 : 2);
+  const managers = ready.filter((b) => b.role !== 'barista').sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'tr'));
+  const crew = ready.filter((b) => b.role === 'barista');
 
   const [selected, setSelected] = useState<Barista | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,13 +162,37 @@ export const StoreHome: React.FC = () => {
             <p className={t.emptyText}>Bu mağazada henüz PIN'i olan barista yok. Yeni başladıysan davet kodunla giriş yap.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 min-[420px]:grid-cols-4 gap-x-3 gap-y-5">
-            {ready.map((b) => (
-              <button key={b.id} onClick={() => setSelected(b)} className="flex flex-col items-center gap-2 active:opacity-70">
-                <Avatar name={b.name} size={60} />
-                <span className="text-[12px] font-medium text-center leading-tight line-clamp-2">{b.name}</span>
-              </button>
-            ))}
+          <div className="flex flex-col gap-6">
+            {managers.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <span className={t.label}>Müdürler</span>
+                <div className={t.listGroup}>
+                  {managers.map((b) => (
+                    <button key={b.id} onClick={() => setSelected(b)} className={t.listRow}>
+                      <Avatar name={b.name} size={44} />
+                      <span className="flex-1 min-w-0 text-left">
+                        <span className="block text-[15px] font-semibold truncate">{b.name}</span>
+                        <span className="block text-[12px] text-fg-3">{BARISTA_ROLE_LABEL[b.role]}</span>
+                      </span>
+                      <Icon name="chevronRight" size={16} className={t.rowChevron} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {crew.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {managers.length > 0 && <span className={t.label}>Baristalar</span>}
+                <div className="grid grid-cols-3 min-[420px]:grid-cols-4 gap-x-3 gap-y-5">
+                  {crew.map((b) => (
+                    <button key={b.id} onClick={() => setSelected(b)} className="flex flex-col items-center gap-2 active:opacity-70">
+                      <Avatar name={b.name} size={60} />
+                      <span className="text-[12px] font-medium text-center leading-tight line-clamp-2">{b.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

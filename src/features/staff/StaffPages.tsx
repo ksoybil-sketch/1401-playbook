@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { badgeReport } from '../../lib/badges';
+import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
@@ -13,7 +15,8 @@ import { AssignSheet } from '../shared/AssignSheet';
 import { AttemptRow } from '../barista/HomePages';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
-import type { Barista, BaristaRole, Progress } from '../../../shared/types';
+import type { Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
+import { can, assignableRoles, STAFF_ROLES, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
 const WEEK = 7 * 86400000;
 const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, updatedAt: 0 };
@@ -56,7 +59,7 @@ export const OverviewPage: React.FC = () => {
   const { stores, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments } = useStaffData();
   const active = baristas.filter((b) => b.active);
-  const weekAttempts = attempts.filter((a) => a.submittedAt && a.startedAt > Date.now() - WEEK);
+  const weekAttempts = attempts.filter((a) => a.submittedAt && !a.voided && a.startedAt > Date.now() - WEEK);
   const avgScore = weekAttempts.length ? Math.round(weekAttempts.reduce((s, a) => s + (a.score || 0), 0) / weekAttempts.length) : null;
   const avgProgress = active.length ? Math.round(active.reduce((s, b) => s + overallPercent(modules, lessons, progress[b.id] || EMPTY), 0) / active.length) : 0;
 
@@ -138,9 +141,9 @@ export const OverviewPage: React.FC = () => {
         </Section>
 
         <Section label="Son sınavlar">
-          {attempts.filter((a) => a.submittedAt).length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
+          {attempts.filter((a) => a.submittedAt && !a.voided).length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
             <div className={t.listGroup}>
-              {attempts.filter((a) => a.submittedAt).slice(0, 8).map((a) => (
+              {attempts.filter((a) => a.submittedAt && !a.voided).slice(0, 8).map((a) => (
                 <Link key={a.id} to={`/baristalar/${a.baristaId}`} className={t.listRow}>
                   <Badge tone={a.passed ? 'positive' : 'negative'}>%{a.score}</Badge>
                   <div className="flex-1 min-w-0">
@@ -155,21 +158,30 @@ export const OverviewPage: React.FC = () => {
         </Section>
       </div>
 
+      <PendingCodesSection />
       <StaffTeamSection />
     </Page>
   );
 };
 
-interface StaffRow { id: string; name: string; email: string; role: 'ops' | 'admin'; active: boolean }
+interface StaffRow { id: string; name: string; email: string; role: StaffRole; active: boolean }
 
+/**
+ * Kahve Operasyonu ekibi. Kişi ekleyip çıkarmak ve rol vermek yalnızca
+ * Kahve Operasyon Müdürü'nde (ve geliştiricide); diğerleri listeyi görür.
+ */
 const StaffTeamSection: React.FC = () => {
   const me = useStaffSession();
-  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', ['ops', 'admin'])), 'staff-team');
+  const manage = can(me.role, 'manageTeam');
+  const roles = assignableRoles(me.role);
+  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', STAFF_ROLES)), 'staff-team');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<StaffRole>('ops');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const rank = (r: StaffRole) => ['developer', 'admin', 'director', 'regional', 'ops'].indexOf(r);
 
   const add = async () => {
     setError(null);
@@ -177,7 +189,7 @@ const StaffTeamSection: React.FC = () => {
     if (!email.includes('@')) return setError('Geçerli bir e-posta gir.');
     setBusy(true);
     try {
-      await backend.createStaff(name, email);
+      await backend.createStaff(name, email, role);
       toast(`${name.trim()} eklendi. Şifre belirleme bağlantısı e-postasına gönderildi.`, 'positive');
       setOpen(false);
       setName(''); setEmail('');
@@ -185,33 +197,112 @@ const StaffTeamSection: React.FC = () => {
     setBusy(false);
   };
 
+  // Müdür yalnızca kendi verebildiği rollerdeki kişileri değiştirebilir.
+  const editable = (s: StaffRow) => manage && s.id !== me.uid && roles.includes(s.role);
+
   return (
-    <Section label={`Kahve Operasyonu ekibi · ${staff.filter((s) => s.active).length}`} action={<button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => setOpen(true)}><Icon name="plus" size={14} /> Ekle</button>}>
+    <Section label={`Kahve Operasyonu ekibi · ${staff.filter((s) => s.active).length}`}
+      action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => { setRole(roles.includes('ops') ? 'ops' : roles[0]); setOpen(true); }}><Icon name="plus" size={14} /> Ekle</button> : undefined}>
       <div className={t.listGroup}>
-        {staff.filter((s) => s.active).map((s) => (
-          <div key={s.id} className={t.listRowStatic}>
+        {staff.filter((s) => s.active).sort((a, b) => rank(a.role) - rank(b.role) || a.name.localeCompare(b.name, 'tr')).map((s) => (
+          <div key={s.id} className={`${t.listRowStatic} flex-wrap`}>
             <Avatar name={s.name} size={32} />
             <div className="flex-1 min-w-0">
               <div className="text-[14px] font-medium truncate">{s.name}{s.id === me.uid ? ' (sen)' : ''}</div>
-              <div className="text-[12px] text-fg-3 truncate">{s.email} · {s.role === 'admin' ? 'Yönetici' : 'Operasyon'}</div>
+              <div className="text-[12px] text-fg-3 truncate">{s.email} · {STAFF_ROLE_LABEL[s.role] || s.role}</div>
             </div>
-            {s.id !== me.uid && (
-              <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => {
-                if (!confirm(`${s.name} için erişim kaldırılsın mı?`)) return;
-                await updateDoc(doc(db, 'users', s.id), { active: false });
-                toast('Erişim kaldırıldı');
-              }}>Kaldır</button>
+            {editable(s) && (
+              <>
+                <select className={`${t.input} h-8 w-auto text-[12px]`} value={s.role}
+                  onChange={async (e) => {
+                    try { await updateDoc(doc(db, 'users', s.id), { role: e.target.value }); toast('Rol güncellendi'); }
+                    catch (err) { toast(errorText(err), 'negative'); }
+                  }}>
+                  {roles.map((r) => <option key={r} value={r}>{STAFF_ROLE_LABEL[r]}</option>)}
+                </select>
+                <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => {
+                  if (!confirm(`${s.name} için erişim kaldırılsın mı?`)) return;
+                  try { await updateDoc(doc(db, 'users', s.id), { active: false }); toast('Erişim kaldırıldı'); }
+                  catch (err) { toast(errorText(err), 'negative'); }
+                }}>Kaldır</button>
+              </>
             )}
           </div>
         ))}
       </div>
-      <Sheet open={open} title="Kahve Operasyonu hesabı ekle" onClose={() => setOpen(false)}
+      <Sheet open={open} title="Kahve Operasyonu ekibine ekle" onClose={() => setOpen(false)}
         footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={add} disabled={busy}>{busy ? <Spinner size={14} /> : 'Ekle'}</button>}>
         <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
         <label className={t.field}><span className={t.label}>E-posta</span><input className={t.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <div className={t.field}>
+          <span className={t.label}>Rol</span>
+          <div className="flex flex-col gap-1.5">
+            {roles.map((r) => (
+              <label key={r} className="flex items-start gap-2 text-[13px] cursor-pointer">
+                <input type="radio" checked={role === r} onChange={() => setRole(r)} className="mt-0.5" />
+                <span><strong>{STAFF_ROLE_LABEL[r]}</strong> <span className="text-fg-3">— {ROLE_HINT[r]}</span></span>
+              </label>
+            ))}
+          </div>
+        </div>
         <p className="text-[12px] text-fg-3 leading-relaxed">Şifresini kendisi belirleyecek: e-postasına bir bağlantı gönderilir.</p>
         <ErrorText>{error}</ErrorText>
       </Sheet>
+    </Section>
+  );
+};
+
+const ROLE_HINT: Record<StaffRole, string> = {
+  developer: 'her şeyi görür ve yapar',
+  admin: 'her şeyi görür ve yapar',
+  director: 'yayınlar, onaylar, ekibi yönetir',
+  regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
+  ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer'
+};
+
+/**
+ * Kod bekleyenler: davet kodunu henüz kullanmamış baristalar ve eşleşmemiş
+ * mağaza telefonları. Kodları Bölge Müdürü verir; Kahve Operasyon Müdürü
+ * buradan takip eder.
+ */
+export const PendingCodesSection: React.FC = () => {
+  const { stores } = useContent();
+  const { baristas } = useStaffData();
+  const { data: phones } = useQueryLive<{ id: string; storeId: string; createdAt: number }>(
+    query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)), 'pending-phones');
+  const waiting = baristas.filter((b) => b.active && b.pinPending).sort((a, b) => (a.inviteExpiresAt || 0) - (b.inviteExpiresAt || 0));
+  const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
+  if (!waiting.length && !phones.length) return null;
+  return (
+    <Section label={`Kod bekleyenler · ${waiting.length + phones.length}`}>
+      <div className={t.listGroup}>
+        {waiting.map((b) => {
+          const expired = !!b.inviteExpiresAt && b.inviteExpiresAt < Date.now();
+          return (
+            <Link key={b.id} to={`/baristalar/${b.id}`} className={t.listRow}>
+              <Avatar name={b.name} size={30} dim />
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-medium truncate">{b.name}</div>
+                <div className="text-[12px] text-fg-3 truncate">
+                  {storeName(b.storeId)} · {BARISTA_ROLE_LABEL[b.role]} · davet kodunu kullanmadı
+                  {b.codeIssuedByName ? ` · kodu veren: ${b.codeIssuedByName}` : ''}
+                </div>
+              </div>
+              {expired ? <Badge tone="negative">Kodun süresi doldu</Badge>
+                : b.inviteExpiresAt ? <Badge tone="caution">Son gün {fmtDate(b.inviteExpiresAt)}</Badge> : <Badge tone="caution">Bekliyor</Badge>}
+            </Link>
+          );
+        })}
+        {phones.map((p) => (
+          <Link key={p.id} to={`/magazalar/${p.storeId}`} className={t.listRow}>
+            <span className={t.iconChip('caution')}><Icon name="phone" size={15} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-medium truncate">{storeName(p.storeId)} · mağaza telefonu</div>
+              <div className="text-[12px] text-fg-3">Eşleştirme kodu üretildi, telefon henüz bağlanmadı · {fmtDate(p.createdAt)}</div>
+            </div>
+          </Link>
+        ))}
+      </div>
     </Section>
   );
 };
@@ -221,6 +312,8 @@ const StaffTeamSection: React.FC = () => {
 /* ------------------------------------------------------------------ */
 
 export const StoresPage: React.FC = () => {
+  const me = useStaffSession();
+  const manage = can(me.role, 'manageBaristas');
   const { stores } = useContent();
   const { baristas } = useStaffData();
   const [open, setOpen] = useState(false);
@@ -240,7 +333,7 @@ export const StoresPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title="Mağazalar" action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Mağaza</button>} />
+      <PageTitle title="Mağazalar" action={manage ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Mağaza</button> : undefined} />
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {stores.map((s) => (
           <Link key={s.id} to={`/magazalar/${s.id}`} className={`${t.cardInteractive} p-4 flex items-center gap-3 ${s.active ? '' : 'opacity-50'}`}>
@@ -266,6 +359,9 @@ interface DeviceRow { id: string; label: string; createdAt: number; lastSeenAt: 
 
 export const StoreDetailPage: React.FC = () => {
   const { storeId } = useParams();
+  const me = useStaffSession();
+  // Barista ekleme, telefon bağlama ve kodlar Bölge Müdürü'nde.
+  const manage = can(me.role, 'manageBaristas');
   const { stores, modules, lessons } = useContent();
   const { baristas, progress } = useStaffData();
   const store = stores.find((s) => s.id === storeId);
@@ -292,15 +388,15 @@ export const StoreDetailPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title={store.name} subtitle={store.city} back="/magazalar"
-        action={
+        action={manage ? (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`}
             onClick={async () => { await updateDoc(doc(db, 'stores', store.id), { active: !store.active }); toast(store.active ? 'Mağaza pasifleştirildi' : 'Mağaza aktif'); }}>
             {store.active ? 'Pasifleştir' : 'Aktifleştir'}
           </button>
-        } />
+        ) : undefined} />
 
       <div className="grid lg:grid-cols-[1.4fr_1fr] gap-5 items-start">
-        <Section label={`Baristalar · ${team.filter((b) => b.active).length}`} action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnSm}`} onClick={() => setAddOpen(true)}><Icon name="plus" size={14} /> Barista ekle</button>}>
+        <Section label={`Baristalar · ${team.filter((b) => b.active).length}`} action={manage ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnSm}`} onClick={() => setAddOpen(true)}><Icon name="plus" size={14} /> Barista ekle</button> : undefined}>
           {team.length === 0 ? <Empty icon="users" text="Bu mağazada henüz barista yok." /> : (
             <div className={t.listGroup}>
               {team.map((b) => <BaristaRow key={b.id} b={b} pct={overallPercent(modules, lessons, progress[b.id] || EMPTY)} />)}
@@ -308,7 +404,7 @@ export const StoreDetailPage: React.FC = () => {
           )}
         </Section>
 
-        <Section label="Mağaza telefonları" action={<button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={pairPhone} disabled={busy}><Icon name="phone" size={14} /> Telefon bağla</button>}>
+        <Section label="Mağaza telefonları" action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={pairPhone} disabled={busy}><Icon name="phone" size={14} /> Telefon bağla</button> : undefined}>
           {devices.filter((d) => d.active).length === 0 ? <Empty icon="phone" text="Bağlı telefon yok. 'Telefon bağla' ile kod oluştur." /> : (
             <div className={t.listGroup}>
               {devices.filter((d) => d.active).map((d) => (
@@ -318,10 +414,10 @@ export const StoreDetailPage: React.FC = () => {
                     <div className="text-[14px] font-medium">{d.paired ? d.label : `${d.label} (eşleştirme bekleniyor)`}</div>
                     <div className="text-[12px] text-fg-3">Bağlandı {fmtDate(d.createdAt)} · Son görülme {fmtDateTime(d.lastSeenAt)}</div>
                   </div>
-                  <button className={`${t.btn} ${t.btnDanger} ${t.btnSm}`} onClick={async () => {
+                  {manage && <button className={`${t.btn} ${t.btnDanger} ${t.btnSm}`} onClick={async () => {
                     if (!confirm('Bu telefonun bağlantısı kaldırılsın mı? Telefonda kimse giriş yapamaz hale gelir.')) return;
                     try { await backend.revokeDevice(d.id); toast('Bağlantı kaldırıldı'); } catch (e) { toast(errorText(e), 'negative'); }
-                  }}>Kaldır</button>
+                  }}>Kaldır</button>}
                 </div>
               ))}
             </div>
@@ -335,13 +431,28 @@ export const StoreDetailPage: React.FC = () => {
   );
 };
 
-const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({ b, pct, showStore }) => (
+/** Panelde bir baristanın rozet raporu (staffData'daki son 300 sınavdan). */
+function useStaffBadgeReport(b: Barista) {
+  const { tracks, modules, lessons } = useContent();
+  const { progress, attempts, assignments } = useStaffData();
+  return useMemo(() => badgeReport({
+    tracks, modules, lessons, progress: progress[b.id] || EMPTY,
+    attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
+    assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
+    startedAt: b.startedAt, createdAt: b.createdAt
+  }), [tracks, modules, lessons, progress, attempts, assignments, b]);
+}
+
+const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({ b, pct, showStore }) => {
+  const report = useStaffBadgeReport(b);
+  return (
   <Link to={`/baristalar/${b.id}`} className={`${t.listRow} ${b.active ? '' : 'opacity-50'}`}>
     <Avatar name={b.name} size={36} dim={!b.active} />
     <div className="flex-1 min-w-0">
       <div className="text-[14px] font-medium truncate flex items-center gap-2">
         {b.name}
-        {b.role === 'lead' && <Badge>Sorumlu</Badge>}
+        {b.role !== 'barista' && <Badge>{BARISTA_ROLE_LABEL[b.role]}</Badge>}
+        <TitleChip report={report} />
       </div>
       <div className="text-[12px] text-fg-3 truncate">
         {showStore ? `${showStore} · ` : ''}
@@ -352,9 +463,11 @@ const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({
     {b.active && b.pinPending && <Badge tone="caution">Davet</Badge>}
     <Icon name="chevronRight" size={16} className={t.rowChevron} />
   </Link>
-);
+  );
+};
 
 const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: string; onCreated: (c: { code: string; expiresAt: number; title: string; hint: string }) => void }> = ({ open, onClose, storeId: fixed, onCreated }) => {
+  const me = useStaffSession();
   const { stores } = useContent();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -367,7 +480,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
     setError(null);
     setBusy(true);
     try {
-      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone });
+      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone, createdByName: me.name });
       onClose();
       onCreated({ code: r.code, expiresAt: r.expiresAt, title: `${name.trim()} için davet kodu`, hint: inviteHint(name.trim().split(' ')[0]) });
       setName(''); setPhone(''); setRole('barista');
@@ -391,11 +504,11 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
       <div className={t.field}>
         <span className={t.label}>Rol</span>
         <div className={t.segment}>
-          {(['barista', 'lead'] as const).map((r) => (
-            <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{r === 'lead' ? 'Mağaza sorumlusu' : 'Barista'}</button>
+          {BARISTA_ROLES.map((r) => (
+            <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{BARISTA_ROLE_LABEL[r]}</button>
           ))}
         </div>
-        <span className="text-[11px] text-fg-3">Mağaza sorumlusu ekibinin ilerlemesini görür ve kendi mağazasına görev atayabilir.</span>
+        <span className="text-[11px] text-fg-3">Mağaza ve vardiya müdürü ekibinin ilerlemesini görür, kendi mağazasına görev atar ve Kahve Operasyonu'na talep açar. Giriş ekranında üstte görünürler.</span>
       </div>
       <ErrorText>{error}</ErrorText>
     </Sheet>
@@ -407,6 +520,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
 /* ------------------------------------------------------------------ */
 
 export const BaristasPage: React.FC = () => {
+  const me = useStaffSession();
   const { stores, modules, lessons, tracks } = useContent();
   const { baristas, progress } = useStaffData();
   const [storeFilter, setStoreFilter] = useState('');
@@ -422,7 +536,7 @@ export const BaristasPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title="Baristalar" action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Barista</button>} />
+      <PageTitle title="Baristalar" action={can(me.role, 'manageBaristas') ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAddOpen(true)}><Icon name="plus" size={15} /> Barista</button> : undefined} />
 
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[180px]">
@@ -511,27 +625,31 @@ export const BaristaDetailPage: React.FC = () => {
   if (!b) return <Page wide><PageTitle title="Barista bulunamadı" back="/baristalar" /></Page>;
   const p = progress[b.id] || EMPTY;
   const pct = overallPercent(modules, lessons, p);
-  const mine = attempts.filter((a) => a.baristaId === b.id && a.submittedAt);
+  const mine = attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided);
   const tasks = assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id));
   const first = b.name.split(' ')[0];
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } catch (e) { toast(errorText(e), 'negative'); } setBusy(false); };
+  const manage = can(s.role, 'manageBaristas');
+  const report = badgeReport({
+    tracks, modules, lessons, progress: p, attempts: mine, assignments: tasks, startedAt: b.startedAt, createdAt: b.createdAt
+  });
 
   return (
     <Page wide>
-      <PageTitle title={b.name} subtitle={`${stores.find((x) => x.id === b.storeId)?.name || ''} · ${b.role === 'lead' ? 'Mağaza sorumlusu' : 'Barista'} · Başlangıç ${b.startedAt || fmtDate(b.createdAt)}`} back />
+      <PageTitle title={b.name} subtitle={`${stores.find((x) => x.id === b.storeId)?.name || ''} · ${BARISTA_ROLE_LABEL[b.role]} · Başlangıç ${b.startedAt || fmtDate(b.createdAt)}`} back />
 
       <div className="flex flex-wrap gap-2">
         {b.active && <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAssignOpen(true)}><Icon name="flag" size={15} /> Görev ata</button>}
-        <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditOpen(true)}><Icon name="edit" size={15} /> Düzenle</button>
-        {b.active && (
+        {manage && <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditOpen(true)}><Icon name="edit" size={15} /> Düzenle</button>}
+        {manage && b.active && (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
             if (!confirm(`${first} için PIN sıfırlansın mı? Mevcut PIN hemen geçersiz olur.`)) return;
-            const r = await backend.resetBaristaPin(b);
+            const r = await backend.resetBaristaPin(b, s.name);
             setCode({ ...r, title: `${first} için yeni davet kodu`, hint: inviteHint(first) });
           })}><Icon name="key" size={15} /> {b.pinPending ? 'Yeni davet kodu' : 'PIN sıfırla'}</button>
         )}
-        {b.active ? (
+        {!manage ? null : b.active ? (
           <button className={`${t.btn} ${t.btnDanger} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
             if (!confirm(`${b.name} işten ayrıldı olarak işaretlensin mi?\n\nPIN'i tüm telefonlarda hemen geçersiz olur. Sınav geçmişi raporlarda kalır; istersen sonra geri alabilirsin.`)) return;
             await backend.setBaristaActive(b, false);
@@ -539,7 +657,7 @@ export const BaristaDetailPage: React.FC = () => {
           })}>İşten ayrıldı</button>
         ) : (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
-            const r = await backend.setBaristaActive(b, true);
+            const r = await backend.setBaristaActive(b, true, s.name);
             if (r.code) setCode({ code: r.code, expiresAt: r.expiresAt!, title: `${first} için davet kodu`, hint: inviteHint(first) });
           })}>Yeniden aktifleştir</button>
         )}
@@ -548,7 +666,10 @@ export const BaristaDetailPage: React.FC = () => {
       {b.pinPending && b.active && (
         <div className="flex gap-3 p-4 rounded-xl bg-caution-bg border border-caution-line text-[13px] leading-relaxed">
           <Icon name="key" size={18} className="text-caution mt-0.5" />
-          <span>{first} henüz davet kodunu kullanmadı. Kodu kaybettiyse "Yeni davet kodu" ile yenisini oluştur.</span>
+          <span>
+            {first} henüz davet kodunu kullanmadı{b.codeIssuedByName ? ` (kodu veren: ${b.codeIssuedByName}` : ''}{b.codeIssuedByName && b.inviteExpiresAt ? `, son gün ${fmtDate(b.inviteExpiresAt)})` : b.codeIssuedByName ? ')' : ''}.
+            {manage ? ' Kodu kaybettiyse "Yeni davet kodu" ile yenisini oluştur.' : ' Yeni kodu Bölge Müdürü verir.'}
+          </span>
         </div>
       )}
 
@@ -580,6 +701,10 @@ export const BaristaDetailPage: React.FC = () => {
         </Section>
 
         <div className="flex flex-col gap-5">
+          <TitleCard report={report} />
+          <Section label={`Rozetler · ${report.earned}/${report.badges.length}`}>
+            <BadgeGrid report={report} />
+          </Section>
           <Section label="Görevler">
             {tasks.length === 0 ? <Empty icon="flag" text="Atanmış görev yok." /> : (
               <div className={t.listGroup}>
@@ -646,8 +771,8 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
       </label>
       <label className={t.field}><span className={t.label}>Telefon</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
       <div className={t.segment}>
-        {(['barista', 'lead'] as const).map((r) => (
-          <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{r === 'lead' ? 'Mağaza sorumlusu' : 'Barista'}</button>
+        {BARISTA_ROLES.map((r) => (
+          <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{BARISTA_ROLE_LABEL[r]}</button>
         ))}
       </div>
       <ErrorText>{error}</ErrorText>
@@ -665,8 +790,12 @@ export const TasksPage: React.FC = () => {
   const { baristas, progress, assignments } = useStaffData();
   const [open, setOpen] = useState(false);
   const [storeFilter, setStoreFilter] = useState('');
+  // Bölge müdürünün ve mağaza müdürlerinin atadığı görevler de burada;
+  // Kahve Operasyon Müdürü kimin ne atadığını bu süzgeçle görür.
+  const [byFilter, setByFilter] = useState('');
+  const creators = [...new Map(assignments.map((a) => [a.createdBy, a.createdByName])).entries()];
 
-  const rows = assignments.filter((a) => !storeFilter || a.storeId === storeFilter).map((a) => {
+  const rows = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
     const targets = baristas.filter((b) => b.active && b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
     const done = targets.filter((b) => assignmentDone(a, progress[b.id]));
     return { a, targets, done };
@@ -676,10 +805,16 @@ export const TasksPage: React.FC = () => {
     <Page wide>
       <PageTitle title="Görevler" subtitle="Atanan dersler ve sınavlar; tamamlanma otomatik izlenir."
         action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Görev ata</button>} />
-      <select className={`${t.input} h-9 w-auto text-[14px] self-start`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
-        <option value="">Tüm mağazalar</option>
-        {stores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-      </select>
+      <div className="flex flex-wrap gap-2">
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
+          <option value="">Tüm mağazalar</option>
+          {stores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={byFilter} onChange={(e) => setByFilter(e.target.value)}>
+          <option value="">Atayan: herkes</option>
+          {creators.map(([uid, name]) => <option key={uid} value={uid}>{uid === s.uid ? `${name} (sen)` : name}</option>)}
+        </select>
+      </div>
       {rows.length === 0 ? <Empty icon="flag" text="Henüz görev atanmadı." /> : (
         <div className={t.listGroup}>
           {rows.map(({ a, targets, done }) => {
@@ -691,7 +826,7 @@ export const TasksPage: React.FC = () => {
                 <div className="flex-1 min-w-[200px]">
                   <div className="text-[14px] font-medium">{a.title}</div>
                   <div className="text-[12px] text-fg-3">
-                    {stores.find((x) => x.id === a.storeId)?.name} · {a.baristaId ? baristas.find((b) => b.id === a.baristaId)?.name : 'Tüm mağaza'} · {a.createdByName}
+                    {stores.find((x) => x.id === a.storeId)?.name} · {a.baristaId ? baristas.find((b) => b.id === a.baristaId)?.name : 'Tüm mağaza'} · Atayan: {a.createdByName}
                     {a.dueAt ? ` · ${overdue ? 'Gecikti' : relDays(a.dueAt)}` : ''}
                   </div>
                   {targets.length > 1 && (
@@ -703,7 +838,9 @@ export const TasksPage: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="w-24"><ProgressBar value={targets.length ? (done.length / targets.length) * 100 : 0} /></div>
                   <span className="text-[12px] tnum w-10">{done.length}/{targets.length}</span>
-                  <button className={t.iconBtn} title="Sil" onClick={async () => { if (confirm('Görev silinsin mi?')) await deleteDoc(doc(db, 'assignments', a.id)); }}><Icon name="trash" size={14} /></button>
+                  {(a.createdBy === s.uid || can(s.role, 'approve')) && (
+                    <button className={t.iconBtn} title="Sil" onClick={async () => { if (confirm('Görev silinsin mi?')) await deleteDoc(doc(db, 'assignments', a.id)); }}><Icon name="trash" size={14} /></button>
+                  )}
                 </div>
               </div>
             );

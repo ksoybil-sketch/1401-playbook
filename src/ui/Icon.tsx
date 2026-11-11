@@ -17,7 +17,8 @@ export type IconName =
   | 'lock' | 'clipboard' | 'package' | 'coffee'
   | 'logout' | 'play' | 'clock' | 'target' | 'users' | 'layers' | 'flag'
   | 'award' | 'image' | 'video' | 'list' | 'key' | 'phone' | 'refresh'
-  | 'calendar' | 'grid' | 'info' | 'arrowUp' | 'arrowDown' | 'copy' | 'backspace';
+  | 'calendar' | 'grid' | 'info' | 'arrowUp' | 'arrowDown' | 'copy' | 'backspace'
+  | 'wrench' | 'palette' | 'inbox' | 'stamp' | 'medal' | 'message';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   home: (
@@ -281,6 +282,38 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M21 5H8.5L2.5 12l6 7H21a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z" />
       <path d="m16.5 9.5-5 5M11.5 9.5l5 5" />
     </>
+  ),
+  wrench: (
+    <path d="M14.7 6.3a4 4 0 0 0 5 5L21 12.6a6 6 0 0 1-7.3 1.6l-6.9 6.9a2 2 0 0 1-2.9-2.9l6.9-6.9A6 6 0 0 1 12.4 4l1.3 1.3Z" />
+  ),
+  palette: (
+    <>
+      <path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z" />
+      <path d="M7.5 11h.01M10 7.5h.01M14.5 7.5h.01M17 11h.01" />
+    </>
+  ),
+  inbox: (
+    <>
+      <path d="M3 13.5 5.5 5h13L21 13.5V19a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19Z" />
+      <path d="M3 13.5h5l1.5 2.5h5l1.5-2.5h5" />
+    </>
+  ),
+  stamp: (
+    <>
+      <path d="M9.5 3.5h5l-1 7h-3Z" />
+      <path d="M4.5 14.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v2.5h-15Z" />
+      <path d="M5 20.5h14" />
+    </>
+  ),
+  medal: (
+    <>
+      <path d="M8 2.5 10.5 9M16 2.5 13.5 9" />
+      <circle cx="12" cy="15" r="5.5" />
+      <path d="m12 12.3.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3Z" />
+    </>
+  ),
+  message: (
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17h0A1.5 1.5 0 0 1 4 15.5Z" />
   ),
 };
 

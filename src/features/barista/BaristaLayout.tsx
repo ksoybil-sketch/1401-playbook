@@ -1,10 +1,13 @@
 import React, { useEffect, useRef } from 'react';
+import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
+import { useStoreRequests, hasNewReply } from './RequestsPage';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyBulletins } from './useBaristaData';
+import { finalizeExpired } from '../../api/exam';
 
 /** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
@@ -32,7 +35,13 @@ export const BaristaLayout: React.FC = () => {
   const logout = useSession((x) => x.logout);
   const { pathname } = useLocation();
   const { unread } = useMyBulletins();
+  const { items: requests } = useStoreRequests(isManager(s.role));
+  const replies = requests.filter(hasNewReply).length;
   useIdleLogout();
+
+  // Yarıda kalıp süresi dolmuş denemeler, oturum açılır açılmaz o ana kadarki
+  // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
+  useEffect(() => { finalizeExpired(s.baristaId).catch(() => {}); }, [s.baristaId]);
 
   // Ders ve sınav ekranları odaklı çalışır: alt menü gizlenir.
   const focused = pathname.startsWith('/ders/') || pathname.startsWith('/sinav/');
@@ -41,13 +50,14 @@ export const BaristaLayout: React.FC = () => {
   // müfredatın neresinde durduğu değil, içeceğin kendisi.
   //
   // Beş sekme sınırdır (telefonda 375px'de her biri ~70px). Mağaza
-  // sorumlusunun "Ekibim" ekranı bu yüzden "Ben" sekmesinin içinden açılır.
+  // ve vardiya müdürünün "Ekibim" ve "Talepler" ekranları bu yüzden "Ben"
+  // sekmesinin içinden açılır.
   const nav: { to: string; label: string; icon: IconName; badge?: number }[] = [
     { to: '/', label: 'Bugün', icon: 'home' },
     { to: '/receteler', label: 'Reçeteler', icon: 'coffee' },
     { to: '/akademi', label: 'Akademi', icon: 'cap' },
     { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread },
-    { to: '/sonuclarim', label: 'Ben', icon: 'user' }
+    { to: '/sonuclarim', label: 'Ben', icon: 'user', badge: replies }
   ];
 
   return (
@@ -57,7 +67,7 @@ export const BaristaLayout: React.FC = () => {
           <Avatar name={s.name} size={32} />
           <div className="flex-1 min-w-0 leading-tight">
             <div className="text-[14px] font-semibold truncate">{s.name}</div>
-            <div className="text-[11px] text-fg-3 truncate">{s.storeName}{s.role === 'lead' ? ' · Mağaza sorumlusu' : ''}</div>
+            <div className="text-[11px] text-fg-3 truncate">{s.storeName}{s.role !== 'barista' ? ` · ${BARISTA_ROLE_LABEL[s.role]}` : ''}</div>
           </div>
           <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
             <Icon name="logout" size={14} /> Çıkış

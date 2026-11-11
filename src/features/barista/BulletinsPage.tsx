@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { Bulletin, BulletinKind } from '../../../shared/types';
 import { useBaristaSession, useMyBulletins, useMyProgress, markBulletinRead } from './useBaristaData';
 import { RichText } from '../academy/LessonBlocks';
+import { PeopleList } from '../staff/BulletinPages';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Empty, Badge, fmtDate } from '../../ui/kit';
 import * as t from '../../ui/tokens';
@@ -58,7 +59,8 @@ const Card: React.FC<{ b: Bulletin; read: boolean; onOpen: () => void }> = ({ b,
             />
           )}
           {b.body && <RichText text={b.body} />}
-          {b.rows && b.rows.length > 0 && (
+          {b.people && b.people.length > 0 && <PeopleList people={b.people} />}
+          {b.rows && b.rows.length > 0 && b.board !== 'terfi' && (
             <div className={t.listGroup}>
               {b.rows.map((r, i) => (
                 <div key={i} className={`${t.listRowStatic} justify-between`}>

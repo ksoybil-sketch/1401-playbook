@@ -18,13 +18,10 @@ import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, sendPasswordResetEmail
 } from 'firebase/auth';
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where, writeBatch, addDoc
+  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch
 } from 'firebase/firestore';
 import { auth, db, secondaryAuth } from './firebase';
-import type {
-  AttemptReviewItem, Barista, BaristaRole, ExamQuestion, Module, Progress, Question
-} from '../../shared/types';
-import { MAX_EXAMS_PER_WEEK } from '../../shared/types';
+import type { Barista, BaristaRole, StaffRole } from '../../shared/types';
 
 /* ------------------------------------------------------------------ */
 /* Sabitler ve yardımcılar                                             */
@@ -34,7 +31,6 @@ import { MAX_EXAMS_PER_WEEK } from '../../shared/types';
 const ACCOUNT_DOMAIN = 'hesap.playbook1401.app';
 const INVITE_TTL_MS = 7 * 86400000;
 const PAIRING_TTL_MS = 30 * 60000;
-const DAY_MS = 86400000;
 
 /**
  * Demo ortamı (playbook-demo-1401). Yalnızca `.env.demo` ile derlenen pakette
@@ -55,17 +51,6 @@ function randomToken(len = 32): string {
   crypto.getRandomValues(a);
   return Array.from(a, (x) => x.toString(36).padStart(2, '0')).join('').slice(0, len);
 }
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const r = new Uint32Array(1);
-    crypto.getRandomValues(r);
-    const j = r[0] % (i + 1);
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 export class AppError extends Error {
   constructor(message: string, public code?: string, public data?: unknown) { super(message); }
 }
@@ -154,7 +139,7 @@ async function deleteInvites(baristaId: string, batch: ReturnType<typeof writeBa
   old.forEach((d) => batch.delete(d.ref));
 }
 
-async function createBarista(input: { name: string; storeId: string; role: BaristaRole; phone?: string }) {
+async function createBarista(input: { name: string; storeId: string; role: BaristaRole; phone?: string; createdByName?: string }) {
   const name = input.name.trim();
   if (name.length < 2) throw new AppError('Ad soyad gir.');
   if (!input.storeId) throw new AppError('Mağaza seç.');
@@ -165,7 +150,8 @@ async function createBarista(input: { name: string; storeId: string; role: Baris
   batch.set(ref, {
     name, storeId: input.storeId, role: input.role, phone: input.phone?.trim() || '',
     active: true, pinPending: true, uid: acc.uid, authEmail: acc.email, accountSeq: 1,
-    startedAt: new Date().toISOString().slice(0, 10), createdAt: now
+    startedAt: new Date().toISOString().slice(0, 10), createdAt: now,
+    inviteExpiresAt: acc.expiresAt, codeIssuedByName: input.createdByName || ''
   });
   batch.set(doc(db, 'users', acc.uid), { role: input.role, baristaId: ref.id, storeId: input.storeId, active: true, createdAt: now });
   batch.set(doc(db, 'progress', ref.id), { baristaId: ref.id, storeId: input.storeId, lessons: {}, modules: {}, updatedAt: now });
@@ -175,21 +161,21 @@ async function createBarista(input: { name: string; storeId: string; role: Baris
 }
 
 /** PIN sıfırlama: yeni hesap + yeni davet; eski hesap pasifleşir (eski PIN artık işe yaramaz). */
-async function resetBaristaPin(b: Barista) {
+async function resetBaristaPin(b: Barista, issuedBy?: string) {
   const seq = (b.accountSeq || 1) + 1;
   const acc = await prepareAccount(b.id, seq, b.storeId);
   const batch = writeBatch(db);
   await deleteInvites(b.id, batch);
   if (b.uid) batch.update(doc(db, 'users', b.uid), { active: false });
   batch.set(doc(db, 'users', acc.uid), { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: Date.now() });
-  batch.update(doc(db, 'baristas', b.id), { uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, deactivatedAt: null });
+  batch.update(doc(db, 'baristas', b.id), { uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, deactivatedAt: null, inviteExpiresAt: acc.expiresAt, ...(issuedBy ? { codeIssuedByName: issuedBy } : {}) });
   batch.set(doc(db, 'invites', acc.code), acc.invite);
   await batch.commit();
   return { code: acc.code, expiresAt: acc.expiresAt };
 }
 
-async function setBaristaActive(b: Barista, active: boolean): Promise<{ code?: string; expiresAt?: number }> {
-  if (active) return resetBaristaPin(b);
+async function setBaristaActive(b: Barista, active: boolean, issuedBy?: string): Promise<{ code?: string; expiresAt?: number }> {
+  if (active) return resetBaristaPin(b, issuedBy);
   const batch = writeBatch(db);
   await deleteInvites(b.id, batch);
   batch.update(doc(db, 'baristas', b.id), { active: false, deactivatedAt: Date.now() });
@@ -258,109 +244,21 @@ async function needsBootstrap(): Promise<boolean> {
   return snap ? !snap.exists() : false;
 }
 
-/** [Admin] Yeni Kahve Operasyonu kullanıcısı; şifresini e-postadaki bağlantıyla kendisi belirler. */
-async function createStaff(name: string, email: string): Promise<void> {
+/**
+ * [Kahve Operasyon Müdürü] Ekibe yeni kişi; şifresini e-postadaki bağlantıyla
+ * kendisi belirler. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
+ */
+async function createStaff(name: string, email: string, role: StaffRole = 'ops'): Promise<void> {
   const uid = await createAccount(email.trim(), randomToken(24));
-  await setDoc(doc(db, 'users', uid), { role: 'ops', name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
+  await setDoc(doc(db, 'users', uid), { role, name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
   auth.languageCode = 'tr';
   await sendPasswordResetEmail(auth, email.trim());
-}
-
-/* ------------------------------------------------------------------ */
-/* Sınav (telefonda puanlanır)                                         */
-/* ------------------------------------------------------------------ */
-
-interface ExamKey { order: number[]; q: Question }
-const examKeys = new Map<string, { moduleId: string; passScore: number; keys: Record<string, ExamKey> }>();
-
-async function startExam(mod: Module, who: { baristaId: string; storeId: string; name: string }) {
-  const pSnap = await getDoc(doc(db, 'progress', who.baristaId));
-  const progress = (pSnap.data() as Progress | undefined) || { modules: {} as Progress['modules'] };
-  if (mod.prerequisiteId && !progress.modules?.[mod.prerequisiteId]) {
-    throw new AppError('Bu sınav kilitli. Önce önceki modülü geçmelisin.');
-  }
-  const since = Date.now() - 7 * DAY_MS;
-  const recent = await getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('startedAt', '>=', since)));
-  if (recent.size >= MAX_EXAMS_PER_WEEK) {
-    const oldest = Math.min(...recent.docs.map((d) => d.data().startedAt as number));
-    throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
-  }
-  const qSnap = await getDocs(query(collection(db, 'questions'), where('moduleId', '==', mod.id)));
-  if (qSnap.empty) throw new AppError('Bu modülde henüz soru yok.');
-
-  const missed = new Set<string>();
-  recent.docs.forEach((d) => ((d.data().mistakes || []) as AttemptReviewItem[]).forEach((m) => missed.add(m.questionId)));
-
-  // Daha önce yanlış yapılan sorular öne alınır ama sınavın EN ÇOK ÜÇTE
-  // BİRİNİ kaplar. Sınırsız bırakılırsa tekrar sınavı neredeyse aynı
-  // sorulardan oluşuyor; barista konuyu değil o soruları öğreniyor.
-  const size = Math.min(mod.examSize || 10, qSnap.size);
-  const missedPool = shuffle(qSnap.docs.filter((d) => missed.has(d.id)));
-  const freshPool = shuffle(qSnap.docs.filter((d) => !missed.has(d.id)));
-  const fromMissed = Math.min(missedPool.length, Math.floor(size / 3));
-  const picked = shuffle([
-    ...missedPool.slice(0, fromMissed),
-    ...freshPool.slice(0, size - fromMissed),
-    // Havuz tekrar sorularla doluysa kalanı eski sorulardan tamamla.
-    ...missedPool.slice(fromMissed)
-  ].slice(0, size));
-
-  const keys: Record<string, ExamKey> = {};
-  const questions: ExamQuestion[] = picked.map((d) => {
-    const q = { id: d.id, ...d.data() } as Question;
-    const idx = q.options.map((_, i) => i);
-    const order = q.type === 'truefalse' ? idx : shuffle(idx);
-    keys[d.id] = { order, q };
-    return { id: d.id, type: q.type, prompt: q.prompt, imageUrl: q.imageUrl || undefined, options: order.map((i) => q.options[i]) };
-  });
-
-  const ref = await addDoc(collection(db, 'attempts'), {
-    baristaId: who.baristaId, baristaName: who.name, storeId: who.storeId,
-    moduleId: mod.id, moduleTitle: mod.title, startedAt: Date.now(), total: picked.length,
-    questionIds: picked.map((d) => d.id),
-    // Güvenlik kuralı "submittedAt == null" ile henüz bitmemiş denemeyi ayırt
-    // eder; alan hiç yoksa bu karşılaştırma hata verir, bu yüzden açıkça null.
-    submittedAt: null
-  });
-  examKeys.set(ref.id, { moduleId: mod.id, passScore: mod.passScore, keys });
-  return { attemptId: ref.id, passScore: mod.passScore, questions };
-}
-
-async function submitExam(attemptId: string, answers: Record<string, number>, who: { baristaId: string; storeId: string }) {
-  const ex = examKeys.get(attemptId);
-  if (!ex) throw new AppError('Sınav oturumu bulunamadı (uygulama yeniden açılmış olabilir). Sınavı yeniden başlat.');
-  let correct = 0;
-  const mistakes: AttemptReviewItem[] = [];
-  for (const [qid, k] of Object.entries(ex.keys)) {
-    const shown = answers[qid];
-    const given = Number.isInteger(shown) && k.order[shown] !== undefined ? k.order[shown] : null;
-    if (given === k.q.answer) correct++;
-    else mistakes.push({ questionId: qid, prompt: k.q.prompt, options: k.q.options, given, answer: k.q.answer, explanation: k.q.explanation || '' });
-  }
-  const total = Object.keys(ex.keys).length;
-  const score = total ? Math.round((correct / total) * 100) : 0;
-  const passed = score >= ex.passScore;
-  const now = Date.now();
-  await updateDoc(doc(db, 'attempts', attemptId), { submittedAt: now, correct, score, passed, mistakes });
-  if (passed) {
-    const pRef = doc(db, 'progress', who.baristaId);
-    await runTransaction(db, async (tx) => {
-      const p = await tx.get(pRef);
-      const prev = (p.data() as Progress | undefined)?.modules?.[ex.moduleId];
-      if (!prev || prev.score < score) {
-        tx.update(pRef, { [`modules.${ex.moduleId}`]: { score, passedAt: prev?.passedAt || now }, updatedAt: now });
-      }
-    });
-  }
-  examKeys.delete(attemptId);
-  return { score, correct, total, passed, passScore: ex.passScore, mistakes };
 }
 
 export const backend = {
   createPairingCode, pairDevice, deviceSignIn, revokeDevice,
   createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, redeemInvite,
-  bootstrapAdmin, needsBootstrap, createStaff,
-  startExam, submitExam
+  bootstrapAdmin, needsBootstrap, createStaff
 };
 
 /** Kullanıcıya gösterilecek hata mesajı. */

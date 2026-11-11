@@ -12,6 +12,8 @@
  *   attempts/{attemptId}          Sınav denemeleri — sadece sunucu yazar
  *   progress/{baristaId}          Ders tamamlama + geçilen modüller
  *   assignments/{assignmentId}    Görevler
+ *   proposals/{id}                Onay bekleyen içerik/bülten değişiklikleri
+ *   requests/{id}                 Mağaza talepleri (arıza, servis, malzeme…)
  *
  *   users/{uid}                   Her hesabın rolü (bkz. Profile)
  *   pairingCodes/{code}           Telefon eşleştirme (30 dk, tek kullanım)
@@ -20,8 +22,10 @@
  *   config/bootstrap              İlk yönetici oluşturuldu mu
  */
 
-export type StaffRole = 'ops' | 'admin';
-export type BaristaRole = 'barista' | 'lead';
+/** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
+export type StaffRole = 'developer' | 'director' | 'regional' | 'ops' | 'admin';
+/** lead: mağaza müdürü · shift: vardiya müdürü. */
+export type BaristaRole = 'barista' | 'lead' | 'shift';
 export type Role = StaffRole | BaristaRole | 'store';
 
 /**
@@ -70,6 +74,10 @@ export interface Barista {
   uid: string;
   authEmail: string;
   accountSeq: number;
+  /** Son verilen davet kodunun geçerlilik sonu — "kod bekleyenler" takibi. */
+  inviteExpiresAt?: number;
+  /** Kodu kim verdi (Bölge Müdürü). */
+  codeIssuedByName?: string;
 }
 
 export interface Track {
@@ -169,6 +177,14 @@ export interface Lesson {
 
 export type QuestionType = 'single' | 'truefalse';
 
+/**
+ * Sorunun neyi ölçtüğü. Sınav seçimi türler arasında dengelenir; aksi hâlde
+ * havuzda çok olan tür (ölçü) sınavı tek başına kaplıyordu.
+ */
+export type QuestionKind =
+  | 'olcu' | 'porsiyon' | 'malzeme' | 'adim' | 'teknik' | 'katman' | 'servis'
+  | 'kavram' | 'durum' | 'kural' | 'yetki' | 'zaman' | 'genel';
+
 export interface Question {
   id: string;
   moduleId: string;
@@ -179,6 +195,7 @@ export interface Question {
   /** Doğru seçeneğin indeksi. */
   answer: number;
   explanation?: string;
+  kind?: QuestionKind;
 }
 
 /** Sınav sırasında telefona giden soru — doğru cevap içermez. */
@@ -214,6 +231,19 @@ export interface Attempt {
   correct?: number;
   /** Sadece yanlış yapılan sorular. */
   mistakes?: AttemptReviewItem[];
+  /** Sorulan sorular (sırasıyla). Puanlama bunlardan yeniden kurulur. */
+  questionIds?: string[];
+  /** questionId → şıkların gösterildiği sıra (özgün indeksler). */
+  orders?: Record<string, number[]>;
+  /** questionId → işaretlenen şık (gösterilen sıradaki indeks). Her işaretlemede yazılır. */
+  answers?: Record<string, number>;
+  /** Son teslim anı (ms): soru sayısı × 1,5 dk. */
+  deadline?: number;
+  passScore?: number;
+  /** Süre dolduğu için o ana kadarki cevaplarla otomatik puanlandı. */
+  timedOut?: boolean;
+  /** Eski sürümden kalan, puanlanamayan deneme: haftalık haktan sayılmaz. */
+  voided?: boolean;
 }
 
 export interface Progress {
@@ -248,6 +278,13 @@ export interface Bulletin {
   /** Liderlik bülteni için sıralama satırları. */
   rows?: { label: string; value: string }[];
   /**
+   * Liderlik bülteninin biçimi: satış sıralaması (rows) ya da terfi /
+   * başarı duyurusu (people). Eski bültenlerde yok = 'satis'.
+   */
+  board?: 'satis' | 'terfi';
+  /** Terfi/tebrik edilen kişiler: "Vardiya müdürlüğüne terfi etti". */
+  people?: { baristaId?: string | null; name: string; storeName?: string; note: string }[];
+  /**
    * Bültene eklenen görsel. Ders fotoğrafları gibi küçültülüp data URL
    * olarak belgeye gömülür (Spark'ta Storage yok, bkz. src/lib/media.ts).
    */
@@ -281,3 +318,94 @@ export interface Assignment {
 }
 
 export const MAX_EXAMS_PER_WEEK = 3;
+
+/* ------------------------------------------------------------------ */
+/* Onay akışı                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Bir belgeye yapılacak tek işlem. `set` belgeyi baştan yazar. */
+export interface ChangeOp {
+  op: 'set' | 'update' | 'delete';
+  col: 'lessons' | 'modules' | 'tracks' | 'questions' | 'bulletins';
+  id: string;
+  data?: Record<string, unknown>;
+}
+
+export type ProposalKind = 'lesson' | 'module' | 'track' | 'question' | 'bulletin' | 'order';
+export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+/**
+ * proposals/{id} — Bölge müdürü ya da operasyon ekibinin yaptığı, Kahve
+ * Operasyon Müdürü'nün onayını bekleyen değişiklik. Onaylanınca `ops`
+ * olduğu gibi (ya da müdürün düzelttiği hâliyle) uygulanır.
+ */
+export interface Proposal {
+  id: string;
+  kind: ProposalKind;
+  title: string;
+  /** "Ders düzenlendi", "Yeni soru" gibi kısa açıklama. */
+  summary: string;
+  ops: ChangeOp[];
+  status: ProposalStatus;
+  createdAt: number;
+  createdBy: string;
+  createdByName: string;
+  updatedAt?: number;
+  reviewedAt?: number;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  /** Müdür yayınlamadan önce değiştirdiyse true. */
+  editedOnReview?: boolean;
+  reviewNote?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mağaza talepleri                                                    */
+/* ------------------------------------------------------------------ */
+
+export type RequestCategory = 'ariza' | 'servis' | 'malzeme' | 'personel' | 'diger';
+/**
+ * İşletme kitapçığındaki akış: şube talebi açar → Bölge Müdürü görür ve
+ * çözümü organize eder → yetkili servis gerekiyorsa Kahve Operasyon
+ * Müdürü onaylar (approval) → çözüldü.
+ */
+export type RequestStatus = 'open' | 'seen' | 'in_progress' | 'approval' | 'done' | 'rejected';
+export type RequestPriority = 'normal' | 'urgent';
+
+export interface RequestNote {
+  at: number;
+  by: string;
+  byName: string;
+  /** Kahve Operasyonu mu yazdı, mağaza mı. */
+  side: 'ops' | 'store';
+  text: string;
+  /** Bu notla birlikte durum değiştiyse. */
+  status?: RequestStatus;
+}
+
+/**
+ * requests/{id} — Mağaza müdürü / vardiya müdürünün Kahve Operasyonu'na
+ * açtığı iş: arızalı ekipman, teknik servis, malzeme, personel. Operasyon
+ * görür, durumunu değiştirir, yanıt yazar; mağaza yanıtlayabilir.
+ */
+export interface StoreRequest {
+  id: string;
+  storeId: string;
+  storeName: string;
+  category: RequestCategory;
+  priority: RequestPriority;
+  title: string;
+  detail: string;
+  imageUrl?: string;
+  /** Arıza talebinde ekipman: kahve makinesi, değirmen, fırın… */
+  equipment?: string;
+  status: RequestStatus;
+  notes: RequestNote[];
+  createdAt: number;
+  createdBy: string;
+  createdByName: string;
+  updatedAt: number;
+  /** Son yanıtı kim, hangi taraftan yazdı — okunmamış rozeti için. */
+  lastSide: 'ops' | 'store';
+  closedAt?: number | null;
+}

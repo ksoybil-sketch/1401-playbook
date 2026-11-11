@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
+import { TitleCard, BadgeGrid, TitleChip, useBadgeReport } from '../shared/Badges';
+import { badgeReport } from '../../lib/badges';
+import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
-import { useQueryLive } from '../../hooks/useFirestore';
+import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
 import { assignmentDone, isOverdue, nextLesson, overallPercent, moduleState } from '../../lib/progress';
 import { Icon } from '../../ui/Icon';
-import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDate, fmtDateTime } from '../../ui/kit';
+import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyAssignments, useMyAttempts, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
@@ -165,20 +168,23 @@ const AssignmentRow: React.FC<{ a: Assignment; progress: Progress }> = ({ a, pro
 
 export const ResultsPage: React.FC = () => {
   const s = useBaristaSession();
-  const { items: attempts, loading } = useMyAttempts(30);
+  // Rozetler tüm sınav geçmişinden hesaplanır (bkz. src/lib/badges.ts).
+  const { items: attempts, loading } = useMyAttempts(300);
   const { progress } = useMyProgress();
-  const { modules } = useContent();
+  const { items: myTasks } = useMyAssignments();
+  const { data: me } = useDocLive<Barista>(`baristas/${s.baristaId}`);
+  const { tracks, modules, lessons } = useContent();
   const [open, setOpen] = useState<string | null>(null);
-  const submitted = attempts.filter((a) => a.submittedAt);
-  const passed = Object.entries(progress.modules || {});
+  const submitted = attempts.filter((a) => a.submittedAt && !a.voided);
+  const report = useBadgeReport({ tracks, modules, lessons, progress, attempts: submitted, assignments: myTasks, startedAt: me?.startedAt, createdAt: me?.createdAt });
 
   return (
     <Page>
-      <PageTitle title={s.name.split(' ')[0]} subtitle={`${s.storeName}${s.role === 'lead' ? ' · Mağaza sorumlusu' : ''}`} />
+      <PageTitle title={s.name.split(' ')[0]} subtitle={`${s.storeName}${s.role !== 'barista' ? ` · ${BARISTA_ROLE_LABEL[s.role]}` : ''}`} />
 
-      {/* Alt menüde beş sekmeden fazlası sığmıyor; mağaza sorumlusunun
-          ekip ekranı buradan açılıyor. */}
-      {s.role === 'lead' && (
+      {/* Alt menüde beş sekmeden fazlası sığmıyor; mağaza ve vardiya
+          müdürünün ekip ve talep ekranları buradan açılıyor. */}
+      {isManager(s.role) && (
         <div className={t.listGroup}>
           <Link to="/ekip" className={t.listRow}>
             <span className={t.iconChip('accent')}><Icon name="users" size={16} /></span>
@@ -188,25 +194,21 @@ export const ResultsPage: React.FC = () => {
             </div>
             <Icon name="chevronRight" size={16} className={t.rowChevron} />
           </Link>
+          <Link to="/talepler" className={t.listRow}>
+            <span className={t.iconChip('caution')}><Icon name="wrench" size={16} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-medium">Talepler</div>
+              <div className="text-[12px] text-fg-3">Arıza, servis, malzeme — Kahve Operasyonu'na ilet</div>
+            </div>
+            <Icon name="chevronRight" size={16} className={t.rowChevron} />
+          </Link>
         </div>
       )}
 
-      <Section label={`Rozetler · ${passed.length}`}>
-        {passed.length === 0 ? (
-          <Empty icon="award" text="İlk modül sınavını geçtiğinde rozetin burada görünecek." />
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {passed.map(([mid, r]) => (
-              <div key={mid} className={`${t.card} p-3.5 flex items-center gap-3`}>
-                <span className={t.iconChip('positive')}><Icon name="award" size={16} /></span>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold leading-snug line-clamp-2">{modules.find((m) => m.id === mid)?.title || 'Modül'}</div>
-                  <div className="text-[11px] text-fg-3 tnum">%{r.score} · {fmtDate(r.passedAt)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      <TitleCard report={report} self />
+
+      <Section label={`Rozetler · ${report.earned}/${report.badges.length}`}>
+        <BadgeGrid report={report} />
       </Section>
 
       <Section label="Sınav geçmişi">
@@ -235,7 +237,7 @@ export const AttemptRow: React.FC<{ a: Attempt; open: boolean; onToggle: () => v
       {(a.mistakes?.length || 0) > 0 && <Icon name={open ? 'arrowUp' : 'arrowDown'} size={15} className="text-fg-3" />}
     </button>
     {open && (a.mistakes?.length || 0) > 0 && (
-      <div className="border-t border-line p-3 flex flex-col gap-2 bg-black/10">
+      <div className="border-t border-line p-3 flex flex-col gap-2 bg-panel">
         {a.mistakes!.map((m) => <MistakeCard key={m.questionId} m={m} />)}
       </div>
     )}
@@ -243,7 +245,7 @@ export const AttemptRow: React.FC<{ a: Attempt; open: boolean; onToggle: () => v
 );
 
 /* ------------------------------------------------------------------ */
-/* Ekibim (mağaza sorumlusu)                                           */
+/* Ekibim (mağaza / vardiya müdürü)                                   */
 /* ------------------------------------------------------------------ */
 
 export const TeamPage: React.FC = () => {
@@ -260,10 +262,12 @@ export const TeamPage: React.FC = () => {
     query(collection(db, 'progress'), where('storeId', '==', s.storeId)),
     `team-p-${s.storeId}`
   );
+  // Unvanlar tüm geçmişten hesaplanır; listede yalnızca son 20 sınav gösterilir.
   const { data: attempts } = useQueryLive<Attempt>(
-    query(collection(db, 'attempts'), where('storeId', '==', s.storeId), orderBy('startedAt', 'desc'), limit(20)),
+    query(collection(db, 'attempts'), where('storeId', '==', s.storeId), orderBy('startedAt', 'desc'), limit(400)),
     `team-a-${s.storeId}`
   );
+  const { tracks } = useContent();
   const { data: assignments } = useQueryLive<Assignment>(
     query(collection(db, 'assignments'), where('storeId', '==', s.storeId)),
     `team-asg-${s.storeId}`
@@ -288,11 +292,15 @@ export const TeamPage: React.FC = () => {
             const mine = assignments.filter((a) => !a.baristaId || a.baristaId === b.id);
             const openTasks = mine.filter((a) => !assignmentDone(a, p)).length;
             const overdue = mine.filter((a) => isOverdue(a, assignmentDone(a, p))).length;
+            const report = badgeReport({
+              tracks, modules, lessons, progress: p || { baristaId: b.id, storeId: b.storeId, lessons: {}, modules: {}, updatedAt: 0 },
+              attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided), assignments: mine, startedAt: b.startedAt, createdAt: b.createdAt
+            });
             return (
               <div key={b.id} className={t.listRowStatic}>
                 <Avatar name={b.name} size={36} dim={b.pinPending} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium truncate">{b.name}</div>
+                  <div className="text-[14px] font-medium truncate flex items-center gap-1.5">{b.name} <TitleChip report={report} /> <span className="text-[11px] text-fg-3 font-normal">{report.earned} rozet</span></div>
                   <ProgressBar value={pct} className="mt-1.5 max-w-[180px]" />
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -306,11 +314,11 @@ export const TeamPage: React.FC = () => {
       </Section>
 
       <Section label="Son sınavlar">
-        {attempts.filter((a) => a.submittedAt).length === 0 ? (
+        {attempts.filter((a) => a.submittedAt && !a.voided).length === 0 ? (
           <Empty icon="clipboard" text="Ekipte henüz sınav sonucu yok." />
         ) : (
           <div className="flex flex-col gap-2">
-            {attempts.filter((a) => a.submittedAt).map((a) => (
+            {attempts.filter((a) => a.submittedAt && !a.voided).slice(0, 20).map((a) => (
               <AttemptRow key={a.id} a={a} showName open={openAttempt === a.id} onToggle={() => setOpenAttempt(openAttempt === a.id ? null : a.id)} />
             ))}
           </div>

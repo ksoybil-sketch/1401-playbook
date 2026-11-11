@@ -128,3 +128,36 @@ if (dupes.length) {
   process.exit(1);
 }
 console.log('✓ Kimlik denetimi: çakışan kimlik yok');
+
+/* ------------------------------------------------------------------ */
+/* Soru türü çeşitliliği                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sınav türler arasında dengeli seçilir (src/api/exam.ts); ama havuzda tek
+ * tür varsa dengelenecek bir şey kalmaz. Her modülde en az üç tür olmalı.
+ * Örnek: Demleme ve Türk Kahveleri sınavı eskiden neredeyse tümüyle
+ * gramaj sorusuydu.
+ */
+const kindProblems = [];
+console.log('\nSoru türleri (bir sınavda her türden yaklaşık kaç soru gelir):');
+for (const m of data.modules) {
+  const qs = data.questions.filter((q) => q.moduleId === m.id);
+  const groups = {};
+  qs.forEach((q) => { groups[q.kind || 'yok'] = (groups[q.kind || 'yok'] || 0) + 1; });
+  if (groups.yok) kindProblems.push(`${m.title}: ${groups.yok} sorunun türü yok`);
+  const kinds = Object.keys(groups).filter((k) => k !== 'yok');
+  if (kinds.length < 3) kindProblems.push(`${m.title}: yalnızca ${kinds.length} soru türü var (en az 3)`);
+  // Sınavdaki tahmini dağılım: türlerden sırayla birer soru
+  const left = { ...groups }; const take = {}; let n = 0;
+  while (n < m.examSize && Object.values(left).some((v) => v > 0)) {
+    for (const k of Object.keys(left)) if (left[k] > 0 && n < m.examSize) { left[k]--; take[k] = (take[k] || 0) + 1; n++; }
+  }
+  console.log(`  ${m.title.padEnd(36).slice(0, 36)} ${Object.entries(take).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+}
+if (kindProblems.length) {
+  console.error(`\n✗ Soru türü denetimi: ${kindProblems.length} sorun\n`);
+  kindProblems.forEach((p) => console.error('   ' + p));
+  process.exit(1);
+}
+console.log('✓ Soru türü denetimi: her modülde en az üç tür var');

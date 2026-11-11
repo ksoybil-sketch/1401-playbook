@@ -5,6 +5,7 @@ import { auth, db } from '../api/firebase';
 import { backend } from '../api/backend';
 import { loadDevice, saveDevice, clearDevice, type StoredDevice } from '../api/device';
 import type { Barista, BaristaRole, Profile, StaffRole } from '../../shared/types';
+import { STAFF_ROLES, BARISTA_ROLES } from '../lib/roles';
 
 /**
  * Oturum durumu — uygulamanın hangi ekran setini göstereceğini belirler.
@@ -83,8 +84,8 @@ export const useSession = create<SessionState>((set, get) => {
       return;
     }
 
-    if (profile.role === 'ops' || profile.role === 'admin') {
-      set({ session: { kind: 'staff', uid: user.uid, role: profile.role, name: profile.name || user.email || 'Yönetici', email: user.email || '' } });
+    if (STAFF_ROLES.includes(profile.role as StaffRole)) {
+      set({ session: { kind: 'staff', uid: user.uid, role: profile.role as StaffRole, name: profile.name || user.email || 'Yönetici', email: user.email || '' } });
       return;
     }
     if (profile.role === 'store') {
@@ -95,7 +96,7 @@ export const useSession = create<SessionState>((set, get) => {
       set({ session: { kind: 'store', uid: user.uid, storeId: profile.storeId!, storeName: name } });
       return;
     }
-    if (profile.role === 'barista' || profile.role === 'lead') {
+    if (BARISTA_ROLES.includes(profile.role as BaristaRole)) {
       const [b, name] = await Promise.all([
         getDoc(doc(db, 'baristas', profile.baristaId!)).catch(() => null),
         storeName(profile.storeId!)
@@ -103,7 +104,7 @@ export const useSession = create<SessionState>((set, get) => {
       set({
         session: {
           kind: 'barista', uid: user.uid, storeId: profile.storeId!, storeName: name,
-          baristaId: profile.baristaId!, role: profile.role, name: b?.data()?.name || 'Barista'
+          baristaId: profile.baristaId!, role: profile.role as BaristaRole, name: b?.data()?.name || 'Barista'
         }
       });
       return;

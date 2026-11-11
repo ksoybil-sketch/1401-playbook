@@ -21,12 +21,28 @@ service cloud.firestore {
     /** users/{uid} belgem — yoksa (silinmiş/pasif hesap) false döner. */
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function myRole() { return signedIn() ? me().role : null; }
-    function isStaff() { return myRole() in ['ops', 'admin']; }
-    /** Yalnızca uygulama yürütücüsü; sınav kaydı silmek gibi geri dönüşsüz işler. */
-    function isAdmin() { return myRole() == 'admin'; }
-    function isStoreSession() { return myRole() in ['store', 'barista', 'lead']; }
-    function isBarista() { return myRole() in ['barista', 'lead']; }
-    function isLead() { return myRole() == 'lead'; }
+    // Yetki sıralaması — bkz. src/lib/roles.ts (ikisi birlikte değişmeli).
+    //   developer  uygulama geliştiricisi; dağıtıma kadar hiçbir kurala takılmaz
+    //   admin      eski sürümden kalan tam yetkili rol (developer gibi)
+    //   director   Kahve Operasyon Müdürü: yayınlar, onaylar, ekibi yönetir
+    //   regional   Bölge Müdürü: barista/mağaza/kod işleri, talepler
+    //   ops        Kahve Operasyonu ekibi: görür, görev atar, öneri yapar
+    function isStaff() { return myRole() in ['developer', 'admin', 'director', 'regional', 'ops']; }
+    /** Geri dönüşsüz işler (sınav kaydı silmek) ve rol üstü her şey. */
+    function isAdmin() { return myRole() in ['developer', 'admin']; }
+    /** İçeriği ve bülteni doğrudan yayınlar, önerileri onaylar. */
+    function isDirector() { return myRole() in ['developer', 'admin', 'director']; }
+    /** Barista, mağaza telefonu ve davet kodları. */
+    function canManageBaristas() { return myRole() in ['developer', 'admin', 'regional']; }
+    /** Mağaza taleplerini yanıtlar, durumunu değiştirir. */
+    function canHandleRequests() { return myRole() in ['developer', 'admin', 'director', 'regional']; }
+    function isStoreSession() { return myRole() in ['store', 'barista', 'lead', 'shift']; }
+    function isBarista() { return myRole() in ['barista', 'lead', 'shift']; }
+    /** Mağaza müdürü ve vardiya müdürü. */
+    function isLead() { return myRole() in ['lead', 'shift']; }
+    function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
+    /** Kahve Operasyon Müdürü'nün ekibe verebileceği roller. */
+    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'regional', 'ops', 'admin'] : ['regional', 'ops']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
@@ -37,13 +53,18 @@ service cloud.firestore {
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
       allow list: if isStaff();
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
+      // Sonrasında: ekip hesaplarını Kahve Operasyon Müdürü, mağaza/barista
+      // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
       allow create: if (signedIn() && request.auth.uid == uid && request.resource.data.role == 'admin'
                           && !exists(/databases/$(database)/documents/config/bootstrap))
-                      || isStaff();
+                      || (isDirector() && request.resource.data.role in teamRolesFor())
+                      || (canManageBaristas() && request.resource.data.role in storeRoles());
       // Cihaz/barista hesapları kendi "son görülme" zamanını her girişte;
       // mağaza telefonu ayrıca eşleştirme kodunu kullandığında kendi
       // paired/label alanlarını günceller (bkz. backend.ts pairDevice).
-      allow update: if isStaff()
+      allow update: if isAdmin()
+                      || (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
+                      || (canManageBaristas() && resource.data.role in storeRoles() && request.resource.data.role in storeRoles())
                       || (signedIn() && request.auth.uid == uid
                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label']));
       allow delete: if false;
@@ -55,39 +76,78 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Yapay zekâ anahtarı (dosyadan ders üretimi, bkz. src/lib/aiLesson.ts).
+    // Barista ve mağaza oturumları hiç okuyamaz.
+    match /config/ai {
+      allow get: if isDirector() || myRole() == 'regional';
+      allow write: if isDirector();
+    }
+
     match /stores/{storeId} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if canManageBaristas();
     }
 
     match /baristas/{baristaId} {
       allow read: if isStaff() || inStore(resource.data.storeId);
-      allow create, delete: if isStaff();
+      allow create, delete: if canManageBaristas();
       // Davet kodunu kullanan barista kendi "pinPending" bayrağını kapatır
-      // (bkz. backend.ts redeemInvite); başka her şeyi yalnızca personel değiştirir.
-      allow update: if isStaff()
+      // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
+      allow update: if canManageBaristas()
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinPending']));
     }
 
-    // --- İçerik: herkes okur, yönetici yazar ---------------------------
+    // --- İçerik: herkes okur, Kahve Operasyon Müdürü yayınlar ------------
+    // Bölge müdürü ve ekip doğrudan yazamaz; değişiklikleri proposals'a
+    // düşer (bkz. src/api/changes.ts).
     match /tracks/{id} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if isDirector();
     }
     match /modules/{id} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if isDirector();
     }
     match /lessons/{id} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if isDirector();
     }
     // Soru bankası: sunucu olmadığı için sınav telefonda puanlanır, bu
     // yüzden mağaza oturumları da okuyabilmek zorunda (cevap anahtarı dahil).
     match /questions/{id} {
       allow read: if isStaff() || isStoreSession();
-      allow write: if isStaff();
+      allow write: if isDirector();
+    }
+
+    // --- Onay bekleyen değişiklikler ------------------------------------
+    match /proposals/{id} {
+      allow read: if isStaff();
+      allow create: if (isStaff() && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending') || isAdmin();
+      // Müdür onaylar/reddeder (ve düzeltip yayınlarken ops'u günceller).
+      // Öneri sahibi, bekleyen önerisini düzenler ya da geri çeker.
+      allow update: if isDirector()
+        || (isStaff() && resource.data.createdBy == request.auth.uid && resource.data.status == 'pending'
+            && request.resource.data.status in ['pending', 'withdrawn']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status']));
+      allow delete: if isAdmin();
+    }
+
+    // --- Mağaza talepleri ----------------------------------------------
+    // Mağaza / vardiya müdürü açar ve yazar; Bölge Müdürü ve Kahve Operasyon
+    // Müdürü durumunu değiştirir. Silinmez: "sözlü talep geçersiz", kayıt kalır.
+    match /requests/{id} {
+      allow read: if isStaff() || (isLead() && resource.data.storeId == myStoreId());
+      allow create: if (isLead() && request.resource.data.storeId == myStoreId()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'open' && request.resource.data.lastSide == 'store')
+        || isAdmin();
+      allow update: if canHandleRequests()
+        || (isLead() && resource.data.storeId == myStoreId()
+            && request.resource.data.lastSide == 'store'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide']));
+      allow delete: if isAdmin();
     }
 
     // --- Sonuçlar ----------------------------------------------------
@@ -95,11 +155,15 @@ service cloud.firestore {
       allow read: if isStaff()
         || (isBarista() && resource.data.baristaId == myBaristaId())
         || (isLead() && resource.data.storeId == myStoreId());
-      allow create: if isBarista() && request.resource.data.baristaId == myBaristaId();
-      // Puanlama telefonda: kendi denemesini bir kez günceller (sunucu yoksa).
+      allow create: if isBarista() && request.resource.data.baristaId == myBaristaId()
+        && request.resource.data.submittedAt == null;
+      // Puanlama telefonda. Deneme açıkken (submittedAt == null) barista
+      // cevaplarını kaydeder; bir kez de puanlayıp kapatır. Kapandıktan
+      // sonra hiçbir alan değişmez.
       allow update: if isBarista() && resource.data.baristaId == myBaristaId()
         && resource.data.submittedAt == null
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submittedAt', 'correct', 'score', 'passed', 'mistakes']);
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided']);
       // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
       // Yalnızca admin, hatalı/deneme kayıtlarını temizlemek ve demo
       // ortamını sıfırlamak için silebilir.
@@ -108,17 +172,18 @@ service cloud.firestore {
 
     match /progress/{baristaId} {
       allow read: if isStaff() || inStore(resource.data.storeId);
-      allow create: if isStaff();
+      allow create: if canManageBaristas();
       // Barista hem ders tamamlamalarını hem (sunucu olmadığı için) kendi
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
-      allow update: if isStaff()
+      allow update: if canManageBaristas() || isDirector()
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'updatedAt']));
       allow delete: if false;
     }
 
     // --- Bülten -------------------------------------------------------
-    // Kahve Operasyonu yazar, mağaza oturumları okur.
+    // Kahve Operasyon Müdürü yayınlar (diğerleri öneri yapar), mağaza
+    // oturumları okur.
     //
     // Mağaza hedeflemesi (storeIds) güvenlik sınırı DEĞİL, görünürlük
     // tercihidir: liste sorgusunu kurallarla mağazaya daraltmak, "tüm
@@ -127,8 +192,8 @@ service cloud.firestore {
     // arayüzde uygulanıyor.
     match /bulletins/{id} {
       allow read: if isStaff() || isStoreSession();
-      allow create, update: if isStaff() && request.resource.data.createdBy is string;
-      allow delete: if isStaff();
+      allow create, update: if isDirector() && request.resource.data.createdBy is string;
+      allow delete: if isDirector();
     }
 
     // --- Görevler ------------------------------------------------------
@@ -136,7 +201,9 @@ service cloud.firestore {
       allow read: if isStaff() || inStore(resource.data.storeId);
       allow create: if (isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
         && request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isStaff()
+      // Görevi atayan değiştirir/siler; Kahve Operasyon Müdürü herkesinkini.
+      allow update, delete: if isDirector()
+        || (isStaff() && resource.data.createdBy == request.auth.uid)
         || (isLead() && resource.data.storeId == myStoreId() && resource.data.createdBy == request.auth.uid);
     }
 
@@ -147,7 +214,7 @@ service cloud.firestore {
       // resource == null: kod üretirken çakışma kontrolü (henüz var olmayan
       // bir koda bakılıyor) — bu durumda okumanın bir sakıncası yok.
       allow get: if resource == null || resource.data.expiresAt > request.time.toMillis();
-      allow create: if isStaff();
+      allow create: if canManageBaristas();
       allow delete: if signedIn();
       allow update: if false;
     }
@@ -156,9 +223,9 @@ service cloud.firestore {
     match /invites/{code} {
       allow get: if isStoreSession() || isStaff();
       // Eski davetleri temizlerken (PIN sıfırlama, işten çıkarma) sorgulanır.
-      allow list: if isStaff();
-      allow create: if isStaff();
-      allow delete: if isStoreSession() || isStaff();
+      allow list: if canManageBaristas();
+      allow create: if canManageBaristas();
+      allow delete: if isStoreSession() || canManageBaristas();
       allow update: if false;
     }
 

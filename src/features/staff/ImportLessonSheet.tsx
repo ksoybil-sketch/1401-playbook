@@ -1,17 +1,20 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../../api/firebase';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { commitChange, lastProposalId, newId, resultText } from '../../api/changes';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { readSheet } from '../../lib/sheet';
-import { rowsToLesson, textToLesson, TEMPLATE_CSV, type ImportResult } from '../../lib/importLesson';
+import { blocksToQuestions, rowsToLesson, textToLesson, TEMPLATE_CSV, type ImportResult } from '../../lib/importLesson';
+import { getAiKey } from '../../lib/aiKey';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
 /**
- * Excel / CSV / PDF dosyasından ders taslağı oluşturur.
+ * Excel / CSV / PDF / görsel dosyasından ders taslağı ve soru önerileri
+ * oluşturur. PDF'in türü fark etmez: metinli PDF doğrudan okunur, taranmış
+ * sayfalar OCR'dan geçer; yapay zekâ anahtarı tanımlıysa dosya Claude'a
+ * gider ve İngilizce kaynaktan da Türkçe ders + çeşitli sorular çıkar.
  *
  * İki şey önemli:
  *  1. Kaydetmeden önce **baristada nasıl görüneceği** gösterilir. Panelde
@@ -20,14 +23,17 @@ import * as t from '../../ui/tokens';
  *     yüzden hiçbir dosya doğrudan yayına çıkmaz.
  */
 
-const ACCEPT = '.xlsx,.csv,.tsv,.txt,.pdf';
+const ACCEPT = '.xlsx,.xls,.csv,.tsv,.txt,.pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf';
+const isImage = (f: File) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|heic)$/i.test(f.name);
+const isPdf = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
 
 export const ImportLessonSheet: React.FC<{
   open: boolean;
   onClose: () => void;
   /** Modül editöründen açıldığında sabit; İçerik sayfasından açıldığında seçilir. */
   fixedModuleId?: string;
-  onCreated: (lessonId: string) => void;
+  /** proposalId: ders onaya gönderildiyse önerinin kimliği. */
+  onCreated: (lessonId: string, proposalId?: string | null) => void;
 }> = ({ open, onClose, fixedModuleId, onCreated }) => {
   const { tracks, modules, lessons } = useContent();
   const [busy, setBusy] = useState(false);
@@ -35,7 +41,14 @@ export const ImportLessonSheet: React.FC<{
   const [result, setResult] = useState<ImportResult | null>(null);
   const [fileName, setFileName] = useState('');
   const [pickedModule, setPickedModule] = useState('');
+  const [progress, setProgress] = useState('');
+  const [aiKey, setAiKey] = useState<string | null>(null);
+  const [useAi, setUseAi] = useState(true);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Anahtar yalnızca müdür/bölge müdürü/geliştirici için okunur; diğerlerinde null.
+  useEffect(() => { if (open) getAiKey().then(setAiKey).catch(() => setAiKey(null)); }, [open]);
 
   const moduleId = fixedModuleId || pickedModule;
 
@@ -56,7 +69,7 @@ export const ImportLessonSheet: React.FC<{
     return ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1;
   }, [lessons, moduleId]);
 
-  const reset = () => { setResult(null); setError(null); setFileName(''); };
+  const reset = () => { setResult(null); setError(null); setFileName(''); setPicked(new Set()); };
 
   const handleFile = async (file: File) => {
     setBusy(true);
@@ -64,21 +77,38 @@ export const ImportLessonSheet: React.FC<{
     setResult(null);
     setFileName(file.name);
     const base = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+    const moduleTitle = modules.find((m) => m.id === moduleId)?.title;
+    const finish = (r: ImportResult) => {
+      if (!r.questions) { r.questions = blocksToQuestions(r.blocks, r.title); r.source = 'rules'; }
+      setResult(r);
+      setPicked(new Set(r.questions.map((_, i) => i)));
+    };
     try {
-      if (file.name.toLowerCase().endsWith('.pdf')) {
+      if ((isPdf(file) || isImage(file)) && aiKey && useAi) {
+        const { lessonFromFileWithAI } = await import('../../lib/aiLesson');
+        finish(await lessonFromFileWithAI(file, aiKey, { moduleTitle }, setProgress));
+      } else if (isPdf(file)) {
         const { extractPdfText } = await import('../../lib/pdfText');
-        const { text, pages } = await extractPdfText(file);
+        const { text, pages, ocrPages } = await extractPdfText(file, 20, setProgress);
         const r = textToLesson(text, base);
         if (pages > 20) r.warnings.push(`PDF ${pages} sayfa; ilk 20 sayfa okundu.`);
-        setResult(r);
+        if (ocrPages) r.warnings.push(`${ocrPages} sayfa taranmış görüntüydü, yazı OCR ile okundu — yazım hatalarına bak.`);
+        if (!aiKey) r.warnings.push('Kaynak İngilizce ise ders de İngilizce çıkar. Türkçe ders ve daha iyi sorular için Akademi → "Yapay zekâ" ayarından anahtar tanımlanabilir.');
+        finish(r);
+      } else if (isImage(file)) {
+        const { ocrImage } = await import('../../lib/pdfText');
+        const r = textToLesson(await ocrImage(file, setProgress), base);
+        r.warnings.push('Görseldeki yazı OCR ile okundu — yazım hatalarına bak.');
+        finish(r);
       } else {
         const rows = await readSheet(file);
-        setResult(rowsToLesson(rows, base));
+        finish(rowsToLesson(rows, base));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : errorText(e));
     } finally {
       setBusy(false);
+      setProgress('');
     }
   };
 
@@ -87,7 +117,14 @@ export const ImportLessonSheet: React.FC<{
     if (!moduleId) { setError('Dersin ekleneceği modülü seç.'); return; }
     setBusy(true);
     try {
-      const r = await addDoc(collection(db, 'lessons'), {
+      const id = newId('lessons');
+      // Seçilen sorular modülün soru bankasına aynı değişiklikle girer;
+      // onaya gidiyorsa ders ve sorular tek öneri olarak gider.
+      const qOps = (result.questions || []).filter((_, i) => picked.has(i)).map((q) => ({
+        op: 'set' as const, col: 'questions' as const, id: newId('questions'),
+        data: { moduleId, type: q.type, prompt: q.prompt, options: q.options, answer: q.answer, explanation: q.explanation, kind: q.kind, imageUrl: '' }
+      }));
+      const r = await commitChange([{ op: 'set', col: 'lessons', id, data: {
         moduleId,
         title: result.title,
         order: nextOrder,
@@ -95,9 +132,9 @@ export const ImportLessonSheet: React.FC<{
         blocks: result.blocks,
         // İçe aktarılan ders taslak gelir: önce gözden geçirilsin.
         published: false
-      });
-      toast('Ders taslak olarak oluşturuldu.', 'positive');
-      onCreated(r.id);
+      } }, ...qOps], { kind: 'lesson', title: result.title, summary: `Dosyadan ders${qOps.length ? ` + ${qOps.length} soru` : ''} · ${fileName}` });
+      toast(resultText(r, 'Ders taslak olarak oluşturuldu.'), 'positive');
+      onCreated(id, r === 'proposed' ? lastProposalId : null);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -136,7 +173,7 @@ export const ImportLessonSheet: React.FC<{
             disabled={busy || !result || !result.blocks.length || !moduleId}
             className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}
           >
-            {busy ? <Spinner size={16} /> : 'Taslak olarak ekle'}
+            {busy ? <Spinner size={16} /> : `Taslak olarak ekle${picked.size ? ` · ${picked.size} soru` : ''}`}
           </button>
         </div>
       }
@@ -177,11 +214,27 @@ export const ImportLessonSheet: React.FC<{
           className={`${t.emptyState} w-full hover:bg-panel-2 transition-colors cursor-pointer`}
         >
           {busy ? <Spinner size={22} /> : <Icon name="upload" size={22} className="text-fg-3" />}
-          <span className="text-[14px] font-medium">{busy ? 'Okunuyor…' : 'Dosya seç'}</span>
+          <span className="text-[14px] font-medium">{busy ? (progress || 'Okunuyor…') : 'Dosya seç'}</span>
           <span className={t.emptyText}>
-            Excel (.xlsx), CSV ya da PDF. Excel şablonu için aşağıdaki "Şablon" düğmesini kullan.
+            PDF (metinli ya da taranmış), fotoğraf / ekran görüntüsü, Excel ya da CSV. Excel şablonu için aşağıdaki "Şablon" düğmesini kullan.
           </span>
         </button>
+      )}
+
+      {!result && (
+        aiKey ? (
+          <label className="flex items-start gap-2.5 p-3 rounded-xl border border-line bg-panel text-[13px] cursor-pointer">
+            <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="mt-0.5" />
+            <span>
+              <strong>Yapay zekâ ile oku</strong> <span className="text-fg-3">(PDF ve görseller)</span><br />
+              <span className="text-fg-3">Dosya Claude'a gönderilir: İngilizce kaynaktan da Türkçe ders ve farklı türde sınav soruları hazırlanır. Kapalıysa metin ve OCR ile kural tabanlı okunur.</span>
+            </span>
+          </label>
+        ) : (
+          <p className="text-[12px] text-fg-3 leading-relaxed">
+            Taranmış sayfalar ve fotoğraflar tarayıcıda OCR ile okunur (ilk kullanımda dil verisi iner). Türkçe çeviri ve daha iyi sorular için Kahve Operasyon Müdürü Akademi → "Yapay zekâ" ayarından anahtar tanımlayabilir.
+          </p>
+        )
       )}
 
       {result && (
@@ -209,6 +262,28 @@ export const ImportLessonSheet: React.FC<{
               {result.warnings.map((w, i) => (
                 <span key={i} className="text-[12.5px] text-fg-2 leading-relaxed">{w}</span>
               ))}
+            </div>
+          )}
+
+          {(result.questions?.length || 0) > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className={t.label}>
+                Soru bankasına eklenecek sorular · {picked.size}/{result.questions!.length}
+                <span className="text-fg-3 font-normal"> — {result.source === 'ai' ? 'yapay zekâ önerisi' : 'metinden otomatik'}; istemediklerinin işaretini kaldır</span>
+              </span>
+              <div className="flex flex-col gap-1.5 max-h-[40vh] overflow-y-auto">
+                {result.questions!.map((q, i) => (
+                  <label key={i} className={`flex items-start gap-2.5 p-3 rounded-xl border text-[13px] cursor-pointer ${picked.has(i) ? 'border-line-2 bg-panel-2' : 'border-line bg-panel opacity-60'}`}>
+                    <input type="checkbox" className="mt-0.5" checked={picked.has(i)}
+                      onChange={() => { const n = new Set(picked); if (n.has(i)) n.delete(i); else n.add(i); setPicked(n); }} />
+                    <span className="min-w-0">
+                      <span className="block font-medium leading-snug">{q.prompt}</span>
+                      <span className="block text-positive mt-1">✓ {q.options[q.answer]}</span>
+                      <span className="block text-fg-3 mt-0.5">{q.options.filter((_, j) => j !== q.answer).join(' · ')}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 

@@ -109,7 +109,7 @@ export const ModulePage: React.FC = () => {
   const mod = modules.find((m) => m.id === moduleId);
 
   const weekAttempts = useMemo(() => attempts.filter((a) => a.startedAt > Date.now() - 7 * 86400000), [attempts]);
-  const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt);
+  const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
   const st = moduleState(mod, lessons, progress);

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
+import { isManager } from './lib/roles';
 import { FullLoader, ToastHost } from './ui/kit';
 import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
 import { BaristaLayout } from './features/barista/BaristaLayout';
@@ -10,6 +11,9 @@ import { TracksPage, TrackPage, ModulePage, LessonPage } from './features/barist
 import { RecipesPage } from './features/barista/RecipesPage';
 import { BulletinsPage } from './features/barista/BulletinsPage';
 import { ExamPage } from './features/barista/ExamPage';
+import { RequestsPage as StoreRequestsPage } from './features/barista/RequestsPage';
+import { RequestsPage } from './features/staff/RequestsPage';
+import { ApprovalsPage } from './features/staff/ApprovalsPage';
 import { StaffLayout } from './features/staff/StaffLayout';
 import { OverviewPage, StoresPage, StoreDetailPage, BaristasPage, BaristaDetailPage, TasksPage } from './features/staff/StaffPages';
 import { ContentPage, ModuleEditorPage, LessonEditorPage } from './features/staff/ContentPages';
@@ -72,7 +76,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="ders/:lessonId" element={<LessonPage />} />
             <Route path="sinav/:moduleId" element={<ExamPage />} />
             <Route path="sonuclarim" element={<ResultsPage />} />
-            {session.role === 'lead' && <Route path="ekip" element={<TeamPage />} />}
+            {isManager(session.role) && <Route path="ekip" element={<TeamPage />} />}
+            {isManager(session.role) && <Route path="talepler" element={<StoreRequestsPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
@@ -88,6 +93,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="baristalar" element={<BaristasPage />} />
             <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />
             <Route path="gorevler" element={<TasksPage />} />
+            <Route path="talepler" element={<RequestsPage />} />
+            <Route path="onaylar" element={<ApprovalsPage />} />
             <Route path="bulten" element={<BulletinPage />} />
             <Route path="icerik" element={<ContentPage />} />
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />

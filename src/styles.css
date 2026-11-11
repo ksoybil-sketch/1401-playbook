@@ -57,11 +57,68 @@
   --color-accent-line: rgba(140, 155, 174, 0.26);
 }
 
+/*
+ * Kahve Operasyonu temaları (bkz. src/features/staff/theme.ts).
+ * @theme değişkenleri :root'ta tanımlı; <html data-theme> onları ezer,
+ * tüm yardımcı sınıflar (bg-espresso, text-crema…) kendiliğinden uyar.
+ */
+:root[data-theme="latte"] {
+  --color-espresso: #F5EEE4;
+  --color-bean: #EDE3D5;
+  --color-roast: #E4D6C4;
+  --color-panel: rgba(70, 45, 20, 0.045);
+  --color-panel-2: rgba(70, 45, 20, 0.075);
+  --color-panel-3: rgba(70, 45, 20, 0.11);
+  --color-line: rgba(70, 45, 20, 0.12);
+  --color-line-2: rgba(70, 45, 20, 0.2);
+  --color-crema: #2B211A;
+  --color-crema-dim: #3D3027;
+  --color-fg-2: #64564B;
+  --color-fg-3: #8A7A6D;
+  --color-fg-4: #B3A493;
+  --color-positive: #3F7A51;
+  --color-positive-bg: rgba(63, 122, 81, 0.11);
+  --color-positive-line: rgba(63, 122, 81, 0.3);
+  --color-caution: #95622D;
+  --color-caution-bg: rgba(149, 98, 45, 0.11);
+  --color-caution-line: rgba(149, 98, 45, 0.3);
+  --color-negative: #A5433A;
+  --color-negative-bg: rgba(165, 67, 58, 0.1);
+  --color-negative-line: rgba(165, 67, 58, 0.3);
+  --color-accent: #4F6380;
+  --color-accent-bg: rgba(79, 99, 128, 0.1);
+  --color-accent-line: rgba(79, 99, 128, 0.28);
+  color-scheme: light;
+}
+:root[data-theme="cekirdek"] {
+  --color-espresso: #0D1410;
+  --color-bean: #121B15;
+  --color-roast: #18231C;
+  --color-panel: rgba(200, 255, 215, 0.04);
+  --color-panel-2: rgba(200, 255, 215, 0.07);
+  --color-panel-3: rgba(200, 255, 215, 0.1);
+  --color-line: rgba(200, 255, 215, 0.09);
+  --color-line-2: rgba(200, 255, 215, 0.15);
+  --color-crema: #E9F0E8;
+  --color-crema-dim: #D6E2D5;
+  --color-fg-2: #9AAA9D;
+  --color-fg-3: #66766A;
+  --color-fg-4: #45524A;
+  --color-positive: #7DB38B;
+  --color-positive-bg: rgba(125, 179, 139, 0.13);
+  --color-positive-line: rgba(125, 179, 139, 0.28);
+  --color-accent: #8FB0A0;
+  --color-accent-bg: rgba(143, 176, 160, 0.12);
+  --color-accent-line: rgba(143, 176, 160, 0.26);
+}
+/* Logo beyaz çizilmiş; açık temada koyulaşsın. */
+:root[data-theme="latte"] .logo-mark { filter: invert(1) sepia(0.4); }
+
 @layer base {
-  html { background-color: #100E0D; }
+  html { background-color: var(--color-espresso); }
   body {
-    color: #F2EDE7;
-    background-color: #100E0D;
+    color: var(--color-crema);
+    background-color: var(--color-espresso);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
     font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
@@ -71,9 +128,9 @@
   }
   h1, h2, h3 { letter-spacing: -0.018em; }
   .tnum { font-variant-numeric: tabular-nums; }
-  * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.12) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line-2) transparent; }
   *::-webkit-scrollbar { width: 5px; height: 5px; }
-  *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+  *::-webkit-scrollbar-thumb { background: var(--color-line-2); border-radius: 999px; }
   button { cursor: pointer; }
 }
 
