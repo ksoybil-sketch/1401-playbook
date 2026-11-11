@@ -37,9 +37,9 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
           <Icon name="medal" size={22} />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">Unvan</div>
-          <div className="text-[18px] font-bold leading-tight">{title ? title.label : 'Henüz unvan yok'}</div>
-          <div className="text-[12px] text-fg-3">{report.earned} rozet · not ortalaması %{report.avg} · {report.days} gün</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">Önlük rozeti</div>
+          <div className="text-[18px] font-bold leading-tight">{title ? title.label : 'Henüz rozet yok'}</div>
+          <div className="text-[12px] text-fg-3">{report.earned} başarım · not ortalaması %{report.avg} · {report.days} gün</div>
         </div>
         <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={() => setOpen(true)}><Icon name="info" size={14} /> Kurallar</button>
       </div>
@@ -65,19 +65,20 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
           ))}
         </div>
       )}
-      {!next && title?.id === 'pro' && <div className="text-[13px] text-positive">En üst unvan. Önlükteki Pro rozeti senin.</div>}
+      {!next && title?.id === 'pro' && <div className="text-[13px] text-positive">En üst rozet. Önlükteki Pro rozeti senin.</div>}
 
-      <Sheet open={open} title="Unvanlar nasıl kazanılır" onClose={() => setOpen(false)}>
+      <Sheet open={open} title="Rozetler nasıl kazanılır" onClose={() => setOpen(false)}>
         <p className="text-[13px] text-fg-2 leading-relaxed">
-          İşletme kitapçığına göre her seviyenin bitirme rozeti ve belirli sayıda rozet, önlükteki
-          Rookie, Specialist, Senior ve Pro unvanını belirler. Rozetler sınav geçmişinden otomatik
-          hesaplanır; kimse elle veremez.
+          Önlüğe isimliğinle birlikte takılan Rookie, Specialist, Senior ve Pro rozetleri, uygulamada
+          topladığın başarımlarla kazanılır: belirli sayıda başarım, o seviyenin zorunlu başarımları,
+          not ortalaması ve kıdem. Başarımlar sınav geçmişinden otomatik hesaplanır; kimse elle veremez.
+          Yeni rozetini hak ettiğinde Kahve Operasyonu önlük rozetini teslim eder.
         </p>
         {TITLES.map((x) => (
           <div key={x.id} className={`${t.card} p-3 flex flex-col gap-1`}>
             <span className={`self-start inline-flex items-center gap-1 rounded-full border h-6 px-2.5 text-[12px] font-semibold ${TITLE_TONE[x.id]}`}><Icon name="medal" size={13} /> {x.label}</span>
             <span className="text-[13px] text-fg-2">
-              {x.badges} rozet · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).join(', ')}
+              {x.badges} başarım · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).join(', ')}
               {x.avg ? ` · ortalama %${x.avg}` : ''}{x.days ? ` · ${x.days >= 365 ? '1 yıl' : `${x.days} gün`} kıdem` : ''}
             </span>
           </div>

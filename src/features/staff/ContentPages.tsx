@@ -58,7 +58,9 @@ export const ContentPage: React.FC = () => {
                 <Icon name="refresh" size={15} /> Müfredatı güncelle
               </button>
             )}
-            {can(me.role, 'publish') && (
+            {/* Anahtarı uygulamayı geliştiren kişi yönetir; Kahve Operasyonu
+                yalnızca sonucunu (dosyadan Türkçe ders) kullanır. */}
+            {can(me.role, 'manageAi') && (
               <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setAiOpen(true)}>
                 <Icon name="flash" size={15} /> Yapay zekâ
               </button>

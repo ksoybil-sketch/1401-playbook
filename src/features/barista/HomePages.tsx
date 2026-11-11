@@ -88,8 +88,8 @@ export const HomePage: React.FC = () => {
             <div className="text-[13px] text-fg-2">{greeting()},</div>
             <h1 className="text-[26px] font-bold leading-tight truncate">{s.name.split(' ')[0]}</h1>
             <div className="flex items-center gap-2 mt-1.5">
-              {report.title ? <TitleChip report={report} size="md" /> : <span className="text-[12px] text-fg-3">İlk unvanın: Rookie</span>}
-              <span className="text-[12px] text-fg-3">{report.earned} rozet</span>
+              {report.title ? <TitleChip report={report} size="md" /> : <span className="text-[12px] text-fg-3">İlk rozetin: Rookie</span>}
+              <span className="text-[12px] text-fg-3">{report.earned} başarım</span>
             </div>
           </div>
           <Ring value={pct} size={76} stroke={7} color={HUE.amber.hex} />
@@ -97,8 +97,8 @@ export const HomePage: React.FC = () => {
         {report.next && (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between text-[12px]">
-              <span className="text-fg-2">Sıradaki unvan: <strong className="text-crema">{report.next.title.label}</strong></span>
-              <span className="text-fg-3">{toNext > 0 ? `${toNext} rozet kaldı` : 'Rozet sayısı tamam'}</span>
+              <span className="text-fg-2">Sıradaki rozet: <strong className="text-crema">{report.next.title.label}</strong></span>
+              <span className="text-fg-3">{toNext > 0 ? `${toNext} başarım kaldı` : 'Başarım sayısı tamam'}</span>
             </div>
             <div className="h-2 rounded-full bg-white/10 overflow-hidden">
               <div className="h-full rounded-full bg-linear-to-r from-[#D9A066] to-[#E07A6E] transition-[width] duration-700" style={{ width: `${nextPct}%` }} />
@@ -122,7 +122,7 @@ export const HomePage: React.FC = () => {
             hint={exam.ready ? `${exam.mod.examSize} soru · ${Math.ceil(exam.mod.examSize * 1.5)} dk` : `Önce ${exam.left} ders`}
             badge={exam.readyCount > 1 ? exam.readyCount : undefined} />
         ) : (
-          <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" hint="Sonuçların ve rozetlerin" />
+          <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" hint="Sonuçların ve başarımların" />
         )}
         {next ? (
           <Tile to={`/ders/${next.lesson.id}`} hue="sky" icon="play" label="Kaldığın ders" title={next.lesson.title} hint={`${next.module.title} · ${next.lesson.durationMin} dk`} />
@@ -141,7 +141,7 @@ export const HomePage: React.FC = () => {
         </Section>
       )}
 
-      <Section label={`Rozetlerin · ${earned.length}/${report.badges.length}`} action={<Link to="/sonuclarim" className="text-[12px] text-fg-2">Tümü</Link>}>
+      <Section label={`Başarımların · ${earned.length}/${report.badges.length}`} action={<Link to="/sonuclarim" className="text-[12px] text-fg-2">Tümü</Link>}>
         <Link to="/sonuclarim" className={`${t.card} p-3.5 flex flex-col gap-3`}>
           {earned.length > 0 ? (
             <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
@@ -153,7 +153,7 @@ export const HomePage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="text-[13px] text-fg-2">İlk rozetin Oryantasyon'u bitirince geliyor.</div>
+            <div className="text-[13px] text-fg-2">İlk başarımın Oryantasyon'u bitirince geliyor.</div>
           )}
           {nearest.map((b) => (
             <div key={b.id} className="flex items-center gap-3">
@@ -192,7 +192,7 @@ export const HomePage: React.FC = () => {
             { to: '/receteler', icon: 'coffee' as IconName, label: 'Reçeteler', hue: 'amber' as Hue },
             { to: '/akademi', icon: 'cap' as IconName, label: 'Akademi', hue: 'sky' as Hue },
             { to: '/bulten', icon: 'bell' as IconName, label: 'Bülten', hue: 'mint' as Hue },
-            { to: '/sonuclarim', icon: 'medal' as IconName, label: 'Rozetler ve sonuçlar', hue: 'violet' as Hue },
+            { to: '/sonuclarim', icon: 'medal' as IconName, label: 'Rozet ve başarımlar', hue: 'violet' as Hue },
             ...(isManager(s.role) ? [
               { to: '/ekip', icon: 'users' as IconName, label: 'Ekibim', hue: 'rose' as Hue },
               { to: '/talepler', icon: 'wrench' as IconName, label: 'Talepler', hue: 'sand' as Hue }
@@ -266,7 +266,7 @@ export const ResultsPage: React.FC = () => {
 
       <TitleCard report={report} self />
 
-      <Section label={`Rozetler · ${report.earned}/${report.badges.length}`}>
+      <Section label={`Başarımlar · ${report.earned}/${report.badges.length}`}>
         <BadgeGrid report={report} />
       </Section>
 
@@ -359,7 +359,7 @@ export const TeamPage: React.FC = () => {
               <div key={b.id} className={t.listRowStatic}>
                 <Avatar name={b.name} size={36} dim={b.pinPending} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium truncate flex items-center gap-1.5">{b.name} <TitleChip report={report} /> <span className="text-[11px] text-fg-3 font-normal">{report.earned} rozet</span></div>
+                  <div className="text-[14px] font-medium truncate flex items-center gap-1.5">{b.name} <TitleChip report={report} /> <span className="text-[11px] text-fg-3 font-normal">{report.earned} başarım</span></div>
                   <ProgressBar value={pct} className="mt-1.5 max-w-[180px]" />
                 </div>
                 <div className="flex flex-col items-end gap-1">

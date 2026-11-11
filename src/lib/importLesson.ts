@@ -294,5 +294,30 @@ export function blocksToQuestions(blocks: LessonBlock[], title: string): DraftQu
   for (const b of blocks) {
     if (b.type === 'check') out.push({ type: 'single', prompt: b.prompt, options: b.options, answer: b.answer, explanation: b.explanation || '', kind: 'durum' });
   }
+
+  // "**Kavram:** açıklama" maddelerinden eşleştirme soruları. Aynı dersteki
+  // diğer açıklamalar çeldirici olur — hepsi aynı konudan, tahmin zor.
+  const pairs: { key: string; value: string }[] = [];
+  for (const b of blocks) {
+    if (!('text' in b)) continue;
+    for (const line of b.text.split('\n')) {
+      const m = line.replace(/^-\s*/, '').match(/^\*\*([^*]{2,40}):\*\*\s+(.{15,170})$/);
+      if (m && !/^(cümle|örnek|not)$/i.test(m[1].trim())) pairs.push({ key: m[1].trim(), value: m[2].replace(/\s+\S+[:]\s.*$/, '').trim() });
+    }
+  }
+  const short = (s: string) => (s.length > 110 ? s.slice(0, 108).replace(/[\s,;]+\S*$/, '') + '…' : s);
+  const uniq = pairs.filter((p, i) => pairs.findIndex((q) => q.key === p.key) === i);
+  if (uniq.length >= 4) {
+    // Deterministik seçim: her 2. çiftten soru, çeldiriciler sıradaki üç çift.
+    uniq.forEach((p, i) => {
+      if (out.length >= 14 || i % 2) return;
+      const wrong = [1, 2, 3].map((k) => uniq[(i + k * 2 + 1) % uniq.length]).filter((q) => q.key !== p.key).map((q) => short(q.value));
+      if (new Set(wrong).size < 3) return;
+      out.push({
+        type: 'single', prompt: `${title}: “${p.key}” için doğru olan hangisi?`,
+        options: [short(p.value), ...wrong], answer: 0, explanation: `${p.key}: ${p.value}`, kind: 'kavram'
+      });
+    });
+  }
   return out;
 }

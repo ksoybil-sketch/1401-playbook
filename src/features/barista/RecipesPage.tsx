@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useSession } from '../../store/session';
 import { useContent } from '../../store/content';
 import { buildIndex, searchLessons, RECIPE_TRACK_ID, type LessonHit } from '../../lib/search';
 import { LessonBlocks } from '../academy/LessonBlocks';
@@ -178,6 +179,7 @@ export const RecipeDetailPage: React.FC = () => {
   const { modules, lessons } = useContent();
   const recipe = lessons.find((l) => l.id === lessonId);
   const [zoom, setZoom] = useState(false);
+  const signedInBarista = useSession((x) => x.session.kind === 'barista');
   if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
   const mod = modules.find((m) => m.id === recipe.moduleId);
   // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,
@@ -210,8 +212,9 @@ export const RecipeDetailPage: React.FC = () => {
         </button>
       )}
 
-      {/* Reçete eğitim ilerlemesine sayılmaz; sınav Akademi'de. */}
-      {mod && (
+      {/* Reçete eğitim ilerlemesine sayılmaz; sınav Akademi'de. Mağaza
+          telefonunda PIN'siz bakılıyorsa Akademi yok — bağlantı gizli. */}
+      {mod && signedInBarista && (
         <Link to={`/modul/${mod.id}`} className={`${t.cardInteractive} p-3.5 flex items-center gap-3 mt-2`}>
           <span className={t.iconChip('neutral')}><Icon name="cap" size={16} /></span>
           <div className="flex-1 min-w-0">
@@ -222,5 +225,36 @@ export const RecipeDetailPage: React.FC = () => {
         </Link>
       )}
     </Page>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Mağaza telefonu: PIN'siz reçete                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Giriş ekranından PIN girmeden açılan reçete bölümü. Servis sırasında
+ * yalnızca bir ölçüye bakmak için kimse PIN girmekle vakit kaybetmesin.
+ * Bu ekranda ders, sınav, ilerleme ya da kişisel bilgi yok; mağaza
+ * oturumu (telefonun kendisi) zaten içerik okuyabiliyor.
+ */
+export const StoreRecipesLayout: React.FC = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-[100dvh] flex flex-col">
+      <header className="sticky top-0 z-40 bg-espresso/85 backdrop-blur-xl border-b border-line pt-[env(safe-area-inset-top)]">
+        <div className="h-14 flex items-center gap-3 px-4 max-w-[560px] mx-auto">
+          <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90" />
+          <div className="flex-1 leading-tight">
+            <div className="text-[14px] font-semibold">Reçeteler</div>
+            <div className="text-[11px] text-fg-3">Giriş yapmadan bakıyorsun</div>
+          </div>
+          <button onClick={() => navigate('/')} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
+            <Icon name="user" size={14} /> Giriş
+          </button>
+        </div>
+      </header>
+      <main className="flex-1"><Outlet /></main>
+    </div>
   );
 };

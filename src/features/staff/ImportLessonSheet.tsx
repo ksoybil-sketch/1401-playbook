@@ -5,6 +5,32 @@ import { useContent } from '../../store/content';
 import { readSheet } from '../../lib/sheet';
 import { blocksToQuestions, rowsToLesson, textToLesson, TEMPLATE_CSV, type ImportResult } from '../../lib/importLesson';
 import { getAiKey } from '../../lib/aiKey';
+import { ocrPagesToLesson, type OcrPage } from '../../lib/ocrLayout';
+
+const emptyResult = (title: string): ImportResult => ({ title, durationMin: 1, blocks: [], warnings: [] });
+
+/**
+ * Görüntü sayfalarını (OCR) derse ekler. Ders adı için dosya adı tercih
+ * edilir: tasarımlı kapaklarda en büyük yazı çoğu zaman bir slogan.
+ */
+function withOcr(r: ImportResult, pages: OcrPage[], fileTitle: string): ImportResult {
+  if (!pages.length) return r;
+  const o = ocrPagesToLesson(pages);
+  const blocks = [...r.blocks, ...o.blocks];
+  const words = o.words + r.blocks.reduce((n, b) => n + ('text' in b ? b.text.split(/\s+/).length : 0), 0);
+  const title = fileTitle.split(/\s+/).length >= 2 ? fileTitle : o.title || r.title;
+  return {
+    ...r,
+    title,
+    blocks,
+    durationMin: Math.max(1, Math.round(words / 180)),
+    warnings: [
+      ...r.warnings.filter((w) => !/Ders adı bulunamadı|metin çıkmadı/i.test(w)),
+      `${pages.length} sayfa görüntüydü, yazı OCR ile okundu: yazım hatalarına ve başlıklara bak.`,
+      ...(blocks.length ? [] : ['Görüntüden okunabilir metin çıkmadı. Daha net bir tarama dene.'])
+    ]
+  };
+}
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
@@ -90,16 +116,13 @@ export const ImportLessonSheet: React.FC<{
       } else if (isPdf(file)) {
         const { extractPdfText } = await import('../../lib/pdfText');
         const { text, pages, ocrPages } = await extractPdfText(file, 20, setProgress);
-        const r = textToLesson(text, base);
+        const r = withOcr(text.trim() ? textToLesson(text, base) : emptyResult(base), ocrPages, base);
         if (pages > 20) r.warnings.push(`PDF ${pages} sayfa; ilk 20 sayfa okundu.`);
-        if (ocrPages) r.warnings.push(`${ocrPages} sayfa taranmış görüntüydü, yazı OCR ile okundu — yazım hatalarına bak.`);
-        if (!aiKey) r.warnings.push('Kaynak İngilizce ise ders de İngilizce çıkar. Türkçe ders ve daha iyi sorular için Akademi → "Yapay zekâ" ayarından anahtar tanımlanabilir.');
+        if (!aiKey) r.warnings.push('Yapay zekâ desteği kapalı: ders kaynağın dilinde kalır, sorular yalnızca metindeki sayılardan üretilir.');
         finish(r);
       } else if (isImage(file)) {
-        const { ocrImage } = await import('../../lib/pdfText');
-        const r = textToLesson(await ocrImage(file, setProgress), base);
-        r.warnings.push('Görseldeki yazı OCR ile okundu — yazım hatalarına bak.');
-        finish(r);
+        const { ocrPage } = await import('../../lib/pdfText');
+        finish(withOcr(emptyResult(base), [await ocrPage(file, setProgress)], base));
       } else {
         const rows = await readSheet(file);
         finish(rowsToLesson(rows, base));
@@ -232,7 +255,7 @@ export const ImportLessonSheet: React.FC<{
           </label>
         ) : (
           <p className="text-[12px] text-fg-3 leading-relaxed">
-            Taranmış sayfalar ve fotoğraflar tarayıcıda OCR ile okunur (ilk kullanımda dil verisi iner). Türkçe çeviri ve daha iyi sorular için Kahve Operasyon Müdürü Akademi → "Yapay zekâ" ayarından anahtar tanımlayabilir.
+            Taranmış sayfalar ve fotoğraflar tarayıcıda OCR ile okunur (ilk kullanımda dil verisi iner). Yapay zekâ desteği açık değil: ders kaynağın dilinde kalır, sorular daha basit çıkar.
           </p>
         )
       )}

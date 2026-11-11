@@ -3,7 +3,12 @@ import type { IconName } from '../ui/Icon';
 import { assignmentDone, assignmentDoneAt, isOverdue } from './progress';
 
 /**
- * Rozetler ve unvanlar.
+ * Başarımlar ve önlük rozetleri.
+ *
+ * Adlandırma: kitapçıktaki Rookie / Specialist / Senior / Pro, önlüğe
+ * isimlikle birlikte takılan fiziksel ROZETTİR (kodda "title"). Onlara
+ * giden yoldaki 18 aşamalı ödül uygulamada BAŞARIM diye geçer (kodda
+ * "badge"); "rozet" kelimesi yalnızca önlükteki için kullanılır.
  *
  * İşletme kitapçığı: "Uygulama içindeki eğitim kurları ve o kurların
  * sınavlarından her aşamada geçtikten sonra o seviyenin bitirme rozetini
@@ -318,8 +323,8 @@ export interface BadgeReport {
 function requirements(t: TitleDef, have: Set<string>, earned: number, avg: number, days: number): Requirement[] {
   const name = (id: string) => BADGES.find((b) => b.id === id)?.title || id;
   return [
-    { label: `${t.badges} rozet`, met: earned >= t.badges, detail: `${earned}/${t.badges}` },
-    ...t.required.map((id) => ({ label: `${name(id)} rozeti`, met: have.has(id) })),
+    { label: `${t.badges} başarım`, met: earned >= t.badges, detail: `${earned}/${t.badges}` },
+    ...t.required.map((id) => ({ label: `${name(id)} başarımı`, met: have.has(id) })),
     ...(t.avg ? [{ label: `Not ortalaması %${t.avg}`, met: avg >= t.avg, detail: `%${avg}` }] : []),
     ...(t.days ? [{ label: `${t.days >= 365 ? `${Math.round(t.days / 365)} yıl` : `${t.days} gün`} kıdem`, met: days >= t.days, detail: `${days} gün` }] : [])
   ];

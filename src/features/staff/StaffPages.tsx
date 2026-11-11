@@ -158,6 +158,7 @@ export const OverviewPage: React.FC = () => {
         </Section>
       </div>
 
+      <ApronBadgesSection />
       <PendingCodesSection />
       <StaffTeamSection />
     </Page>
@@ -258,6 +259,68 @@ const ROLE_HINT: Record<StaffRole, string> = {
   director: 'yayınlar, onaylar, ekibi yönetir',
   regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
   ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer'
+};
+
+/**
+ * Önlük rozetleri. Kitapçık: Rookie / Specialist / Senior / Pro rozetleri
+ * önlükte isimlikle birlikte takılır. Uygulama kimin hangi rozeti hak
+ * ettiğini başarımlardan hesaplar; fiziksel rozet verilince buradan
+ * "teslim edildi" işaretlenir, liste bir sonraki rozete kadar boşalır.
+ */
+const APRON_RANK = { rookie: 1, specialist: 2, senior: 3, pro: 4 } as const;
+
+const ApronBadgesSection: React.FC = () => {
+  const me = useStaffSession();
+  const { stores, tracks, modules, lessons } = useContent();
+  const { baristas, progress, attempts, assignments } = useStaffData();
+  const canMark = can(me.role, 'approve') || can(me.role, 'manageBaristas');
+  const rows = useMemo(() => baristas.filter((b) => b.active).map((b) => {
+    const report = badgeReport({
+      tracks, modules, lessons, progress: progress[b.id] || EMPTY,
+      attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
+      assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
+      startedAt: b.startedAt, createdAt: b.createdAt
+    });
+    return { b, report };
+  }), [baristas, tracks, modules, lessons, progress, attempts, assignments]);
+  const due = rows.filter(({ b, report }) => report.title && APRON_RANK[report.title.id] > (b.apronBadge ? APRON_RANK[b.apronBadge] : 0));
+  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, n: rows.filter((r) => r.report.title?.id === id).length }));
+  const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
+  return (
+    <Section label={`Önlük rozetleri${due.length ? ` · ${due.length} teslim bekliyor` : ''}`}>
+      <div className="grid grid-cols-4 gap-2">
+        {counts.map((c) => (
+          <div key={c.id} className={`${t.card} p-3 flex flex-col items-center gap-0.5`}>
+            <span className="text-[22px] font-bold tnum">{c.n}</span>
+            <span className="text-[12px] text-fg-3 capitalize">{c.id}</span>
+          </div>
+        ))}
+      </div>
+      {due.length > 0 && (
+        <div className={t.listGroup}>
+          {due.map(({ b, report }) => (
+            <div key={b.id} className={`${t.listRowStatic} flex-wrap`}>
+              <Avatar name={b.name} size={32} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-medium truncate flex items-center gap-2">{b.name} <TitleChip report={report} /></div>
+                <div className="text-[12px] text-fg-3 truncate">
+                  {storeName(b.storeId)} · {report.earned} başarım{b.apronBadge ? ` · önlükte şu an: ${b.apronBadge}` : ' · önlükte rozet yok'}
+                </div>
+              </div>
+              {canMark && (
+                <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.title!.id, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
+                    toast(`${b.name.split(' ')[0]}: ${report.title!.label} rozeti teslim edildi`, 'positive');
+                  } catch (e) { toast(errorText(e), 'negative'); }
+                }}><Icon name="check" size={13} /> Teslim edildi</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
 };
 
 /**
@@ -702,7 +765,7 @@ export const BaristaDetailPage: React.FC = () => {
 
         <div className="flex flex-col gap-5">
           <TitleCard report={report} />
-          <Section label={`Rozetler · ${report.earned}/${report.badges.length}`}>
+          <Section label={`Başarımlar · ${report.earned}/${report.badges.length}`}>
             <BadgeGrid report={report} />
           </Section>
           <Section label="Görevler">

@@ -80,7 +80,8 @@ service cloud.firestore {
     // Barista ve mağaza oturumları hiç okuyamaz.
     match /config/ai {
       allow get: if isDirector() || myRole() == 'regional';
-      allow write: if isDirector();
+      // Anahtarı yalnızca uygulama geliştiricisi yazar.
+      allow write: if isAdmin();
     }
 
     match /stores/{storeId} {
@@ -93,7 +94,9 @@ service cloud.firestore {
       allow create, delete: if canManageBaristas();
       // Davet kodunu kullanan barista kendi "pinPending" bayrağını kapatır
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
+      // Önlük rozeti teslimini Kahve Operasyon Müdürü de işaretler.
       allow update: if canManageBaristas()
+        || (isDirector() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName']))
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinPending']));
     }

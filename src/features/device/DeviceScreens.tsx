@@ -147,6 +147,17 @@ export const StoreHome: React.FC = () => {
           <button className={t.iconBtn} onClick={() => setMenu(true)} aria-label="Cihaz ayarları"><Icon name="sliders" size={16} /></button>
         </div>
 
+        {/* Ölçüye bakmak için PIN gerekmez. */}
+        <button onClick={() => navigate('/receteler?focus=1')}
+          className="rounded-2xl border border-[#D9A066]/30 bg-linear-to-br from-[#D9A066]/25 to-[#D9A066]/[0.06] p-4 flex items-center gap-3.5 text-left active:scale-[0.99] transition-transform">
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#D9A066] text-[#1A120C] shrink-0"><Icon name="coffee" size={20} strokeWidth={1.9} /></span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[16px] font-semibold">Reçeteler</span>
+            <span className="block text-[12px] text-fg-2">PIN girmeden ölçü, bardak ve hazırlanışa bak</span>
+          </span>
+          <Icon name="search" size={18} className="text-[#E8B47E]" />
+        </button>
+
         <div>
           <h1 className="text-[22px] font-bold">Kim çalışıyor?</h1>
           <p className="text-[13px] text-fg-3 mt-1">Adına dokun ve PIN'ini gir.</p>

@@ -78,6 +78,10 @@ export interface Barista {
   inviteExpiresAt?: number;
   /** Kodu kim verdi (Bölge Müdürü). */
   codeIssuedByName?: string;
+  /** Teslim edilen son önlük rozeti (rookie/specialist/senior/pro). */
+  apronBadge?: 'rookie' | 'specialist' | 'senior' | 'pro' | null;
+  apronBadgeAt?: number | null;
+  apronBadgeByName?: string | null;
 }
 
 export interface Track {

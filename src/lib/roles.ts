@@ -22,11 +22,12 @@ export type Capability =
   | 'manageBaristas'   // barista, mağaza, telefon ve davet kodları
   | 'publishCurriculum'// hazır müfredatı toplu yükle
   | 'handleRequests'   // mağaza taleplerini yanıtla
-  | 'deleteRecords';   // sınav kaydı silmek gibi geri dönüşsüz işler
+  | 'deleteRecords'    // sınav kaydı silmek gibi geri dönüşsüz işler
+  | 'manageAi';        // yapay zekâ anahtarı (uygulama geliştiricisinin işi)
 
 const TABLE: Record<StaffRole, Capability[]> = {
-  developer: ['publish', 'approve', 'manageTeam', 'manageBaristas', 'publishCurriculum', 'handleRequests', 'deleteRecords'],
-  admin: ['publish', 'approve', 'manageTeam', 'manageBaristas', 'publishCurriculum', 'handleRequests', 'deleteRecords'],
+  developer: ['publish', 'approve', 'manageTeam', 'manageBaristas', 'publishCurriculum', 'handleRequests', 'deleteRecords', 'manageAi'],
+  admin: ['publish', 'approve', 'manageTeam', 'manageBaristas', 'publishCurriculum', 'handleRequests', 'deleteRecords', 'manageAi'],
   director: ['publish', 'approve', 'manageTeam', 'publishCurriculum', 'handleRequests'],
   regional: ['manageBaristas', 'handleRequests'],
   ops: []
