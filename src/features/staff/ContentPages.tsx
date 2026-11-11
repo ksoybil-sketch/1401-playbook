@@ -7,6 +7,7 @@ import { useQueryLive } from '../../hooks/useFirestore';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
+import { ImportLessonSheet } from './ImportLessonSheet';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { compressImage } from '../../lib/media';
 import { loadCurriculumFile, planCurriculum, publishCurriculum, type PublishPlan, type PublishProgress } from '../../api/publishCurriculum';
@@ -303,6 +304,7 @@ export const ModuleEditorPage: React.FC = () => {
   const [tab, setTab] = useState<'lessons' | 'questions'>('lessons');
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [editQ, setEditQ] = useState<Partial<Question> | null>(null);
+  const [importing, setImporting] = useState(false);
 
   if (!mod) return <Page wide><PageTitle title="Modül bulunamadı" back="/icerik" /></Page>;
   const ls = lessons.filter((l) => l.moduleId === mod.id);
@@ -345,6 +347,11 @@ export const ModuleEditorPage: React.FC = () => {
             </div>
           ))}
           <button className={`${t.listRow} text-fg-2`} onClick={addLesson}><Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Ders ekle</span></button>
+          <button className={`${t.listRow} text-fg-2`} onClick={() => setImporting(true)}>
+            <Icon name="upload" size={16} />
+            <span className="text-[13px] font-medium">Dosyadan ders ekle</span>
+            <span className="text-[12px] text-fg-3 ml-auto">Excel · CSV · PDF</span>
+          </button>
         </div>
       ) : (
         <>
@@ -374,6 +381,13 @@ export const ModuleEditorPage: React.FC = () => {
 
       <ModuleSheet value={editModule} onClose={() => setEditModule(null)} />
       <QuestionSheet value={editQ} onClose={() => setEditQ(null)} />
+      <ImportLessonSheet
+        open={importing}
+        onClose={() => setImporting(false)}
+        moduleId={mod.id}
+        nextOrder={ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1}
+        onCreated={(id) => { setImporting(false); navigate(`/icerik/ders/${id}`); }}
+      />
     </Page>
   );
 };

@@ -8,7 +8,7 @@ import { assignmentDone, isOverdue, nextLesson, overallPercent, moduleState } fr
 import { Icon } from '../../ui/Icon';
 import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDate, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { useBaristaSession, useMyAssignments, useMyAttempts, useMyProgress } from './useBaristaData';
+import { useBaristaSession, useMyAssignments, useMyAttempts, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
 import { AssignSheet } from '../shared/AssignSheet';
 import type { Assignment, Attempt, Barista, Progress } from '../../../shared/types';
@@ -38,6 +38,9 @@ export const HomePage: React.FC = () => {
   // Dersleri biten ama sınavı geçilmemiş modüller. Sınav bugüne kadar
   // yalnızca modülün içine girilince görünüyordu; barista "sıradaki ne"
   // diye bakarken sınavın hazır olduğunu göremiyordu.
+  const { items: bulletins, unread: unreadBulletins } = useMyBulletins();
+  const latestBulletin = bulletins.find((b) => !progress.bulletins?.[b.id]);
+
   const examReady = modules
     .filter((m) => m.published)
     .map((m) => ({ mod: m, st: moduleState(m, lessons, progress) }))
@@ -62,6 +65,19 @@ export const HomePage: React.FC = () => {
         <Icon name="search" size={16} />
         <span className="text-[15px]">İçecek ya da malzeme ara</span>
       </Link>
+
+      {unreadBulletins > 0 && (
+        <Link to="/bulten" className={`${t.cardInteractive} p-3.5 flex items-center gap-3`}>
+          <span className={t.iconChip('caution')}><Icon name="bell" size={16} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-medium">
+              {unreadBulletins} yeni duyuru
+            </div>
+            <div className="text-[12px] text-fg-3 truncate">{latestBulletin?.title}</div>
+          </div>
+          <Icon name="chevronRight" size={16} className={t.rowChevron} />
+        </Link>
+      )}
 
       {examReady.length > 0 && (
         <Section label={`Sınava hazırsın · ${examReady.length}`}>
@@ -148,6 +164,7 @@ const AssignmentRow: React.FC<{ a: Assignment; progress: Progress }> = ({ a, pro
 /* ------------------------------------------------------------------ */
 
 export const ResultsPage: React.FC = () => {
+  const s = useBaristaSession();
   const { items: attempts, loading } = useMyAttempts(30);
   const { progress } = useMyProgress();
   const { modules } = useContent();
@@ -157,7 +174,22 @@ export const ResultsPage: React.FC = () => {
 
   return (
     <Page>
-      <PageTitle title="Sonuçlarım" subtitle="Geçtiğin modüller ve sınav geçmişin." />
+      <PageTitle title={s.name.split(' ')[0]} subtitle={`${s.storeName}${s.role === 'lead' ? ' · Mağaza sorumlusu' : ''}`} />
+
+      {/* Alt menüde beş sekmeden fazlası sığmıyor; mağaza sorumlusunun
+          ekip ekranı buradan açılıyor. */}
+      {s.role === 'lead' && (
+        <div className={t.listGroup}>
+          <Link to="/ekip" className={t.listRow}>
+            <span className={t.iconChip('accent')}><Icon name="users" size={16} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-medium">Ekibim</div>
+              <div className="text-[12px] text-fg-3">Ekibin ilerlemesi ve görev atama</div>
+            </div>
+            <Icon name="chevronRight" size={16} className={t.rowChevron} />
+          </Link>
+        </div>
+      )}
 
       <Section label={`Rozetler · ${passed.length}`}>
         {passed.length === 0 ? (

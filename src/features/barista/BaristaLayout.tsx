@@ -4,7 +4,7 @@ import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { useBaristaSession } from './useBaristaData';
+import { useBaristaSession, useMyBulletins } from './useBaristaData';
 
 /** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
@@ -31,6 +31,7 @@ export const BaristaLayout: React.FC = () => {
   const s = useBaristaSession();
   const logout = useSession((x) => x.logout);
   const { pathname } = useLocation();
+  const { unread } = useMyBulletins();
   useIdleLogout();
 
   // Ders ve sınav ekranları odaklı çalışır: alt menü gizlenir.
@@ -38,12 +39,15 @@ export const BaristaLayout: React.FC = () => {
 
   // Reçeteler, Akademi'den ayrı bir sekme: servis sırasında aranan şey
   // müfredatın neresinde durduğu değil, içeceğin kendisi.
-  const nav: { to: string; label: string; icon: IconName }[] = [
+  //
+  // Beş sekme sınırdır (telefonda 375px'de her biri ~70px). Mağaza
+  // sorumlusunun "Ekibim" ekranı bu yüzden "Ben" sekmesinin içinden açılır.
+  const nav: { to: string; label: string; icon: IconName; badge?: number }[] = [
     { to: '/', label: 'Bugün', icon: 'home' },
     { to: '/receteler', label: 'Reçeteler', icon: 'coffee' },
     { to: '/akademi', label: 'Akademi', icon: 'cap' },
-    { to: '/sonuclarim', label: 'Sonuçlarım', icon: 'award' },
-    ...(s.role === 'lead' ? [{ to: '/ekip', label: 'Ekibim', icon: 'users' as IconName }] : [])
+    { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread },
+    { to: '/sonuclarim', label: 'Ben', icon: 'user' }
   ];
 
   return (
@@ -79,7 +83,14 @@ export const BaristaLayout: React.FC = () => {
               >
                 {({ isActive }) => (
                   <>
-                    <Icon name={n.icon} size={21} strokeWidth={isActive ? 1.9 : 1.5} />
+                    <span className="relative">
+                      <Icon name={n.icon} size={21} strokeWidth={isActive ? 1.9 : 1.5} />
+                      {!!n.badge && n.badge > 0 && (
+                        <span className="absolute -top-1 -right-2 min-w-4 h-4 px-1 rounded-full bg-crema text-espresso text-[10px] font-bold flex items-center justify-center tnum">
+                          {n.badge > 9 ? '9+' : n.badge}
+                        </span>
+                      )}
+                    </span>
                     <span className={`text-[10px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{n.label}</span>
                   </>
                 )}
