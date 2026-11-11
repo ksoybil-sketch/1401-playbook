@@ -1,5 +1,5 @@
 /**
- * 1401 Playbook — başlangıç müfredatı.
+ * 1401 Campus — başlangıç müfredatı.
  *
  * Kaynaklar (hepsi 1401 Coffee'nin kendi materyalleri):
  *  - 1401 İşletme Manueli (İşletme Standartları Coffee Shop.pdf, 2025)
@@ -97,6 +97,23 @@ const LESSON_PHOTOS = {
 };
 
 /** Soru: ilk seçenek doğru cevaptır (sınavda sunucu karıştırır). */
+/**
+ * Sınav boyu: bankanın en çok ÜÇTE BİRİ.
+ *
+ * İki sınavın ortak soru sayısı ≈ sınav² ÷ banka. Sınavı bankanın üçte
+ * biriyle sınırlamak bu sayıyı sınav÷3'ün altında tutar: 15 soruluk bir
+ * sınavda iki barista ortalama 5 soruyu paylaşır, 60 kişinin tamamı aynı
+ * kâğıda girmez. Banka büyüdükçe sınav hedefine kadar uzar.
+ *
+ * Önceden `Math.min(hedef, banka)` vardı ve asıl sorun buydu: bankada 8
+ * soru olan modülde sınav da 8 soru oluyordu — yani mümkün tek bir sınav,
+ * herkese aynı kâğıt. Havuzu büyütmek kalıcı çözüm, bu formül de sınavın
+ * havuzu tüketmesini engelliyor.
+ */
+const MIN_EXAM = 5;
+export const examSizeFor = (hedef, banka) =>
+  Math.max(Math.min(MIN_EXAM, banka), Math.min(hedef, Math.floor(banka / 3)));
+
 const Q = (prompt, correct, wrong, explanation) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation });
 const TF = (prompt, isTrue, explanation) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation });
 
@@ -269,7 +286,25 @@ const orientation = {
       Q('Shift çizelgesi yayınlandıktan sonra değişiklik nasıl yapılır?', 'Yazılı olarak bildirilerek', ['Ekip arkadaşıyla sözlü anlaşarak', 'Değişiklik yapılamaz', 'Sadece WhatsApp sesli mesajıyla'], 'Sözlü talepler geçersizdir; değişiklikler yazılı bildirilir.'),
       TF('İçeride misafir varken kapanış saatinden önce müziği kısıp ışıkları azaltmaya başlayabiliriz.', false, 'Misafir şubedeyken kapanış aktivitelerine başlanmaz.'),
       TF('İş kıyafetimle işe gelebilirim, yeter ki temiz olsun.', false, 'İşe iş kıyafetiyle gelinmez, şubede giyilir.'),
-      Q('Personel indiriminden kimler faydalanabilir?', 'Personelin kendisi ve birinci derece yakınları', ['Tüm arkadaşları', 'Sadece personelin kendisi', 'Personelin getirdiği herkes'], 'Anne, baba, eş, çocuk ve kardeş birinci derece yakındır.')
+      Q('Personel indiriminden kimler faydalanabilir?', 'Personelin kendisi ve birinci derece yakınları', ['Tüm arkadaşları', 'Sadece personelin kendisi', 'Personelin getirdiği herkes'], 'Anne, baba, eş, çocuk ve kardeş birinci derece yakındır.'),
+      Q("Port Group yeme-içme sektörüne hangi yıl adım attı?", "2015", ["2010", "2019", "2023"], "Port Group 2015'te yola çıktı; kahvedeki ilk markamız 1401 Coffee Shop ise Nisan 2023'te açıldı. Markanın geçmişini bilmek, misafire \"ne zamandır varsınız?\" sorusunu güvenle yanıtlamanı sağlar."),
+      Q("1401 Coffee Shop'un ilk iki şubesi hangileridir?", "Viaport Asia AVM ve Ataşehir Golf Kulübü", ["Pendik ve Moda", "Moda ve Çubuklu", "Çubuklu ve Pendik"], "İlk iki şube Nisan 2023'te Viaport Asia AVM ve Ataşehir Golf Kulübü'nde açıldı. Pendik 2024'te, Moda ve Çubuklu 2025'te eklendi."),
+      Q("1401 ekibi kendisini nasıl adlandırır?", "#teamgoat", ["#team1401", "#coffeecrew", "#baristalife"], "Kendimize #teamgoat diyoruz. Bu bir slogan değil; takıma niteliğinle, güler yüzünle ve iş etiğinle katkı sağlama beklentisinin kısa adı."),
+      Q("İşe başlamadan önce kişisel bakımla ilgili beklenen nedir?", "Duş alınmış, saç ve sakal düzenli olmalı", ["Yalnızca üniformanın temiz olması yeterli", "Parfüm kullanmak zorunludur", "Bakım yalnızca servis personeli için geçerlidir"], "Logolu kıyafeti giydiğin anda markayı temsil edersin; misafir seni gördüğünde 1401'i görür. Duş, düzenli saç-sakal ve gerektiğinde deodorant bu temsilin parçasıdır."),
+      Q("Takı ve makyaj konusundaki standart nedir?", "Aşırı makyaj yapılmaz, dikkat çeken takı kullanılmaz", ["Takı serbesttir, makyaj yasaktır", "Her ikisi de tamamen serbesttir", "Yalnızca yüzük takılabilir"], "Sade görünüm hem markanın görsel bütünlüğü hem de gıda güvenliği içindir: dikkat çeken takı aynı zamanda hijyen riskidir."),
+      Q("Şubede yedek kıyafetle ilgili kural nedir?", "Şubede temiz ve ütülü yedek kıyafet bulundurulmalıdır", ["Yedek kıyafet merkezde durur", "Yedek kıyafet zorunlu değildir", "Yedek kıyafeti yönetici saklar"], "Vardiya ortasında oluşan bir leke servisi durdurmamalı; yedek kıyafet bu yüzden şubede, temiz ve ütülü hâlde bulunur."),
+      Q("İş kıyafetleri nereden sağlanır?", "Merkez sağlar ve personele zimmetlenir", ["Personel kendi alır", "Şube müdürü kendi bütçesinden alır", "İlk ay personel alır, sonra merkez"], "Kıyafetler merkez tarafından sağlanıp zimmetlenir; zimmetli olması teslim ve iade sorumluluğunun da sende olduğu anlamına gelir."),
+      Q("Sigara içmeyle ilgili kural nedir?", "Misafirin gördüğü alanlarda ve kapalı alanlarda yasaktır", ["Yalnızca molalarda, her yerde serbesttir", "Bahçede misafir yanında serbesttir", "Bar arkasında içilebilir"], "Misafirin gördüğü her alan sahne sayılır; kapalı alanlarda ise yasa gereği yasaktır."),
+      Q("Yemek molası nasıl kullanılır?", "Belirlenen saatte ve yöneticinin bilgisi dahilinde", ["İstenen saatte, haber vermeden", "Yalnızca kapanıştan sonra", "Molalar isteğe bağlıdır"], "Mola saatleri servis yoğunluğuna göre planlanır; habersiz çıkılan bir mola bardaki akışı doğrudan aksatır."),
+      Q("Gün içinde içtiğin personel içecekleri nasıl kapatılır?", "Gün sonunda sistemde ödenmez olarak kapatılır", ["Ertesi gün nakit ödenir", "Maaştan kesilir", "Hiç kayda girilmez"], "İçecek hakkı bir haktır ama kayıt dışı değildir: gün sonunda sistemde ödenmez olarak kapatılır, böylece stok ve satış raporu doğru kalır."),
+      Q("Hastalık raporu yöneticiye ne zaman teslim edilir?", "Aynı gün", ["İşe döndüğün gün", "Hafta sonunda", "Ay sonunda toplu olarak"], "Rapor aynı gün teslim edilir; böylece shift aynı gün yeniden planlanabilir. Raporlu olduğun tarihten önce de iş başı yapamazsın."),
+      Q("Rapor gerektirmeyen bir izin nasıl talep edilir?", "Yöneticiyle yüz yüze konuşarak", ["Mesaj atarak", "Ekip grubuna yazarak", "İzin talebi gerekmez"], "Rapor gerektirmeyen izinler yüz yüze konuşulur; shift değişikliği ise yazılı bildirilir. İkisi ayrı süreçtir."),
+      Q("Mazeretsiz ve haber vermeden işe gelmemenin sonucu nedir?", "Tutanakla kayda geçer ve İş Kanunu'nun ilgili maddesi uygulanır", ["Sadece sözlü uyarı yapılır", "O günün ücreti kesilir ve kapanır", "Bir sonraki vardiyada telafi edilir"], "Devamsızlık tutanakla kayda geçer. Sahte rapor veya yalan beyan ise doğrudan iş akdinin feshi sebebidir."),
+      Q("Bayram, yılbaşı ve konser günleri gibi yoğun günlerde çalışma düzeni nasıldır?", "Tam kadro çalışılır, izin planı buna göre yapılır", ["Dönüşümlü yarım kadro çalışılır", "Yalnızca yöneticiler çalışır", "Şube kapalıdır"], "Bu günler cironun en yüksek olduğu günlerdir; izin planını yılın başında bu takvime göre yapmak hem sana hem ekibe kolaylık sağlar."),
+      TF("Başka bir personelin KerzzPOS şifresiyle işlem yapabilirim, yeter ki satış doğru girilsin.", false, "Yasaktır. Yaptığın her işlem senin adınla kayda geçmelidir; başkasının şifresiyle girilen işlem hem o kişiyi hem seni sorumlu duruma düşürür."),
+      TF("Çalışma alanımı vardiya sonunda düzenli bırakmak, devralan ekip arkadaşıma karşı sorumluluğumdur.", true, "Kendi alanını temiz bırakmak ekip arkadaşına saygıdır; devralan kişinin ilk işi temizlik olmamalıdır."),
+      TF("Şube içinde mesai saatinde şahsi telefon görüşmesi yapabilirim.", false, "Şube sınırları içinde şahsi görüşme yapılamaz. Zorunlu durumda Şube Müdürü veya yardımcısından izin alıp şube dışında görüşebilirsin."),
+      TF("Bir şeyi bilmediğimde yöneticime sormak yerine tahminle hareket etmeliyim.", false, "Şubedeki yöneticiler tam da bunun için yanında. Bilmediğini sormak, hata yapmaktan her zaman ucuzdur.")
     ]
   }]
 };
@@ -364,10 +399,12 @@ function recipeQuestions(lessons, allRecipes) {
     const name = l._title;
     const measurable = r.ing.filter((i) => /\d/.test(i.amt));
     // En belirleyici iki malzeme: önce espresso/süt dışı olanlar (şurup, toz, sos), sonra ana malzemeler.
+    // Dört ölçü sorusu: havuzun derinliği doğrudan kopyayı azaltıyor
+    // (iki sınavın ortak soru sayısı ≈ sınav²/banka).
     const ranked = [...measurable].sort((a, b) => {
       const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
-    }).slice(0, 2);
+    }).slice(0, 4);
     for (const ing of ranked) {
       const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
       const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
@@ -385,6 +422,56 @@ function recipeQuestions(lessons, allRecipes) {
         l._cup, wrong,
         `Bardak boyu sadece sunum değil, oran meselesidir: aynı espresso farklı hacimde farklı yoğunlukta içilir. ${name} → ${l._cup}.`
       ));
+    }
+
+    /* --- Reçetede olmayan malzeme ------------------------------------ */
+    const mine = new Set(r.ing.map((i) => i.name.toLocaleLowerCase('tr').trim()));
+    const yabanci = [...amountsByIngredient.keys()]
+      .filter((k) => !mine.has(k) && k.length > 3 && !/^su$|buz/.test(k));
+    if (r.ing.length >= 3 && yabanci.length) {
+      const disari = yabanci[(name.length * 7) % yabanci.length];
+      const icimdekiler = r.ing.slice(0, 3).map((i) => i.name);
+      out.push(Q(
+        `${name} reçetesinde aşağıdakilerden hangisi YOKTUR?`,
+        disari.replace(/^./, (c) => c.toLocaleUpperCase('tr')),
+        icimdekiler,
+        `Reçeteye malzeme eklemek de çıkarmak kadar standart dışıdır. ${name}: ${recipeLine(r)}.`
+      ));
+    }
+
+    /* --- Hazırlanışın ilk adımı -------------------------------------- */
+    const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
+    if (steps.length >= 3) {
+      const kisalt = (s) => (s.length > 72 ? s.slice(0, 70).replace(/[\s,;.]+$/, '') + '…' : s);
+      out.push(Q(
+        `${name} hazırlanırken ilk adım nedir?`,
+        kisalt(steps[0]),
+        [kisalt(steps[steps.length - 1]), kisalt(steps[1]), 'Bardağı servise hazırlayıp misafire sunmak'].slice(0, 3),
+        `Sıra tadın kendisidir: adımların yeri değişince oran, sıcaklık ve dokusu değişir. ${name} sırası: ${steps.map(kisalt).join(' → ')}`
+      ));
+    }
+
+    /* --- Katman sırası: espresso nereye gider ------------------------- */
+    const cup = l.blocks.find((b) => b.type === 'cup');
+    if (cup && cup.mode === 'katman') {
+      const espresso = cup.layers.find((x) => x.tone === 'espresso');
+      const sut = cup.layers.find((x) => x.tone === 'sut');
+      if (espresso && sut) {
+        const buzlu = cup.vessel === 'cold';
+        const dogru = buzlu ? 'En üste, sütün üzerine dökülür' : 'En alta, sütten önce konur';
+        const yanlis = [
+          buzlu ? 'En alta, sütten önce konur' : 'En üste, sütün üzerine dökülür',
+          'Sütle birlikte pitcher içinde karıştırılır',
+          'Servis sırasında ayrı bir bardakta verilir'
+        ];
+        out.push(Q(
+          `${name} hazırlanırken espresso bardağın neresine gelir?`,
+          dogru, yanlis,
+          buzlu
+            ? `Buzlu içeceklerde espresso en son ve en üste dökülür; misafir bardağı karıştırana kadar katman görünür kalır. ${name}: önce buz ve süt, en üste espresso.`
+            : `Sıcak içeceklerde espresso bardağın dibindedir, süt onun üzerine dökülür — latte art da bu sayede oluşur. ${name}: önce espresso, üzerine süt.`
+        ));
+      }
     }
   }
   return out;
@@ -486,7 +573,26 @@ const guest = {
         Q('Yoğun saatte sipariş kuyruğu büyüdü. Doğru yaklaşım nedir?', 'Takım mantığıyla birbirinin açığını kapatmak', ['Herkesin yalnızca kendi görevine odaklanması', 'Yöneticinin gelmesini beklemek', 'Sipariş almayı geçici olarak durdurmak'], 'Herkesin sadece kendi görevine bakması kuyruğu büyütür. İyi bir ekip, kimin ne iş yaptığından önce misafirin beklemediğinden emin olur.'),
         TF('Bar arkasındaki ekip atmosferi, misafirin salonda hissettiği havayı doğrudan etkiler.', true, 'Misafirler bar arkasındaki enerjiyi sezer. Gergin bir ekip güleryüz taklidi yapsa bile salon bunu hisseder; ekip içi uyum aslında misafire sunulan ilk üründür.'),
         TF('Çok yoğun olunan saatlerde karşılama atlanabilir, önemli olan siparişin hızlı çıkmasıdır.', false, 'Karşılama ertelenebilir bir nezaket değil, bir standarttır. Bir saniyelik göz teması bile misafirin beklediğini hissetmesini engeller; hız ise karşılamanın alternatifi değil tamamlayıcısıdır.'),
-        TF('Misafirin adını bilmek ve kullanmak kişiselleştirilmiş hizmetin parçasıdır.', true, 'İsimle hitap, misafire tanındığını hissettiren en kısa yoldur; tercihini hatırlamak ve özel gün jestleriyle birlikte sadakati besleyen üç temel kişiselleştirme davranışından biridir.')
+        TF('Misafirin adını bilmek ve kullanmak kişiselleştirilmiş hizmetin parçasıdır.', true, 'İsimle hitap, misafire tanındığını hissettiren en kısa yoldur; tercihini hatırlamak ve özel gün jestleriyle birlikte sadakati besleyen üç temel kişiselleştirme davranışından biridir.'),
+        Q("Bir şubenin cirosunu asıl belirleyen nedir?", "Geri dönen misafir sayısı", ["Yeni misafir sayısı", "Menüdeki ürün çeşidi", "Şubenin konumu"], "Yeni misafir kazanmak reklam ister; geri dönen misafir ise sadece iyi bir deneyim ister. Cironun sürekliliğini tekrar eden ziyaretler sağlar."),
+        Q("Misafir bir ziyareti değerlendirirken aklında kalan nedir?", "Deneyimin en zayıf halkası", ["Deneyimin ortalaması", "Yalnızca kahvenin tadı", "Yalnızca fiyat"], "Kahve mükemmel olsa bile kirli bir masa, bekletilen bir sipariş ya da soğuk bir karşılama o ziyareti olumsuza çevirir. Zincirin tamamı senin sorumluluğundadır."),
+        Q("Aktif dinleme ne anlama gelir?", "Siparişi dikkatle dinleyip misafire değerli olduğunu hissettirmek", ["Siparişi hızlıca tekrar etmek", "Misafir konuşurken başka iş yapmak", "Siparişi yazıya dökmek"], "Aktif dinleme sadece siparişi doğru almak değil; misafirin kendini özel hissetmesini sağlayan davranıştır."),
+        Q("Kahvesi yanlış hazırlanmış bir misafire karşı doğru yaklaşım nedir?", "Empati kurup anında çözüm üretmek", ["Reçeteye uygun olduğunu açıklamak", "Yöneticiyi çağırıp beklemesini istemek", "Bir dahaki sefere dikkat edileceğini söylemek"], "Empati, misafirin yerine kendini koymaktır. Hatanın kimde olduğundan önce çözümün ne kadar hızlı geldiği hatırlanır."),
+        Q("Bir barista espresso ile Americano farkını neden rahatça anlatabilmelidir?", "Tereddütsüz cevap, ürüne değil sana duyulan güveni artırır", ["Menüdeki fiyat farkını savunmak için", "Sınavda çıktığı için", "Yöneticinin istediği bir formalite olduğu için"], "Misafir bir şey sorduğunda aldığı net cevap, markaya duyduğu güvenin parçasıdır. Kahve kültürü bilmek satış tekniği değil, hizmetin kendisidir."),
+        Q("Özel gün jesti neyi ifade eder?", "Doğum günü gibi özel anlarda minik bir ikram yapmak", ["Her misafire her ziyarette indirim yapmak", "Özel günlerde menüyü değiştirmek", "Özel günlerde erken kapanmak"], "Kişiselleştirmenin üç temel davranışı: tercihi hatırlamak, isimle hitap etmek ve özel gün jesti yapmak. Üçü de misafire burada bir numara olmadığı hissini verir."),
+        Q("Hızlı ve doğru servis standardı ne demektir?", "Siparişlerin standart sürede ve hatasız hazırlanması", ["Siparişlerin mümkün olan en kısa sürede çıkması", "Yoğunlukta bazı adımların atlanması", "Önce büyük siparişlerin hazırlanması"], "Hız tek başına standart değildir: standart süre ve hatasızlık birlikte aranır. Hızlı ama yanlış çıkan ürün iki kez emek demektir."),
+        Q("Hijyen ve düzen standardı hangi alanları kapsar?", "Masa, sandalye, bar ve servis alanlarının tamamını", ["Yalnızca bar arkasını", "Yalnızca misafirin oturduğu masaları", "Yalnızca açılış ve kapanışta kontrol edilen alanları"], "Misafirin gördüğü her yüzey deneyimin parçası. Hijyen bir temizlik saati değil, gün boyu süren bir standarttır."),
+        Q("Yoğun saatte ekip olarak doğru çalışma biçimi hangisidir?", "Herkesin açığı kapatarak misafirin beklememesini sağlaması", ["Herkesin yalnızca kendi görevine odaklanması", "Sipariş almayı geçici olarak durdurmak", "Yöneticinin tek tek görev dağıtmasını beklemek"], "Yoğun saatte herkesin sadece kendi görevine bakması kuyruğu büyütür. İyi bir ekip, kimin ne iş yaptığından önce misafirin beklemediğinden emin olur."),
+        Q("Bar ve servis arasındaki seri iletişimin en doğrudan etkisi nedir?", "Servis hızının artması", ["Ürün maliyetinin düşmesi", "Menü çeşidinin artması", "Personel sayısının azalması"], "Servis hızı bireysel bir performans değil takım performansıdır; zincirdeki tek bir gecikme tüm akışı yavaşlatır."),
+        Q("1401 İmzası ifadesi neyi anlatır?", "Her gün aynı kalması gereken standartları", ["Dönemsel bir kampanyayı", "Menüdeki imza içeceğini", "Şube müdürünün onay imzasını"], "Temiz fincan, doğru servis sıcaklığı, lekesiz camlar ve samimi bir güleryüz — bunlar kampanya değil, her gün aynı kalması gereken standartlardır."),
+        Q("Misafir bardağı eline almadan önce neyi değerlendirir?", "Görsel sunumu, köpüğün kıvamına kadar", ["Yalnızca bardağın sıcaklığını", "Yalnızca fiyatı", "Servis süresini"], "Görsel sunum ilk izlenimdir: misafir daha ilk yudumu almadan ürün hakkında karar vermeye başlar."),
+        Q("Tanıdık olmayan bir misafire karşılama nasıl yapılır?", "Müdavimlerle tamamen aynı şekilde", ["Daha kısa tutularak", "Sipariş verdikten sonra", "Yalnızca göz teması ile"], "Karşılama bir standarttır; misafirin tanıdık olup olmaması bunu değiştirmez."),
+        TF("Gergin bir ekip, güleryüz taklidi yaparak salondaki havayı kurtarabilir.", false, "Misafirler bar arkasındaki havayı hisseder. Ekip içi uyum, misafire sunulan ilk üründür."),
+        TF("Sadık bir misafir, yeni misafir kazanmaktan daha ucuza elde edilir.", true, "Yeni misafir kazanmak reklam ister; geri dönen misafir sadece iyi bir deneyim ister. Üstelik çevresine tavsiye ederek yeni misafir de getirir."),
+        TF("Kişiselleştirilmiş hizmet, misafire indirim yapmak demektir.", false, "Kişiselleştirme tercihini hatırlamak, isimle hitap etmek ve özel anlarda jest yapmaktır; fiyatla ilgisi yoktur."),
+        TF("Servis hızı, baristanın bireysel performansıyla ölçülür.", false, "Servis hızı takım performansıdır. Zincirdeki tek bir gecikme tüm akışı yavaşlatır."),
+        TF("Temiz fincan ve doğru servis sıcaklığı, 1401 İmzası'nın parçasıdır.", true, "Temiz fincan, doğru servis sıcaklığı, lekesiz camlar ve samimi güleryüz birlikte 1401 İmzası'nı oluşturur."),
+        TF("Misafirin siparişi sırasında başka bir işe başlamak, zamanı verimli kullanmaktır.", false, "Aktif dinleme standardına aykırıdır: misafir konuşurken ona odaklanmak, kendini değerli hissetmesini sağlar.")
       ]
     },
     {
@@ -820,7 +926,7 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
     tr.modules.forEach((m, mi) => {
       modules.push({
         id: m.id, trackId: tr.id, title: m.title, description: m.description, order: mi + 1,
-        passScore: m.passScore, examSize: Math.min(m.examSize, m.questions.length),
+        passScore: m.passScore, examSize: examSizeFor(m.examSize, m.questions.length),
         prerequisiteId: m.prerequisiteId || null, published: true, questionCount: m.questions.length
       });
       m.lessons.forEach((l, li) => lessons.push({

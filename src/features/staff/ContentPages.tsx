@@ -8,10 +8,12 @@ import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { ImportLessonSheet } from './ImportLessonSheet';
+import { MediaInput } from './MediaInput';
+import { TONE as CUP_TONE, TONE_LABELS as CUP_TONES } from '../academy/CupDiagram';
+import { parseAmount } from '../../../shared/recipeAmount';
 import { LessonBlocks } from '../academy/LessonBlocks';
-import { compressImage } from '../../lib/media';
 import { loadCurriculumFile, planCurriculum, publishCurriculum, type PublishPlan, type PublishProgress } from '../../api/publishCurriculum';
-import type { Lesson, LessonBlock, Module, Question, Track } from '../../../shared/types';
+import type { CupLayer, Lesson, LessonBlock, Module, Question, Track } from '../../../shared/types';
 
 const TRACK_ICONS: IconName[] = ['coffee', 'book', 'users', 'store', 'shield', 'package', 'cap', 'award', 'clipboard', 'flag'];
 
@@ -39,7 +41,7 @@ export const ContentPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title="İçerik" subtitle="Eğitim yolları, modüller, dersler ve soru bankası."
+      <PageTitle title="Akademi" subtitle="Eğitim yolları, modüller, dersler ve soru bankası."
         action={
           <div className="flex gap-2 flex-wrap justify-end">
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
@@ -172,7 +174,8 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
       }>
       <p className="text-[13px] text-fg-2 leading-relaxed">
         Uygulamanın içindeki hazır müfredatı veritabanına yazar. Menüden çıkmış dersler ve
-        sorular silinir. Panelden eklediğin soru fotoğrafları ve yayın/taslak durumları korunur,
+        sorular silinir. Panelden eklediğin soru fotoğrafları, yayın/taslak durumları ve
+        <strong className="text-crema"> elle düzelttiğin reçete ölçüleri</strong> korunur,
         ancak <strong className="text-crema">ders metinlerinde elle yaptığın değişiklikler üzerine yazılır</strong>.
       </p>
 
@@ -577,34 +580,6 @@ export const LessonEditorPage: React.FC = () => {
  * gömülür. Video için bu mümkün değil — yalnızca dış bağlantı (YouTube vb.)
  * eklenebilir.
  */
-const MediaInput: React.FC<{ url: string; kind: 'image' | 'video'; onChange: (url: string) => void }> = ({ url, kind, onChange }) => {
-  const [busy, setBusy] = useState(false);
-  const upload = async (file: File) => {
-    setBusy(true);
-    try {
-      onChange(await compressImage(file));
-    } catch (e) {
-      toast((e as Error).message, 'negative');
-    }
-    setBusy(false);
-  };
-  if (kind === 'video') {
-    return <input className={t.input} value={url} onChange={(e) => onChange(e.target.value)} placeholder="YouTube bağlantısı (dosya yüklenemez)" />;
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {url && <img src={url} alt="" className="max-h-48 rounded-lg border border-line self-start" />}
-      <div className="flex gap-2">
-        <input className={t.input} value={url.startsWith('data:') ? '' : url} onChange={(e) => onChange(e.target.value)} placeholder="Görsel bağlantısı ya da dosya yükle" />
-        <label className={`${t.btn} ${t.btnSecondary} ${t.btnLg} cursor-pointer`}>
-          {busy ? <Spinner size={14} /> : <Icon name="upload" size={15} />}
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-        </label>
-      </div>
-    </div>
-  );
-};
-
 const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => void }> = ({ block: b, onChange }) => {
   switch (b.type) {
     case 'heading':
@@ -649,25 +624,97 @@ const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => 
           <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`} onClick={() => onChange({ ...b, rows: [...b.rows, { label: '', value: '' }] })}><Icon name="plus" size={13} /> Satır</button>
         </div>
       );
-    case 'cup':
-      // Şema reçete verisinden üretiliyor (scripts/recipe-cup.mjs); katmanlar
-      // burada elle düzenlenmez — düzenlenirse "Müfredatı güncelle" ezer.
-      // Panelden değiştirilebilen tek şey, otomatik şemanın yerine geçecek
-      // hazır çizim.
+    case 'cup': {
+      // Ölçüler reçete dosyasından üretiliyor ama burada düzeltilebiliyor.
+      // Bir satıra dokunulduğu anda blok `edited` işaretleniyor ve
+      // "Müfredatı güncelle" onu bir daha ezmiyor (bkz. publishCurriculum).
+      const setLayer = (i: number, patch: Partial<CupLayer>) =>
+        onChange({ ...b, edited: true, layers: b.layers.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
+
+      /** Ölçü metni değişince ml değerleri de yeniden çözülür; şema oranı buna bağlı. */
+      const setAmount = (i: number, text: string) => {
+        const p = parseAmount(text);
+        setLayer(i, {
+          text,
+          fill: p.fill,
+          small: p.small ?? null,
+          large: p.large ?? null
+        });
+      };
+
+      const bodyMax = Math.max(0, ...b.layers.filter((l) => l.order < 900).map((l) => l.order));
+
       return (
-        <div className="flex flex-col gap-2">
-          <div className={t.listGroup}>
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2">
             {b.layers.map((l, i) => (
-              <div key={i} className={`${t.listRowStatic} justify-between`}>
-                <span className="text-[13px] text-fg-2">{l.name}</span>
-                <span className="text-[13px] font-semibold tnum">{l.text}</span>
+              <div key={i} className="flex gap-2 items-center">
+                <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: CUP_TONE[l.tone] || '#8C9BAE' }} />
+                <input
+                  className={t.input}
+                  value={l.name}
+                  placeholder="Malzeme"
+                  onChange={(e) => setLayer(i, { name: e.target.value })}
+                />
+                <input
+                  className={`${t.input} max-w-36 tnum`}
+                  value={l.text}
+                  placeholder="200/270 ml"
+                  onChange={(e) => setAmount(i, e.target.value)}
+                />
+                <select
+                  className={`${t.input} max-w-28`}
+                  value={l.tone}
+                  onChange={(e) => setLayer(i, { tone: e.target.value as CupLayer['tone'] })}
+                >
+                  {CUP_TONES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                </select>
+                <button
+                  className={t.iconBtn}
+                  aria-label="Malzemeyi çıkar"
+                  onClick={() => onChange({ ...b, edited: true, layers: b.layers.filter((_, j) => j !== i) })}
+                >
+                  <Icon name="minus" size={13} />
+                </button>
               </div>
             ))}
+            <button
+              className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`}
+              onClick={() =>
+                onChange({
+                  ...b,
+                  edited: true,
+                  layers: [...b.layers, { name: '', tone: 'diger', order: bodyMax + 1, small: null, large: null, text: '', fill: 'bilinmiyor' }]
+                })
+              }
+            >
+              <Icon name="plus" size={13} /> Malzeme
+            </button>
           </div>
-          <span className="text-[11px] text-fg-3">
+
+          {b.dose && (
+            <div className="flex gap-2 items-center">
+              <span className="w-2.5 h-2.5 rounded-[3px] shrink-0 border border-dashed border-line-2" />
+              <input
+                className={t.input}
+                value={b.dose.name}
+                onChange={(e) => onChange({ ...b, edited: true, dose: { ...b.dose!, name: e.target.value } })}
+              />
+              <input
+                className={`${t.input} max-w-36 tnum`}
+                value={b.dose.text}
+                onChange={(e) => onChange({ ...b, edited: true, dose: { ...b.dose!, text: e.target.value } })}
+              />
+              <span className="text-[11px] text-fg-3 w-28">bardağa girmez</span>
+            </div>
+          )}
+
+          <span className="text-[11px] text-fg-3 leading-relaxed">
             {b.mode === 'karisim' ? 'Blenderda karışır' : b.vessel === 'cold' ? 'Buzlu — katmanlı' : 'Sıcak — katmanlı'}
-            {' · '}Ölçüler reçete dosyasından gelir, buradan değiştirilmez.
+            {' · '}Sıra, listedeki sırayla aynı: üstteki satır bardağın üstünde durur.
+            {b.edited && ' · Bu ölçüler elle düzenlendi; müfredat güncellemesi artık bu dersi ezmeyecek.'}
           </span>
+
           <textarea
             className={`${t.textarea} min-h-20 font-mono text-[12px]`}
             value={b.art || ''}
@@ -676,6 +723,7 @@ const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => 
           />
         </div>
       );
+    }
     case 'check':
       return (
         <div className="flex flex-col gap-2">

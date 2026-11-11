@@ -7,6 +7,7 @@ import { useContent } from '../../store/content';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
 import { RichText } from '../academy/LessonBlocks';
+import { MediaInput } from './MediaInput';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, Sheet, Empty, Badge, ErrorText, toast, fmtDate } from '../../ui/kit';
 import * as t from '../../ui/tokens';
@@ -167,6 +168,9 @@ const BulletinSheet: React.FC<{
         body: (d.body || '').trim(),
         storeIds: d.storeIds?.length ? d.storeIds : null,
         rows: isBoard ? clean : [],
+        // Firestore `undefined` kabul etmiyor; alan ya dolu yazılır ya hiç
+        // yazılmaz. setDoc belgeyi baştan yazdığı için yazılmaması = silinmesi.
+        ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
         expiresAt: d.expiresAt ?? null,
         published: publish,
         pinned: !!d.pinned,
@@ -259,6 +263,19 @@ const BulletinSheet: React.FC<{
                     placeholder="**kalın** yazmak için iki yıldız; madde için satıra &quot;- &quot; ile başla." />
         </div>
 
+        <div className={t.field}>
+          <span className={t.label}>Görsel (isteğe bağlı)</span>
+          <MediaInput
+            url={d.imageUrl || ''}
+            kind="image"
+            onChange={(url) => setD({ ...d, imageUrl: url || undefined })}
+            placeholder="Görsel bağlantısı ya da dosyadan yükle"
+          />
+          <span className="text-[11px] text-fg-3">
+            Yüklenen fotoğraf küçültülüp bültene gömülür; ayrı bir dosya deposu gerekmez.
+          </span>
+        </div>
+
         {isBoard && (
           <div className={t.field}>
             <span className={t.label}>Sıralama</span>
@@ -324,6 +341,7 @@ const BulletinSheet: React.FC<{
                 {kindOf((d.kind as BulletinKind) || 'duyuru').label}
               </div>
               <div className="text-[15px] font-semibold leading-snug">{d.title || 'Başlık'}</div>
+              {d.imageUrl && <img src={d.imageUrl} alt="" className="w-full max-h-52 object-contain rounded-lg border border-line bg-panel" />}
               {d.body && <RichText text={d.body} />}
               {isBoard && rows.length > 0 && (
                 <div className={t.listGroup}>

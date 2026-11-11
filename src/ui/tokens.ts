@@ -1,5 +1,5 @@
 /**
- * 1401 Playbook — Ortak tasarım sistemi (1401 AOS'tan devralındı).
+ * 1401 Campus — Ortak tasarım sistemi (1401 AOS'tan devralındı).
  *
  * Yön: mat, kompakt, keskin. Degrade yok, parıltı yok, emoji yok.
  * Vurgu tek bir krema tonu; renk sadece anlam taşıdığında (durum,

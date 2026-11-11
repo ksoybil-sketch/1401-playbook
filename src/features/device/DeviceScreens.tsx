@@ -16,7 +16,7 @@ const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
   <div className="flex flex-col items-center gap-3 text-center">
     <img src="/icons/logo.svg" alt="" className="w-14 h-14 opacity-90" />
     <div>
-      <div className="text-[20px] font-bold">1401 Playbook</div>
+      <div className="text-[20px] font-bold">1401 Campus</div>
       {sub && <div className="text-[13px] text-fg-3 mt-1">{sub}</div>}
     </div>
   </div>
@@ -135,7 +135,7 @@ export const StoreHome: React.FC = () => {
           <img src="/icons/logo.svg" alt="" className="w-10 h-10 opacity-90" />
           <div className="flex-1 min-w-0">
             <div className="text-[18px] font-bold leading-tight">{storeName}</div>
-            <div className="text-[12px] text-fg-3">1401 Playbook</div>
+            <div className="text-[12px] text-fg-3">1401 Campus</div>
           </div>
           <button className={t.iconBtn} onClick={() => setMenu(true)} aria-label="Cihaz ayarları"><Icon name="sliders" size={16} /></button>
         </div>

@@ -1,5 +1,5 @@
 /**
- * 1401 Playbook — Cloud Functions.
+ * 1401 Campus — Cloud Functions.
  *
  * Neden sunucu tarafı:
  *  - PIN'ler ve cihaz anahtarları telefona hiç inmez; sadece hash'leri

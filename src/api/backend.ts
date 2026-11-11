@@ -1,5 +1,5 @@
 /**
- * 1401 Playbook — Spark (ücretsiz plan) arka ucu.
+ * 1401 Campus — Spark (ücretsiz plan) arka ucu.
  *
  * Sunucu kodu (Cloud Functions) olmadan çalışır:
  *  - Hesaplar yöneticinin tarayıcısında, ikinci bir Firebase örneğiyle açılır.
@@ -290,9 +290,20 @@ async function startExam(mod: Module, who: { baristaId: string; storeId: string;
 
   const missed = new Set<string>();
   recent.docs.forEach((d) => ((d.data().mistakes || []) as AttemptReviewItem[]).forEach((m) => missed.add(m.questionId)));
-  const all = shuffle(qSnap.docs);
-  const prioritized = [...all.filter((d) => missed.has(d.id)), ...all.filter((d) => !missed.has(d.id))];
-  const picked = shuffle(prioritized.slice(0, Math.min(mod.examSize || 10, all.length)));
+
+  // Daha önce yanlış yapılan sorular öne alınır ama sınavın EN ÇOK ÜÇTE
+  // BİRİNİ kaplar. Sınırsız bırakılırsa tekrar sınavı neredeyse aynı
+  // sorulardan oluşuyor; barista konuyu değil o soruları öğreniyor.
+  const size = Math.min(mod.examSize || 10, qSnap.size);
+  const missedPool = shuffle(qSnap.docs.filter((d) => missed.has(d.id)));
+  const freshPool = shuffle(qSnap.docs.filter((d) => !missed.has(d.id)));
+  const fromMissed = Math.min(missedPool.length, Math.floor(size / 3));
+  const picked = shuffle([
+    ...missedPool.slice(0, fromMissed),
+    ...freshPool.slice(0, size - fromMissed),
+    // Havuz tekrar sorularla doluysa kalanı eski sorulardan tamamla.
+    ...missedPool.slice(fromMissed)
+  ].slice(0, size));
 
   const keys: Record<string, ExamKey> = {};
   const questions: ExamQuestion[] = picked.map((d) => {

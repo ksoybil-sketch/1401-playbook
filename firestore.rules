@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// 1401 Playbook — Firestore güvenlik kuralları (Spark / ücretsiz plan).
+// 1401 Campus — Firestore güvenlik kuralları (Spark / ücretsiz plan).
 //
 // Sunucu kodu (Cloud Functions) ve Storage yok — bkz. blaze/ için Blaze
 // sürümü. Ders fotoğrafları, küçültülüp data URL olarak doğrudan
