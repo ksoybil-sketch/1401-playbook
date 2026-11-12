@@ -4,6 +4,8 @@ import { Tanitim } from './Video';
 import { Yonetim } from './Yonetim';
 import { D_TOTAL } from './senaryo-yonetim';
 import { FPS, TOTAL } from './script';
+import { Rehber, sure } from './rehber/Rehber';
+import { BARISTA, MUDUR } from './rehber/senaryo';
 
 // Uygulamanın kendi yazı tipi (Inter, gömülü) — video da aynı harflerle konuşsun.
 const handle = delayRender('Inter yükleniyor');
@@ -18,5 +20,8 @@ export const Root: React.FC = () => (
     <Composition id="Tanitim" component={Tanitim} durationInFrames={Math.round(TOTAL / 0.75)} fps={FPS} width={1080} height={1920} defaultProps={{ speed: 0.75 }} />
     {/* Uğur Bey ve Cenk Bey için: masaüstü ekranları, yatay. */}
     <Composition id="Yonetim" component={Yonetim} durationInFrames={Math.round(D_TOTAL / 0.75)} fps={FPS} width={1920} height={1080} defaultProps={{ speed: 0.75 }} />
+    {/* Kullanım rehberleri: seslendirmeli, dikey (telefonda izlenir). */}
+    <Composition id="RehberBarista" component={Rehber} durationInFrames={sure(BARISTA)} fps={FPS} width={1080} height={1920} defaultProps={{ kim: 'barista' as const }} />
+    <Composition id="RehberMudur" component={Rehber} durationInFrames={sure(MUDUR)} fps={FPS} width={1080} height={1920} defaultProps={{ kim: 'mudur' as const }} />
   </>
 );

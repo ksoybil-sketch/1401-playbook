@@ -6,7 +6,10 @@
   "scripts": {
     "capture": "node capture/reset-emu.mjs && node capture/capture.mjs && node capture/yonetim.mjs",
     "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts Tanitim out/1401-campus-tanitim.mp4 --codec h264 --crf 18 && remotion render src/index.ts Yonetim out/1401-campus-yonetim.mp4 --codec h264 --crf 18"
+    "render": "remotion render src/index.ts Tanitim out/1401-campus-tanitim.mp4 --codec h264 --crf 18 && remotion render src/index.ts Yonetim out/1401-campus-yonetim.mp4 --codec h264 --crf 18",
+    "capture:rehber": "node capture/reset-emu.mjs && node capture/rehber.mjs",
+    "ses": "node capture/ses.mjs",
+    "render:rehber": "node capture/ses.mjs && remotion render RehberBarista out/1401-campus-barista-rehberi.mp4 --codec h264 --crf 20 && remotion render RehberMudur out/1401-campus-magaza-muduru-rehberi.mp4 --codec h264 --crf 20"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.543",

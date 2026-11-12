@@ -4,8 +4,8 @@ import { useT } from './time';
 import meta from '../public/ekranlar/meta.json';
 import type { Beat } from './script';
 
-type Box = { x: number; y: number; w: number; h: number };
-type Meta = Record<string, { file: string; fullPage: boolean; size: { w: number; h: number }; boxes: Record<string, Box>; vp?: string; chrome?: { top: number; bottom: number } }>;
+type Box = { x: number; y: number; w: number; h: number; fixed?: boolean };
+export type Meta = Record<string, { file: string; fullPage: boolean; size: { w: number; h: number }; boxes: Record<string, Box>; vp?: string; chrome?: { top: number; bottom: number } }>;
 const M = meta as unknown as Meta;
 
 /** Ekran CSS genişliği (390) → videodaki telefon ekranı. */
@@ -17,10 +17,10 @@ const K = SCREEN_W / 390;
  * Gerçek uygulama ekranı, telefon çerçevesi içinde. Kaydırma, yakınlaşma,
  * işaretleme ve dokunma hepsi meta.json'daki gerçek konumlardan.
  */
-export const Phone: React.FC<{ beat: Beat; hue: string }> = ({ beat, hue }) => {
+export const Phone: React.FC<{ beat: Beat; hue: string; metaMap?: Meta }> = ({ beat, hue, metaMap }) => {
   const frame = useT();
   const { fps } = useVideoConfig();
-  const m = M[beat.screen];
+  const m = (metaMap || M)[beat.screen];
   if (!m) throw new Error(`Ekran yok: ${beat.screen}`);
   const ease = Easing.bezier(0.33, 0, 0.15, 1);
 
@@ -35,14 +35,16 @@ export const Phone: React.FC<{ beat: Beat; hue: string }> = ({ beat, hue }) => {
   const z = box ? interpolate(spring({ frame: frame - 8, fps, config: { damping: 200, mass: 0.9 } }), [0, 1], [1, beat.zoom || 1.3])
     : interpolate(frame, [0, beat.dur], [1, 1.03], { extrapolateRight: 'clamp' });
   const cx = box ? box.x + box.w / 2 : 195;
-  const cy = box ? box.y + box.h / 2 - scroll : 422;
+  const cy = box ? box.y + box.h / 2 - (box.fixed ? 0 : scroll) : 422;
   // Ekran kenarından taşmasın diye merkez sınırlanır.
   const ox = Math.min(390 - 195 / z, Math.max(195 / z, cx));
   const oy = Math.min(844 - 422 / z, Math.max(422 / z, cy));
-  const tx = interpolate(z, [1, beat.zoom || 1.3], [0, (195 - ox) * K], { extrapolateRight: 'clamp' }) * (box ? 1 : 0);
-  const ty = interpolate(z, [1, beat.zoom || 1.3], [0, (422 - oy) * K], { extrapolateRight: 'clamp' }) * (box ? 1 : 0);
+  // translate ölçekten önce uygulanır: hedefi ortaya getirmek için kayma z ile çarpılır.
+  const prog = box ? interpolate(z, [1, beat.zoom || 1.3], [0, 1], { extrapolateRight: 'clamp' }) : 0;
+  const tx = (195 - ox) * K * z * prog;
+  const ty = (422 - oy) * K * z * prog;
 
-  const toScreen = (b: Box) => ({ left: b.x * K, top: (b.y - scroll) * K, width: b.w * K, height: b.h * K });
+  const toScreen = (b: Box) => ({ left: b.x * K, top: (b.y - (b.fixed ? 0 : scroll)) * K, width: b.w * K, height: b.h * K });
 
   return (
     <div style={{
