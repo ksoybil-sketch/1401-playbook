@@ -12,7 +12,7 @@ import { assignmentDone, assignmentDoneAt, isOverdue } from './progress';
  *
  * Kurallar kodda sabit değil: her başarımın eşikleri, süre penceresi ve
  * açık/kapalı durumu; her rozetin şartları, geçerlilik süresi ve veriliş
- * biçimi config/badges belgesinden okunur. Belgeyi Kahve Operasyon Müdürü
+ * biçimi config/badges belgesinden okunur. Belgeyi Kahve Operasyon Direktörü
  * "Rozetler" ekranından düzenler; belge yoksa aşağıdaki varsayılanlar
  * geçerlidir. Barista bazındaki istisnalar (rozet geri alma, başarım geri
  * alma / elle verme) baristas/{id}.badgeOverrides alanındadır.
@@ -55,7 +55,7 @@ export interface TitleSettings {
   mode: 'auto' | 'approval';
 }
 
-/** config/badges — Kahve Operasyon Müdürü'nün ayarları. Eksik alanlar varsayılandan gelir. */
+/** config/badges — Kahve Operasyon Direktörü'nün ayarları. Eksik alanlar varsayılandan gelir. */
 export interface BadgeConfig {
   badges?: Record<string, Partial<BadgeSettings>>;
   titles?: Partial<Record<TitleId, Partial<TitleSettings>>>;

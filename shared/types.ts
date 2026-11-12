@@ -346,7 +346,7 @@ export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
 
 /**
  * proposals/{id} — Bölge müdürü ya da operasyon ekibinin yaptığı, Kahve
- * Operasyon Müdürü'nün onayını bekleyen değişiklik. Onaylanınca `ops`
+ * Kahve Operasyon Direktörü'nün onayını bekleyen değişiklik. Onaylanınca `ops`
  * olduğu gibi (ya da müdürün düzelttiği hâliyle) uygulanır.
  */
 export interface Proposal {

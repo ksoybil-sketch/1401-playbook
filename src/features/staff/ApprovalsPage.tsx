@@ -20,7 +20,7 @@ import type { Bulletin, ChangeOp, Lesson, Module, Proposal, ProposalKind, Questi
  * Bekleyen onaylar.
  *
  * Bölge müdürü ve operasyon ekibinin içerik/bülten değişiklikleri buraya
- * düşer. Kahve Operasyon Müdürü her birini olduğu gibi yayınlar, açıp
+ * düşer. Kahve Operasyon Direktörü her birini olduğu gibi yayınlar, açıp
  * düzelterek yayınlar ya da bir notla reddeder. Öneriyi yapan kişi aynı
  * sayfada kendi önerilerinin durumunu görür.
  */
@@ -93,7 +93,7 @@ export const ApprovalsPage: React.FC = () => {
         title={approver ? 'Bekleyen onaylar' : 'Önerilerim'}
         subtitle={approver
           ? 'Bölge müdürü ve ekibin yaptığı içerik ve bülten değişiklikleri. Olduğu gibi yayınla, düzeltip yayınla ya da notla geri gönder.'
-          : 'İçerik ve bülten değişikliklerin Kahve Operasyon Müdürü onaylayınca yayına girer.'}
+          : 'İçerik ve bülten değişikliklerin Kahve Operasyon Direktörü onaylayınca yayına girer.'}
       />
 
       <div className={t.segment}>

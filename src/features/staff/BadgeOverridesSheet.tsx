@@ -9,7 +9,7 @@ import * as t from '../../ui/tokens';
 import type { Barista } from '../../../shared/types';
 
 /**
- * Bir baristanın rozet ve başarım istisnaları — Kahve Operasyon Müdürü.
+ * Bir baristanın rozet ve başarım istisnaları — Kahve Operasyon Direktörü.
  *
  *   Rozeti geri al  : seçilen seviye ve üstü, kaldırılana (ya da bitiş
  *                     tarihine) kadar verilmez; önlükteki rozet de o

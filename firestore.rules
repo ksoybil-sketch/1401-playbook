@@ -24,7 +24,7 @@ service cloud.firestore {
     // Yetki sıralaması — bkz. src/lib/roles.ts (ikisi birlikte değişmeli).
     //   developer  uygulama geliştiricisi; dağıtıma kadar hiçbir kurala takılmaz
     //   admin      eski sürümden kalan tam yetkili rol (developer gibi)
-    //   director   Kahve Operasyon Müdürü: yayınlar, onaylar, ekibi yönetir
+    //   director   Kahve Operasyon Direktörü: yayınlar, onaylar, ekibi yönetir
     //   regional   Bölge Müdürü: barista/mağaza/kod işleri, talepler
     //   ops        Kahve Operasyonu ekibi: görür, görev atar, öneri yapar
     function isStaff() { return myRole() in ['developer', 'admin', 'director', 'regional', 'ops']; }
@@ -41,7 +41,7 @@ service cloud.firestore {
     /** Mağaza müdürü ve vardiya müdürü. */
     function isLead() { return myRole() in ['lead', 'shift']; }
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
-    /** Kahve Operasyon Müdürü'nün ekibe verebileceği roller. */
+    /** Kahve Operasyon Direktörü'nün ekibe verebileceği roller. */
     function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'regional', 'ops', 'admin'] : ['regional', 'ops']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
@@ -53,7 +53,7 @@ service cloud.firestore {
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
       allow list: if isStaff();
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
-      // Sonrasında: ekip hesaplarını Kahve Operasyon Müdürü, mağaza/barista
+      // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
       allow create: if (signedIn() && request.auth.uid == uid && request.resource.data.role == 'admin'
                           && !exists(/databases/$(database)/documents/config/bootstrap))
@@ -84,7 +84,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Rozet ve başarım ayarları: herkes okur, Kahve Operasyon Müdürü yazar.
+    // Rozet ve başarım ayarları: herkes okur, Kahve Operasyon Direktörü yazar.
     match /config/badges {
       allow get: if signedIn();
       allow write: if isDirector();
@@ -117,14 +117,14 @@ service cloud.firestore {
       allow create, delete: if canManageBaristas();
       // Davet kodunu kullanan barista kendi "pinPending" bayrağını kapatır
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
-      // Önlük rozeti teslimini Kahve Operasyon Müdürü de işaretler.
+      // Önlük rozeti teslimini Kahve Operasyon Direktörü de işaretler.
       allow update: if canManageBaristas()
         || (isDirector() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName', 'badgeOverrides']))
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinPending']));
     }
 
-    // --- İçerik: herkes okur, Kahve Operasyon Müdürü yayınlar ------------
+    // --- İçerik: herkes okur, Kahve Operasyon Direktörü yayınlar ------------
     // Bölge müdürü ve ekip doğrudan yazamaz; değişiklikleri proposals'a
     // düşer (bkz. src/api/changes.ts).
     match /tracks/{id} {
@@ -210,7 +210,7 @@ service cloud.firestore {
     }
 
     // --- Bülten -------------------------------------------------------
-    // Kahve Operasyon Müdürü yayınlar (diğerleri öneri yapar), mağaza
+    // Kahve Operasyon Direktörü yayınlar (diğerleri öneri yapar), mağaza
     // oturumları okur.
     //
     // Mağaza hedeflemesi (storeIds) güvenlik sınırı DEĞİL, görünürlük
@@ -229,7 +229,7 @@ service cloud.firestore {
       allow read: if isStaff() || inStore(resource.data.storeId);
       allow create: if ((isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
         && request.resource.data.createdBy == request.auth.uid) || isAdmin();
-      // Görevi atayan değiştirir/siler; Kahve Operasyon Müdürü herkesinkini.
+      // Görevi atayan değiştirir/siler; Kahve Operasyon Direktörü herkesinkini.
       allow update, delete: if isDirector()
         || (isStaff() && resource.data.createdBy == request.auth.uid)
         || (isLead() && resource.data.storeId == myStoreId() && resource.data.createdBy == request.auth.uid);

@@ -102,7 +102,8 @@ export const StaffLayout: React.FC = () => {
           <Avatar name={s.name} size={32} />
           <div className="flex-1 min-w-0 leading-tight">
             <div className="text-[13px] font-medium truncate">{s.name}</div>
-            <div className="text-[11px] text-fg-3 truncate">{STAFF_ROLE_LABEL[s.role]}</div>
+            {/* Uzun unvan ("Kahve Operasyon Direktörü") kesilmesin: iki satıra iner. */}
+            <div className="text-[11px] text-fg-3 leading-snug">{STAFF_ROLE_LABEL[s.role]}</div>
           </div>
           <button onClick={logout} className={t.iconBtn} aria-label="Çıkış" title="Çıkış"><Icon name="logout" size={15} /></button>
         </div>

@@ -6,7 +6,7 @@ import type { BaristaRole, StaffRole } from '../../shared/types';
  *
  *   developer  Kutay Soybil — uygulama geliştiricisi. Dağıtıma çıkana kadar
  *              hiçbir kurala takılmaz, her şeyi görür ve yapar.
- *   director   Cenk Girginol — Kahve Operasyon Müdürü, en üst yetkili.
+ *   director   Cenk Girginol — Kahve Operasyon Direktörü, en üst yetkili.
  *              İçeriği ve bülteni doğrudan yayınlar, önerileri onaylar,
  *              Kahve Operasyonu ekibine kişi ekler/çıkarır.
  *   regional   Uğur Can Gürbüz — Bölge Müdürü. Barista/mağaza/kod işleri
@@ -41,7 +41,7 @@ export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'regional', 'o
 
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   developer: 'Uygulama geliştiricisi',
-  director: 'Kahve Operasyon Müdürü',
+  director: 'Kahve Operasyon Direktörü',
   regional: 'Bölge Müdürü',
   ops: 'Kahve Operasyonu',
   admin: 'Tam yetkili'

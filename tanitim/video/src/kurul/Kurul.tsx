@@ -192,13 +192,14 @@ const Kapanis: React.FC<{ hazir: string[]; adim: string[] }> = ({ hazir, adim })
       <div style={{ flex: 1, opacity: sag, transform: `translateY(${(1 - sag) * 24}px)` }}>
         <div style={{ fontSize: 30, fontWeight: 700, color: AMBER, letterSpacing: 3, textTransform: 'uppercase' }}>Önerilen adım</div>
         <div style={{ height: 30 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 30 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
           {adim.map((a, i) => (
             <React.Fragment key={a}>
-              {i > 0 && <span style={{ fontSize: 56, color: AMBER }}>→</span>}
-              <span style={{ fontSize: 50, fontWeight: 800, color: INK, border: `3px solid ${i === 0 ? AMBER : LINE}`, borderRadius: 20, padding: '22px 30px', letterSpacing: -1, whiteSpace: 'nowrap' }}>{a}</span>
+              {i > 0 && <span style={{ fontSize: 40, color: AMBER, marginLeft: 30, lineHeight: 1 }}>↓</span>}
+              <span style={{ fontSize: 46, fontWeight: 800, color: INK, border: `3px solid ${i === 0 ? AMBER : LINE}`, borderRadius: 20, padding: '18px 28px', letterSpacing: -1, whiteSpace: 'nowrap' }}>{a}</span>
             </React.Fragment>
           ))}
+          <span style={{ fontSize: 28, color: DIM, marginTop: 14 }}>↻ geri bildirim geldikçe tekrar</span>
         </div>
       </div>
       <div style={{ position: 'absolute', left: 160, top: 70, display: 'flex', alignItems: 'center', gap: 18, opacity: useIn(30) }}>

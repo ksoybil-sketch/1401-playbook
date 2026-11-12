@@ -60,7 +60,7 @@ export const RequestThread: React.FC<{
   me: { uid: string; name: string };
   /** Operasyon tarafında hangi durum geçişlerine izin var. */
   canChange?: boolean;
-  /** Onay bekleyen talebi onaylayabilir mi (Kahve Operasyon Müdürü). */
+  /** Onay bekleyen talebi onaylayabilir mi (Kahve Operasyon Direktörü). */
   canApprove?: boolean;
 }> = ({ r, side, me, canChange, canApprove }) => {
   const [text, setText] = useState('');

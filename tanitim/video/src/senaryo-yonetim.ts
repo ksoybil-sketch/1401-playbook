@@ -27,7 +27,7 @@ export interface DChapter {
 
 export const PEOPLE = {
   ugur: { name: 'Uğur Can Gürbüz', role: 'Bölge Müdürü', hue: 'sky' as Hue },
-  cenk: { name: 'Cenk Girginol', role: 'Kahve Operasyon Müdürü', hue: 'amber' as Hue }
+  cenk: { name: 'Cenk Girginol', role: 'Kahve Operasyon Direktörü', hue: 'amber' as Hue }
 };
 
 export const DCHAPTERS: DChapter[] = [

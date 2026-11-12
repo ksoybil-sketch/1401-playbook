@@ -7,7 +7,7 @@ import type { ChangeOp, Proposal, ProposalKind } from '../../shared/types';
 /**
  * İçerik ve bülten yazımının tek kapısı.
  *
- * Kahve Operasyon Müdürü (ve geliştirici) doğrudan yayınlar. Bölge müdürü
+ * Kahve Operasyon Direktörü (ve geliştirici) doğrudan yayınlar. Bölge müdürü
  * ve operasyon ekibinin değişikliği yayına girmez; proposals/{id} olarak
  * "Bekleyen onaylar" listesine düşer. Müdür onu olduğu gibi yayınlayabilir
  * ya da editörde açıp düzeltip yayınlayabilir — ikisi de bu fonksiyondan
@@ -108,4 +108,4 @@ export async function withdrawProposal(p: Proposal): Promise<void> {
 
 /** Kullanıcıya gösterilecek sonuç metni. */
 export const resultText = (r: ChangeResult, applied = 'Kaydedildi') =>
-  r === 'applied' ? applied : 'Onaya gönderildi — Kahve Operasyon Müdürü yayınlayınca görünür';
+  r === 'applied' ? applied : 'Onaya gönderildi — Kahve Operasyon Direktörü yayınlayınca görünür';

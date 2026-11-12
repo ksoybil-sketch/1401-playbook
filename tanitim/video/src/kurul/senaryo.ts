@@ -57,9 +57,10 @@ export const KURUL: Sahne[] = [
     gorsel: { tur: 'telefon', ekran: 'recete', kaydir: [0, 260] }
   },
   {
-    ust: 'Motivasyon', baslik: 'Önlük rozeti\nkurala bağlı',
-    rakamlar: [['4', 'rozet'], ['18', 'başarım']],
-    metin: 'Önlük rozetleri artık açık kurallara bağlı. Barista bir sonraki rozet için neyi tamamlaması gerektiğini görür; başarımlar ilerlemeyi teşvik eder.',
+    ust: 'Motivasyon', baslik: 'Rozet ve başarım\nsistemi',
+    rakamlar: [['4', 'önlük rozeti'], ['18', 'başarım']],
+    metin: 'Eğitimi teşvik etmek için bir rozet ve başarım sistemi var. Barista ders ve sınavları tamamladıkça başarım kazanır, Rookie’den Pro’ya önlük rozetinde ilerler.',
+    ses: 'Eğitimi teşvik etmek için bir rozet ve başarım sistemi var. Barista ders ve sınavları tamamladıkça başarım kazanır, Ruki’den Pro’ya önlük rozetinde ilerler.',
     gorsel: { tur: 'telefon', ekran: 'bugun' }
   },
   {
@@ -74,7 +75,7 @@ export const KURUL: Sahne[] = [
   },
   {
     ust: 'Kontrol', baslik: 'Standart\ntek elden',
-    metin: 'İçerikteki her değişiklik Kahve Operasyon Müdürünün onayıyla yayına girer. Standardı tek elden yönetiriz.',
+    metin: 'İçerikteki her değişiklik Kahve Operasyon Direktörünün onayıyla yayına girer. Standardı tek elden yönetiriz.',
     gorsel: { tur: 'masaustu', ekran: 'y-c-ne-degisiyor', yakin: 1.4, merkez: '50% 30%' }
   },
   {
@@ -83,8 +84,8 @@ export const KURUL: Sahne[] = [
     gorsel: { tur: 'cihazlar' }
   },
   {
-    metin: 'Uygulama hazır, kullanım rehberleri hazır, ekip demoda deniyor. Önerimiz: önce bir şubede pilot ile başlamak, ardından bütün şubelere yaymak.',
-    gorsel: { tur: 'kapanis', hazir: ['Uygulama', 'Kullanım rehberleri', 'Deneme ortamı (demo)'], adim: ['Pilot şube', 'Bütün şubeler'] }
+    metin: 'Uygulama hazır, kullanım rehberleri hazır, ekip demoda deniyor. Önerimiz: uygulamayı bu hâliyle hemen başlatmak; gereksinimlere ve sahadan gelecek geri bildirimlere göre hızla geliştirmek.',
+    gorsel: { tur: 'kapanis', hazir: ['Uygulama', 'Kullanım rehberleri', 'Deneme ortamı (demo)'], adim: ['Bu hâliyle başlat', 'Sahadan geri bildirim', 'Hızlı geliştirme'] }
   }
 ];
 

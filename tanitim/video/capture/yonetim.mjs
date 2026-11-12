@@ -5,7 +5,7 @@
  *   Uğur Bey (Bölge Müdürü): barista ekler → davet kodu; telefon bağlar →
  *   eşleştirme kodu; talebi yanıtlar ve servisi onaya gönderir; görev atar;
  *   dersi düzenler → onaya gönderir.
- *   Cenk Bey (Kahve Operasyon Müdürü): o öneriyi görür, ne değiştiğine bakar,
+ *   Cenk Bey (Kahve Operasyon Direktörü): o öneriyi görür, ne değiştiğine bakar,
  *   yayınlar; servisi onaylar; rozet ayarları; barista bazında geri alma;
  *   terfi bülteni; ekip yönetimi; dosyadan ders.
  *
@@ -136,7 +136,7 @@ const sheet = (page) => page.locator('[role=dialog], .fixed.inset-0').last();
 }
 
 /* ------------------------------------------------------------------ */
-/* Cenk Bey — Kahve Operasyon Müdürü                                    */
+/* Cenk Bey — Kahve Operasyon Direktörü                                    */
 /* ------------------------------------------------------------------ */
 {
   const { ctx, page } = await login('cenkgirginol@1401coffee.com', '192535');

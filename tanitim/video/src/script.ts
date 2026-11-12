@@ -96,7 +96,7 @@ export const CHAPTERS: Chapter[] = [
       { screen: 'panel-genel', dur: 72, caption: 'Şube şube ilerleme, sınavlar, en çok yanlış yapılan sorular.', scroll: [0, 520] },
       { screen: 'panel-talepler', dur: 54, caption: 'Kartlara dokun, liste süzülsün: acil, onay bekleyen, çözülen.', mark: [{ box: 'acil', label: 'Acil' }, { box: 'onay', label: 'Onay bekleyen' }] },
       { screen: 'panel-onaylar', dur: 60, caption: 'Bölge müdürünün değişikliği onayınla yayına girer.', mark: [{ box: 'yayinla', label: 'Olduğu gibi yayınla' }, { box: 'duzelt', label: 'Düzelt ve yayınla' }] },
-      { screen: 'panel-rozetler', dur: 66, caption: 'Rozet kuralları, teslim ve geri alma Kahve Operasyon Müdürü’nde.', scroll: [0, 260], mark: [{ box: 'teslim', label: 'Teslim edildi' }] },
+      { screen: 'panel-rozetler', dur: 66, caption: 'Rozet kuralları, teslim ve geri alma Kahve Operasyon Direktörü’nde.', scroll: [0, 260], mark: [{ box: 'teslim', label: 'Teslim edildi' }] },
       { screen: 'panel-bulten', dur: 54, caption: 'Bülteni kim okudu, kim okumadı.', mark: [{ box: 'okuyan', label: 'Okumayanlar' }] }
     ]
   }

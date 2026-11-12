@@ -517,7 +517,7 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     });
   }
 
-  // --- Onay bekleyen öneri (Bölge Müdürü → Kahve Operasyon Müdürü) ---------
+  // --- Onay bekleyen öneri (Bölge Müdürü → Kahve Operasyon Direktörü) ---------
   await setDoc('proposals/demo-oneri-1', {
     kind: 'bulletin', title: 'Kasım terfileri', summary: 'Yeni bülten · Liderlik',
     ops: [{ op: 'set', col: 'bulletins', id: 'demo-terfi-kasim', data: {
@@ -533,7 +533,7 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     status: 'pending', createdAt: now - 2 * H, createdBy: regional.uid, createdByName: regional.name
   });
 
-  // Bölge müdürünün atadığı görev — Kahve Operasyon Müdürü "Atayan" süzgecinde görür.
+  // Bölge müdürünün atadığı görev — Kahve Operasyon Direktörü "Atayan" süzgecinde görür.
   await setDoc('assignments/demo-6', {
     kind: 'module', targetId: 'demleme-turk', title: 'Demleme ve Türk Kahveleri', note: 'Yeni V60 standardı — hafta sonuna kadar.',
     storeId: 'cubuklu', baristaId: null, dueAt: now + 4 * 86400000, createdAt: now - 86400000,

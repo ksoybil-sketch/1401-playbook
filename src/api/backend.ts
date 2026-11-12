@@ -245,7 +245,7 @@ async function needsBootstrap(): Promise<boolean> {
 }
 
 /**
- * [Kahve Operasyon Müdürü] Ekibe yeni kişi; şifresini e-postadaki bağlantıyla
+ * [Kahve Operasyon Direktörü] Ekibe yeni kişi; şifresini e-postadaki bağlantıyla
  * kendisi belirler. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
  */
 async function createStaff(name: string, email: string, role: StaffRole = 'ops'): Promise<void> {

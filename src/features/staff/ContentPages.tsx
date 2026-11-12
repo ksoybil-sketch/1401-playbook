@@ -598,7 +598,7 @@ export const LessonEditorPage: React.FC = () => {
             {proposal.status === 'pending'
               ? publisher
                 ? <><strong>{proposal.createdByName}</strong> bu dersi öneriyor. İstediğin yeri düzeltip “Onayla ve yayınla” de; baristalar yalnızca yayınlanan hâlini görür.</>
-                : <>Bu ders onay bekliyor. Kahve Operasyon Müdürü yayınlayana kadar baristalar eski hâlini görür.</>
+                : <>Bu ders onay bekliyor. Kahve Operasyon Direktörü yayınlayana kadar baristalar eski hâlini görür.</>
               : proposal.status === 'approved' ? <>Bu öneri {proposal.reviewedByName} tarafından yayınlandı.</>
               : proposal.status === 'rejected' ? <>Bu öneri reddedildi{proposal.reviewNote ? `: “${proposal.reviewNote}”` : '.'} Düzenleyip yeniden gönderebilirsin.</>
               : <>Bu öneri geri çekildi.</>}
@@ -845,7 +845,7 @@ const AiKeySheet: React.FC<{ open: boolean; onClose: () => void; by: string }> =
       <div className="flex gap-3 p-3.5 rounded-xl bg-caution-bg border border-caution-line text-[12.5px] leading-relaxed">
         <Icon name="alert" size={16} className="text-caution mt-0.5" />
         <span>
-          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Müdürü, Bölge Müdürü ve geliştiricinin
+          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Direktörü, Bölge Müdürü ve geliştiricinin
           tarayıcısına iner (baristalar göremez). Console'da yalnızca bu iş için ayrı bir anahtar açıp <strong>aylık harcama sınırı</strong> koy.
         </span>
       </div>

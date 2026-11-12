@@ -8,6 +8,9 @@ import { Rehber, sure } from './rehber/Rehber';
 import { BARISTA, MUDUR } from './rehber/senaryo';
 import { Kurul, kurulZaman } from './kurul/Kurul';
 
+// Türkçe büyük harf: text-transform uppercase "i"yi "İ" yapsın (IÇIN değil İÇİN).
+document.documentElement.lang = 'tr';
+
 // Uygulamanın kendi yazı tipi (Inter, gömülü) — video da aynı harflerle konuşsun.
 const handle = delayRender('Inter yükleniyor');
 Promise.all([

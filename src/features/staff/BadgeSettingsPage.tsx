@@ -10,7 +10,7 @@ import { Page, PageTitle, Section, Spinner, toast, fmtDateTime } from '../../ui/
 import * as t from '../../ui/tokens';
 
 /**
- * Rozet ve başarım ayarları — Kahve Operasyon Müdürü'nün ekranı.
+ * Rozet ve başarım ayarları — Kahve Operasyon Direktörü'nün ekranı.
  *
  * Rozetler (Rookie → Pro): kaç başarım, hangi başarımlar zorunlu, not
  * ortalaması, kıdem, teslimden sonra kaç gün geçerli ve nasıl verileceği
@@ -79,7 +79,7 @@ export const BadgeSettingsPage: React.FC = () => {
 
       {!editable && (
         <div className="flex gap-2 p-3 rounded-xl bg-panel border border-line text-[13px] text-fg-2">
-          <Icon name="lock" size={15} className="mt-0.5" /> Bu ayarları yalnızca Kahve Operasyon Müdürü değiştirebilir.
+          <Icon name="lock" size={15} className="mt-0.5" /> Bu ayarları yalnızca Kahve Operasyon Direktörü değiştirebilir.
         </div>
       )}
 

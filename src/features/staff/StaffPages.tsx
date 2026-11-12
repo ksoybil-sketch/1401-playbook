@@ -175,7 +175,7 @@ interface StaffRow { id: string; name: string; email: string; role: StaffRole; a
 
 /**
  * Kahve Operasyonu ekibi. Kişi ekleyip çıkarmak ve rol vermek yalnızca
- * Kahve Operasyon Müdürü'nde (ve geliştiricide); diğerleri listeyi görür.
+ * Kahve Operasyon Direktörü'nde (ve geliştiricide); diğerleri listeyi görür.
  */
 const StaffTeamSection: React.FC = () => {
   const me = useStaffSession();
@@ -365,7 +365,7 @@ export const ApronBadgesSection: React.FC = () => {
 
 /**
  * Kod bekleyenler: davet kodunu henüz kullanmamış baristalar ve eşleşmemiş
- * mağaza telefonları. Kodları Bölge Müdürü verir; Kahve Operasyon Müdürü
+ * mağaza telefonları. Kodları Bölge Müdürü verir; Kahve Operasyon Direktörü
  * buradan takip eder.
  */
 export const PendingCodesSection: React.FC = () => {
@@ -908,7 +908,7 @@ export const TasksPage: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [storeFilter, setStoreFilter] = useState('');
   // Bölge müdürünün ve mağaza müdürlerinin atadığı görevler de burada;
-  // Kahve Operasyon Müdürü kimin ne atadığını bu süzgeçle görür.
+  // Kahve Operasyon Direktörü kimin ne atadığını bu süzgeçle görür.
   const [byFilter, setByFilter] = useState('');
   const creators = [...new Map(assignments.map((a) => [a.createdBy, a.createdByName])).entries()];
   const [params, setParams] = useSearchParams();

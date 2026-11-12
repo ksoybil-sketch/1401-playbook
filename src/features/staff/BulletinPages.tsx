@@ -313,7 +313,7 @@ export const BulletinSheet: React.FC<{
           </div>
           <span className="text-[11px] text-fg-3">{kindOf((d.kind as BulletinKind) || 'duyuru').hint}</span>
           {!publisher && (
-            <span className="text-[11px] text-caution">Bülten Kahve Operasyon Müdürü onayladıktan sonra yayına girer.</span>
+            <span className="text-[11px] text-caution">Bülten Kahve Operasyon Direktörü onayladıktan sonra yayına girer.</span>
           )}
         </div>
 

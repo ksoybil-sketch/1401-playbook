@@ -15,7 +15,7 @@ import type { RequestCategory, StoreRequest } from '../../../shared/types';
  * Mağaza talepleri — Kahve Operasyonu tarafı.
  *
  * Bölge Müdürü talepleri görür, işleme alır, yanıtlar; yetkili servis
- * gerekiyorsa "Müdür onayına gönder" der, Kahve Operasyon Müdürü onaylar.
+ * gerekiyorsa "Müdür onayına gönder" der, Kahve Operasyon Direktörü onaylar.
  * Operasyon ekibinin diğer üyeleri listeyi görür, değiştirmez.
  */
 export const RequestsPage: React.FC = () => {

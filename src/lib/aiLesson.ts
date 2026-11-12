@@ -12,7 +12,7 @@ import type { DraftQuestion, ImportResult } from './importLesson';
  * eklenir, bölge müdürünün yaptığı her şey onaya düşer.
  *
  * Anahtar (bkz. aiKey.ts): config/ai belgesinde tutulur, kurallar gereği yalnızca
- * geliştirici, Kahve Operasyon Müdürü ve Bölge Müdürü okuyabilir. Spark
+ * geliştirici, Kahve Operasyon Direktörü ve Bölge Müdürü okuyabilir. Spark
  * planında sunucu (Cloud Functions) olmadığı için çağrı tarayıcıdan yapılır;
  * bu yüzden anahtar bu kişilerin tarayıcısına iner. Anthropic Console'da bu
  * iş için ayrı, harcama sınırı konmuş bir anahtar açılmalı.
