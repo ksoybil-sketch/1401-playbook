@@ -6,6 +6,7 @@ import { D_TOTAL } from './senaryo-yonetim';
 import { FPS, TOTAL } from './script';
 import { Rehber, sure } from './rehber/Rehber';
 import { BARISTA, MUDUR } from './rehber/senaryo';
+import { Kurul, kurulZaman } from './kurul/Kurul';
 
 // Uygulamanın kendi yazı tipi (Inter, gömülü) — video da aynı harflerle konuşsun.
 const handle = delayRender('Inter yükleniyor');
@@ -23,5 +24,7 @@ export const Root: React.FC = () => (
     {/* Kullanım rehberleri: seslendirmeli, dikey (telefonda izlenir). */}
     <Composition id="RehberBarista" component={Rehber} durationInFrames={sure(BARISTA)} fps={FPS} width={1080} height={1920} defaultProps={{ kim: 'barista' as const }} />
     <Composition id="RehberMudur" component={Rehber} durationInFrames={sure(MUDUR)} fps={FPS} width={1080} height={1920} defaultProps={{ kim: 'mudur' as const }} />
+    {/* Yönetim kurulu: neden, neyi çözer, ne kazandırır (yatay, seslendirmeli). */}
+    <Composition id="Kurul" component={Kurul} durationInFrames={kurulZaman().toplam} fps={FPS} width={1920} height={1080} />
   </>
 );

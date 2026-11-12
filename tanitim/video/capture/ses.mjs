@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { REHBERLER, cumleler } from '../src/rehber/senaryo.ts';
+import { kurulCumleleri } from '../src/kurul/senaryo.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'public', 'rehber-ses');
@@ -37,7 +38,7 @@ const jsonPath = join(OUT, 'sesler.json');
 const old = existsSync(jsonPath) ? JSON.parse(readFileSync(jsonPath, 'utf8')) : {};
 const out = {};
 
-const texts = [...new Set(REHBERLER.flatMap(cumleler))];
+const texts = [...new Set([...REHBERLER.flatMap(cumleler), ...kurulCumleleri()])];
 let made = 0;
 for (const text of texts) {
   const h = createHash('sha1').update(`${ENGINE}|${VOICE}|${RATE}|${text}`).digest('hex').slice(0, 12);
