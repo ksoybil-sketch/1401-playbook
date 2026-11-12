@@ -41,7 +41,8 @@ rehberlerle aynı yoldan (`npm run ses`).
 |---|---|---|
 | Gemini (kurul videosu: **Charon**) | `MOTOR=gemini SES=Charon SADECE=kurul npm run ses` | En doğal ses. Anahtar `.env.local` → `GEMINI_API_KEY=` (git'e girmez). Ücretsiz kota model başına **günde 10 istek**; `GEMINI_MODEL=gemini-3.8-flash-lite-tts` ayrı kotadır. Ton `USLUP` ile tarif edilir. |
 | Edge (rehberler: **Emel**) | `npm run ses` | Ücretsiz, kotasız, internet gerekir. |
-| Chatterbox | `MOTOR=chatterbox SADECE=kurul npm run ses` | Yerel, MIT. 8 GB bellekte çok yavaş; kayıttan ses taklidi için `REF_SES`. |
 | macOS Yelda | `MOTOR=say SES="Yelda (Enhanced)" npm run ses` | İnternetsiz yedek, robotik. |
 
-Seslendirme kontrolü: `capture/ses_kontrol.py` her cümleyi Whisper ile yazıya geri çevirip metinle karşılaştırır.
+Seslendirme kontrolü: `capture/ses_kontrol.py` her cümleyi Whisper ile (`~/.local/share/whisper`) yazıya geri çevirip metinle karşılaştırır.
+
+Chatterbox (yerel model) denendi ve kaldırıldı: 8 GB bellekte takasa düşüp çok yavaş çalışıyordu.
