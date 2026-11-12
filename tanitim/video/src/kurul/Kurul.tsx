@@ -199,7 +199,7 @@ const Kapanis: React.FC<{ hazir: string[]; adim: string[] }> = ({ hazir, adim })
               <span style={{ fontSize: 46, fontWeight: 800, color: INK, border: `3px solid ${i === 0 ? AMBER : LINE}`, borderRadius: 20, padding: '18px 28px', letterSpacing: -1, whiteSpace: 'nowrap' }}>{a}</span>
             </React.Fragment>
           ))}
-          <span style={{ fontSize: 28, color: DIM, marginTop: 14 }}>↻ geri bildirim geldikçe tekrar</span>
+          <span style={{ fontSize: 28, color: DIM, marginTop: 14 }}>Geri bildirim geldikçe yeniden</span>
         </div>
       </div>
       <div style={{ position: 'absolute', left: 160, top: 70, display: 'flex', alignItems: 'center', gap: 18, opacity: useIn(30) }}>
