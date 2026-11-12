@@ -18,12 +18,12 @@ klasörde `npm install`.
 
 - Anlatım metni: `src/rehber/senaryo.ts`. Her adım bir ekran + bir cümle; cümle hem altyazı hem
   seslendirme. Okunuşu farklı olacak yerler için `ses` alanı (ör. rozet adları, "oz").
-- Seslendirme: `npm run ses` — macOS'un Türkçe sesi Yelda ile `public/rehber-ses/`'e WAV yazar ve
-  sürelerini ölçer. Adım süreleri seslendirmeden gelir; yalnızca değişen cümleler yeniden üretilir.
-- Daha doğal ses için Mac'te **Sistem Ayarları → Erişilebilirlik → Seslendirilen İçerik → Sistem
-  sesi → Sesleri Yönet → Türkçe → Yelda (Gelişmiş)** indirilir. Sesin tam adı
-  `say -v '?' | grep Yelda` ile görülür (ör. `Yelda (Enhanced)`), sonra:
-  `SES="Yelda (Enhanced)" node capture/ses.mjs --hepsi && npm run render:rehber`
+- Seslendirme: `npm run ses`. Varsayılan motor Microsoft Edge'in ücretsiz sesli okuma servisi
+  (`edge-tts`, `uvx` ile çalışır, internet gerekir; servise yalnızca anlatım metni gider) ve doğal
+  Türkçe ses **Emel** (`tr-TR-EmelNeural`). Erkek ses için `SES=tr-TR-AhmetNeural npm run ses`.
+  İnternetsiz yedek: `MOTOR=say SES="Yelda (Enhanced)" npm run ses` (macOS sesi, daha robotik).
+  Ses ya da cümle değişince yalnızca değişen cümleler üretilir; adım süreleri seslendirmeden gelir.
+  Sonra `npm run render:rehber`.
 - Ekranlar: `capture/rehber.mjs` (mağaza telefonu, yeni barista davet kodu 246810, Mehmet ve Ayşe
   hesapları). Öğe konumları `public/rehber/rehber.json`'a yazılır; çerçeve ve dokunma halkaları
   buradan çizilir.
