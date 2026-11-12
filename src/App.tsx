@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
-import { isManager } from './lib/roles';
+import { can, isManager } from './lib/roles';
 import { useBadgeConfig } from './store/badgeConfig';
 import { FullLoader, ToastHost } from './ui/kit';
 import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
@@ -20,6 +20,9 @@ import { StaffLayout } from './features/staff/StaffLayout';
 import { OverviewPage, StoresPage, StoreDetailPage, BaristasPage, BaristaDetailPage, TasksPage } from './features/staff/StaffPages';
 import { ContentPage, ModuleEditorPage, LessonEditorPage } from './features/staff/ContentPages';
 import { BulletinPage } from './features/staff/BulletinPages';
+import { ACTIVITY_LOG } from './demo/log';
+import { DemoTracker } from './demo/DemoTracker';
+import { DemoLogPage } from './demo/DemoLogPage';
 
 export const App: React.FC = () => {
   const session = useSession((s) => s.session);
@@ -38,6 +41,7 @@ export const App: React.FC = () => {
   return (
     <>
       <Screens session={session} contentReady={contentReady} />
+      {ACTIVITY_LOG && <DemoTracker />}
       <ToastHost />
     </>
   );
@@ -110,6 +114,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="icerik" element={<ContentPage />} />
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
             <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />
+            {ACTIVITY_LOG && can(session.role, 'manageAi') && <Route path="demo-kaydi" element={<DemoLogPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

@@ -90,6 +90,23 @@ service cloud.firestore {
       allow write: if isDirector();
     }
 
+    // Demo kaydı (src/demo/log.ts). Yalnızca config/demo olan projede (demo,
+    // emülatör) yazılır; canlı projede o belge yok, kimse yazamaz. Kayıtları
+    // yalnızca uygulama geliştiricisi okur, kimse değiştirip silemez.
+    match /config/demo {
+      allow get: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /demoLog/{id} {
+      allow create: if signedIn()
+        && exists(/databases/$(database)/documents/config/demo)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['at', 'uid', 'who', 'role', 'sid', 'device', 'kind', 'path', 'op', 'label', 'detail'])
+        && request.resource.data.detail is string && request.resource.data.detail.size() <= 4000;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /stores/{storeId} {
       allow read: if signedIn();
       allow write: if canManageBaristas();

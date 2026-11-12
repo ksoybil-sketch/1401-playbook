@@ -324,6 +324,10 @@ if (EMULATOR) {
   }
 }
 
+// Demo kaydını açar (src/demo/log.ts): firestore.rules demoLog'a yalnızca bu
+// belge varken yazdırır. Canlı projede hiç yazılmaz.
+if (DEMO || EMULATOR) await setDoc('config/demo', { enabled: true, at: Date.now() });
+
 console.log('Müfredat yükleniyor…');
 await writeAll('tracks', data.tracks);
 await writeAll('modules', data.modules);

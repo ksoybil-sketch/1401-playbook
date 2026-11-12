@@ -21,3 +21,6 @@ android/keystore.properties
 
 # Derlenmiş APK — her derlemede yeniden üretilir.
 apk/
+
+# Demo kaydı raporları (deneyenlerin adları ve yaptıkları)
+demo-kayitlari/

@@ -7,6 +7,7 @@ import * as t from '../../ui/tokens';
 import { can, STAFF_ROLE_LABEL } from '../../lib/roles';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
+import { ACTIVITY_LOG } from '../../demo/log';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean }
 
@@ -55,7 +56,9 @@ export const StaffLayout: React.FC = () => {
     { to: '/rozetler', label: 'Rozetler', icon: 'medal' },
     // Yol adı /icerik kalıyor: değiştirmek panelde kayıtlı bağlantıları ve
     // ders editörüne dönüş adreslerini kırardı. Görünen ad "Akademi".
-    { to: '/icerik', label: 'Akademi', icon: 'layers' }
+    { to: '/icerik', label: 'Akademi', icon: 'layers' },
+    // Demo ve emülatör paketinde: demoyu deneyenlerin izi (yalnızca geliştirici).
+    ...(ACTIVITY_LOG && can(s.role, 'manageAi') ? [{ to: '/demo-kaydi', label: 'Demo kaydı', icon: 'info' as IconName }] : [])
   ];
   const primary = NAV.filter((n) => n.primary);
   const rest = NAV.filter((n) => !n.primary);
