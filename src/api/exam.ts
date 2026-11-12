@@ -51,26 +51,37 @@ function shuffle<T>(arr: T[]): T[] {
  * Daha önce yanlış yapılan sorular öne alınır ama sınavın en çok üçte birini
  * kaplar — sınırsız bırakılırsa barista konuyu değil o soruları öğrenir.
  */
+/**
+ * seenAt: soru → baristanın o soruyu en son gördüğü an. Görmediği sorular
+ * önce gelir; hepsini gördüyse en uzun süredir görmedikleri. Yalnızca
+ * rastgele seçmek, art arda girilen sınavlarda aynı soruları getiriyordu.
+ */
 export function pickQuestions<T extends { id: string; kind?: string }>(
-  pool: T[], size: number, missed: Set<string>
+  pool: T[], size: number, missed: Set<string>, seenAt: Map<string, number> = new Map()
 ): T[] {
   const fromMissed = Math.min(Math.floor(size / 3), pool.filter((q) => missed.has(q.id)).length);
   const missedPick = shuffle(pool.filter((q) => missed.has(q.id))).slice(0, fromMissed);
   const taken = new Set(missedPick.map((q) => q.id));
 
-  const groups = new Map<string, T[]>();
-  for (const q of shuffle(pool.filter((x) => !taken.has(x.id)))) {
-    const k = q.kind || 'genel';
-    (groups.get(k) ?? groups.set(k, []).get(k)!).push(q);
-  }
-  const order = shuffle([...groups.keys()]);
+  // İki geçiş: önce görülmemiş sorular türler arasında dengeli dağıtılır;
+  // onlar bitince görülmüşler, en uzun süredir görülmeyenden başlayarak.
+  const want = size - missedPick.length;
   const fresh: T[] = [];
-  while (fresh.length < size - missedPick.length && order.some((k) => groups.get(k)!.length)) {
-    for (const k of order) {
-      const g = groups.get(k)!;
-      if (g.length && fresh.length < size - missedPick.length) fresh.push(g.shift()!);
+  const roundRobin = (items: T[]) => {
+    const groups = new Map<string, T[]>();
+    for (const q of items) (groups.get(q.kind || 'genel') ?? groups.set(q.kind || 'genel', []).get(q.kind || 'genel')!).push(q);
+    const order = shuffle([...groups.keys()]);
+    while (fresh.length < want && order.some((k) => groups.get(k)!.length)) {
+      for (const k of order) {
+        const g = groups.get(k)!;
+        if (g.length && fresh.length < want) fresh.push(g.shift()!);
+      }
     }
-  }
+  };
+  const rest = shuffle(pool.filter((x) => !taken.has(x.id)));
+  roundRobin(rest.filter((q) => !seenAt.has(q.id)));
+  // Karıştırılmış sıra korunur (sort kararlı); yalnız görülme zamanına göre dizilir.
+  roundRobin(rest.filter((q) => seenAt.has(q.id)).sort((x, y) => seenAt.get(x.id)! - seenAt.get(y.id)!));
   return shuffle([...missedPick, ...fresh]);
 }
 
@@ -150,9 +161,18 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
   const missed = new Set<string>();
   recent.forEach((a) => (a.mistakes || []).forEach((m) => missed.add(m.questionId)));
 
+  // Bu modülde daha önce görülen sorular (tüm zamanlar).
+  const seenAt = new Map<string, number>();
+  const pastSnap = await getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('moduleId', '==', mod.id))).catch(() => null);
+  pastSnap?.docs.forEach((d) => {
+    const a = d.data() as Attempt;
+    (a.questionIds || []).forEach((id) => seenAt.set(id, Math.max(seenAt.get(id) || 0, a.startedAt)));
+    (a.mistakes || []).forEach((m) => seenAt.set(m.questionId, Math.max(seenAt.get(m.questionId) || 0, a.startedAt)));
+  });
+
   const pool = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
   const size = Math.min(mod.examSize || 10, pool.length);
-  const picked = pickQuestions(pool, size, missed);
+  const picked = pickQuestions(pool, size, missed, seenAt);
 
   const orders: Record<string, number[]> = {};
   picked.forEach((q) => {

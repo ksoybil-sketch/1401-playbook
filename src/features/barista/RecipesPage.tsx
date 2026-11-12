@@ -90,10 +90,7 @@ export const RecipesPage: React.FC = () => {
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${HUE.amber.chip}`}><Icon name="coffee" size={19} /></span>
-          <div>
-            <h1 className={t.screenTitle}>Reçeteler</h1>
-            <div className="text-[12px] text-fg-3">Ölçü, bardak ve hazırlanış — servis sırasında hızlıca bak.</div>
-          </div>
+          <h1 className={t.screenTitle}>Reçeteler</h1>
         </div>
 
         <div className="relative">
@@ -245,10 +242,7 @@ export const StoreRecipesLayout: React.FC = () => {
       <header className="sticky top-0 z-40 bg-espresso/85 backdrop-blur-xl border-b border-line pt-[env(safe-area-inset-top)]">
         <div className="h-14 flex items-center gap-3 px-4 max-w-[560px] mx-auto">
           <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90" />
-          <div className="flex-1 leading-tight">
-            <div className="text-[14px] font-semibold">Reçeteler</div>
-            <div className="text-[11px] text-fg-3">Giriş yapmadan bakıyorsun</div>
-          </div>
+          <div className="flex-1 text-[14px] font-semibold">Reçeteler</div>
           <button onClick={() => navigate('/')} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
             <Icon name="user" size={14} /> Giriş
           </button>

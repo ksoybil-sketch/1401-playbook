@@ -90,7 +90,7 @@ export const BulletinsPage: React.FC = () => {
     <Page>
       <PageTitle
         title="Bülten"
-        subtitle={unread > 0 ? `${unread} okunmamış duyuru` : 'Kahve Operasyonu duyuruları'}
+        subtitle={unread > 0 ? `${unread} okunmamış duyuru` : undefined}
       />
       {loading ? null : items.length === 0 ? (
         <Empty icon="bell" text="Şimdilik duyuru yok. Yeni bir şey olduğunda burada görünecek." />

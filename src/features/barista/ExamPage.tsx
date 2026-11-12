@@ -126,9 +126,8 @@ export const ExamPage: React.FC = () => {
           <div className={`${t.listGroup} w-full text-left`}>
             {[
               ['Soru sayısı', `${mod.examSize}`],
-              ['Süre', `${minutes} dakika (soru başına 1,5 dk)`],
-              ['Geçme notu', `%${mod.passScore}`],
-              ['Haftalık hak', '3 deneme']
+              ['Süre', `${minutes} dakika`],
+              ['Geçme notu', `%${mod.passScore}`]
             ].map(([a, b]) => (
               <div key={a} className={`${t.listRowStatic} justify-between`}>
                 <span className="text-[14px] text-fg-2">{a}</span>
@@ -138,15 +137,9 @@ export const ExamPage: React.FC = () => {
           </div>
           {resumable && left > 0 ? (
             <p className="text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5 leading-relaxed w-full text-left">
-              Yarım kalan bir sınavın var. Süre işlemeye devam ediyor — kalan <b className="tnum">{fmtClock(left)}</b>.
-              Devam edersen cevapların kaldığı yerden gelir.
+              Yarım kalan sınavın var · kalan süre <b className="tnum">{fmtClock(left)}</b>
             </p>
-          ) : (
-            <p className="text-[13px] text-fg-3 leading-relaxed max-w-[340px]">
-              Sınavı başlattığında bir hakkın kullanılır ve süre başlar. Uygulama kapanırsa cevapların kaybolmaz; süre içinde
-              dönüp devam edebilirsin. Süre dolunca sınav o ana kadarki cevaplarınla puanlanır.
-            </p>
-          )}
+          ) : null}
           <div className="w-full"><ErrorText>{error}</ErrorText></div>
           <button onClick={start} disabled={phase.k === 'loading'} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
             {phase.k === 'loading' ? <Spinner size={16} /> : resumable && left > 0 ? 'Kaldığım yerden devam et' : 'Başla'}

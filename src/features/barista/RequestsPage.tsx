@@ -49,13 +49,8 @@ export const RequestsPage: React.FC = () => {
 
   return (
     <Page>
-      <PageTitle title="Talepler" subtitle="Arıza, servis, malzeme ve personel ihtiyaçlarını Kahve Operasyonu'na ilet." back="/sonuclarim"
+      <PageTitle title="Talepler" back="/sonuclarim"
         action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setCreating(true)}><Icon name="plus" size={15} /> Yeni</button>} />
-
-      <div className="flex gap-3 p-3.5 rounded-xl bg-panel border border-line text-[12.5px] text-fg-2 leading-relaxed">
-        <Icon name="info" size={16} className="text-fg-3 mt-0.5" />
-        <span>Talep Bölge Müdürü'ne düşer; yetkili servis gerekiyorsa Kahve Operasyon Müdürü onaylar. Sözlü talepler geçersiz sayılır — her şey buradan.</span>
-      </div>
 
       <Section label={`Açık · ${open.length}`}>
         {loading ? null : open.length === 0 ? <Empty icon="inbox" text="Açık talebin yok." /> : (

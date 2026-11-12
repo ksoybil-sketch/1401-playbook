@@ -23,7 +23,7 @@ export const TracksPage: React.FC = () => {
 
   return (
     <Page>
-      <PageTitle title="Akademi" subtitle="İçecek standartları, işletme kuralları ve misafir deneyimi." />
+      <PageTitle title="Akademi" />
       {list.length === 0 ? (
         <Empty icon="cap" text="Henüz yayınlanmış eğitim yok." />
       ) : (
@@ -37,7 +37,6 @@ export const TracksPage: React.FC = () => {
                 <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${hue.chip}`}><Icon name={(tr.icon as IconName) || 'book'} size={20} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-semibold">{tr.title}</div>
-                  <div className="text-[12px] text-fg-3 mt-0.5 line-clamp-2">{tr.description}</div>
                   <div className="flex items-center gap-2 mt-2.5">
                     <div className="h-1.5 rounded-full bg-white/10 overflow-hidden flex-1"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: hue.hex }} /></div>
                     <span className="text-[11px] text-fg-3 tnum w-16 text-right">{mods.length} modül</span>
@@ -116,7 +115,6 @@ export const ModulePage: React.FC = () => {
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
   const st = moduleState(mod, lessons, progress);
   const left = Math.max(0, EXAMS_PER_WEEK - weekAttempts.length);
-  const allLessonsDone = st.lessonsDone === st.lessons.length;
 
   return (
     <Page>
@@ -157,9 +155,6 @@ export const ModulePage: React.FC = () => {
               </div>
             </div>
           </div>
-          {!allLessonsDone && !st.passed && (
-            <p className="text-[12px] text-caution leading-relaxed">Önerimiz: sınava girmeden önce tüm dersleri tamamla.</p>
-          )}
           <Link
             to={left > 0 ? `/sinav/${mod.id}` : '#'}
             onClick={(e) => left === 0 && e.preventDefault()}

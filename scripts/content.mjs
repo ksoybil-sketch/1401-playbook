@@ -15,7 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
-import { techniqueQuestions, serviceQuestion, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions } from './question-gen.mjs';
+import { techniqueQuestions, serviceQuestion, serviceLabel, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions,
+  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -408,6 +409,9 @@ function recipeLesson(r, order) {
  */
 function recipeQuestions(lessons, allRecipes) {
   const out = [];
+  const cupCount = new Map();
+  lessons.forEach((l) => l._cup && cupCount.set(l._cup, (cupCount.get(l._cup) || 0) + 1));
+  const majorityCup = [...cupCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
   const amountsByIngredient = new Map();
   allRecipes.forEach((r) => r.ing.forEach((i) => {
     const k = i.name.toLocaleLowerCase('tr').trim();
@@ -448,7 +452,9 @@ function recipeQuestions(lessons, allRecipes) {
         `Ölçü, 1401'in imzasıdır: aynı içecek her şubede, her baristada aynı tatta çıkmalı — fazlası da azı da misafirin tanıdığı lezzeti bozar. ${name}: ${recipeLine(r)}.`
       ));
     }
-    if (l._cup) {
+    // Porsiyon sorusu yalnızca modülde ayırt edici ise: lattelerin hepsi
+    // 8 oz / 12 oz iken her biri için ayrı soru, aynı cevabı tekrar ettirir.
+    if (l._cup && l._cup !== majorityCup) {
       const wrong = allCups.filter((c) => c !== l._cup && !overlaps(c, l._cup)).slice(0, 3);
       if (wrong.length === 3) out.push(Q(
         `${name} hangi porsiyonda servis edilir?`,
@@ -513,13 +519,30 @@ function recipeQuestions(lessons, allRecipes) {
     'Sıcak, küçük fincanda', 'Sıcak, 12 oz', 'Buzlu, 12 oz', 'Sıcak, 8 oz', 'Buzlu, 12 oz / 16 oz'];
   const moduleRecipes = lessons.map((l) => l._recipe);
   const nameOf = (r) => lessons.find((l) => l._recipe === r)?._title || r.name;
+  // Servis biçimi de yalnızca modülün çoğunluğundan farklıysa sorulur.
+  const svCount = new Map();
+  lessons.forEach((l) => { const lb = serviceLabel(l.blocks.find((b) => b.type === 'cup'), l._cup); if (lb) svCount.set(lb, (svCount.get(lb) || 0) + 1); });
+  const majoritySv = [...svCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const allIngredients = [...new Set(allRecipes.flatMap((r) => r.ing.map((i) => i.name)))];
   lessons.forEach((l, i) => {
     const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
     const cup = l.blocks.find((b) => b.type === 'cup');
     out.push(...techniqueQuestions(l._title, steps));
-    const sv = serviceQuestion(l._title, cup, l._cup, SERVIS); if (sv) out.push(sv);
+    if (serviceLabel(cup, l._cup) !== majoritySv) { const sv = serviceQuestion(l._title, cup, l._cup, SERVIS); if (sv) out.push(sv); }
     const ig = ingredientToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf); if (ig) out.push(ig);
     const so = stepOrderQuestion(l._title, steps, i % 2 === 1); if (so) out.push(so);
+    // Yeni türler: en çok malzeme paylaşan "kardeş" içecekle fark, katman
+    // sırası, büyük boya ölçek, malzeme doğru/yanlış, ölçüden içecek.
+    const mine = new Set(l._recipe.ing.map((x) => x.name.toLocaleLowerCase('tr')));
+    const sibling = moduleRecipes.filter((r) => r !== l._recipe)
+      .map((r) => ({ r, n: r.ing.filter((x) => mine.has(x.name.toLocaleLowerCase('tr'))).length }))
+      .sort((a, b) => b.n - a.n)[0];
+    if (sibling && sibling.n >= 2) { const d = differenceQuestion(l._recipe, sibling.r, nameOf); if (d) out.push(d); }
+    const fl = firstLayerQuestion(l._title, cup); if (fl) out.push(fl);
+    const sc = scaleQuestion(l._title, cup); if (sc) out.push(sc);
+    const foreign = allIngredients.filter((n) => !mine.has(n.toLocaleLowerCase('tr')) && !/espresso|süt|^su$|buz|shot/i.test(n));
+    const tf = ingredientTF(l._recipe, l._title, foreign[(i * 13 + 5) % Math.max(foreign.length, 1)], i % 2 === 1); if (tf) out.push(tf);
+    const am = amountToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf); if (am) out.push(am);
   });
 
   // Tür etiketi verilmemiş eski şablonlar
@@ -1143,7 +1166,7 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       // Ders içeriğinden türeyen sorular (tablolar, vakalar). Aynı metin varsa eklenmez.
       const seen = new Set(m.questions.map((q) => q.prompt.toLocaleLowerCase('tr').trim()));
       for (const l of m.lessons) {
-        for (const q of lessonDerivedQuestions(l)) {
+        for (const q of [...lessonDerivedQuestions(l), ...specAllQuestions(l), ...nextStepQuestions(l)]) {
           const k = q.prompt.toLocaleLowerCase('tr').trim();
           if (!seen.has(k) && q.options.length >= 2) { seen.add(k); m.questions.push(q); }
         }

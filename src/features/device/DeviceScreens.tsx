@@ -153,14 +153,12 @@ export const StoreHome: React.FC = () => {
           <span className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#D9A066] text-[#1A120C] shrink-0"><Icon name="coffee" size={20} strokeWidth={1.9} /></span>
           <span className="flex-1 min-w-0">
             <span className="block text-[16px] font-semibold">Reçeteler</span>
-            <span className="block text-[12px] text-fg-2">PIN girmeden ölçü, bardak ve hazırlanışa bak</span>
           </span>
           <Icon name="search" size={18} className="text-[#E8B47E]" />
         </button>
 
         <div>
           <h1 className="text-[22px] font-bold">Kim çalışıyor?</h1>
-          <p className="text-[13px] text-fg-3 mt-1">Adına dokun ve PIN'ini gir.</p>
         </div>
 
         <DemoPinHint />
@@ -211,7 +209,7 @@ export const StoreHome: React.FC = () => {
           <span className={t.iconChip('accent')}><Icon name="key" size={16} /></span>
           <span className="flex-1">
             <span className="block text-[14px] font-semibold">Yeni misin?</span>
-            <span className="block text-[12px] text-fg-3">Yöneticinin verdiği davet koduyla PIN'ini belirle</span>
+            <span className="block text-[12px] text-fg-3">Davet kodunla PIN belirle</span>
           </span>
           <Icon name="chevronRight" size={16} className={t.rowChevron} />
         </button>

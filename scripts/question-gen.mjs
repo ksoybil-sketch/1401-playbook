@@ -207,3 +207,155 @@ export function lessonDerivedQuestions(lesson) {
 }
 
 export { cap };
+
+/* ------------------------------------------------------------------ */
+/* Ek türler — tekrar hissini kırmak için (Kasım 2026)                 */
+/* ------------------------------------------------------------------ */
+/*
+ * Sorun: reçete modüllerinde her içecek aynı 6–7 kalıptan geçiyordu
+ * ("hangi porsiyonda", "nasıl servis edilir"…), cevapların çoğu da
+ * aynıydı (lattelerin hepsi 8 oz / 12 oz). Aşağıdaki türler iki içeceği
+ * karşılaştırır, bardak sırasını ve büyük bardağa ölçeklemeyi sorar —
+ * ezberden çok anlamayı ölçer.
+ */
+
+const lc = (s) => String(s).toLocaleLowerCase('tr').trim();
+
+/** "A'da olup B'de olmayan malzeme" — benzer iki içeceği ayırt etme. */
+export function differenceQuestion(a, b, nameOf) {
+  const inB = new Set(b.ing.map((i) => lc(i.name)));
+  const inA = new Set(a.ing.map((i) => lc(i.name)));
+  const only = a.ing.filter((i) => !inB.has(lc(i.name)) && !BASIC.test(i.name));
+  if (!only.length) return null;
+  const shared = a.ing.filter((i) => inB.has(lc(i.name))).map((i) => i.name);
+  const onlyB = b.ing.filter((i) => !inA.has(lc(i.name))).map((i) => i.name);
+  const wrong = [...new Set([...shared, ...onlyB])].filter((x) => lc(x) !== lc(only[0].name)).slice(0, 3);
+  if (wrong.length < 3) return null;
+  const A = nameOf(a), B = nameOf(b);
+  return Q(
+    // İçecek adlarına ek getirmeden (Americano'yu/Latte'yi…) soruluyor.
+    `${A} ve ${B} karşılaştırması: yalnızca ${A} reçetesinde bulunan malzeme hangisi?`,
+    only[0].name, wrong,
+    `Benzer içecekleri ayıran şey tek bir malzemedir; siparişte karışmasın. ${A}: ${a.ing.map((i) => i.name).join(', ')}. ${B}: ${b.ing.map((i) => i.name).join(', ')}.`,
+    'fark'
+  );
+}
+
+/** Bardağa ilk giren malzeme — katman sırası. */
+export function firstLayerQuestion(name, cup) {
+  if (!cup || cup.mode !== 'katman') return null;
+  const layers = [...cup.layers].filter((l) => l.order < 900).sort((x, y) => x.order - y.order);
+  if (layers.length < 3) return null;
+  const first = layers[0].name;
+  const wrong = layers.slice(1).map((l) => l.name).slice(0, 3);
+  if (wrong.length < 2) return null;
+  return Q(
+    `${name} hazırlanırken bardağa ilk giren hangisi?`,
+    first, wrong,
+    `Sıra katmanı ve tadı belirler. ${name}: ${layers.map((l) => l.name).join(' → ')}.`,
+    'katman'
+  );
+}
+
+/** Küçük bardaktan büyüğe ölçek — iki boy da reçetede yazılı. */
+export function scaleQuestion(name, cup) {
+  if (!cup || cup.sizes?.length < 2) return null;
+  const l = cup.layers.find((x) => x.fill === 'ml' && x.small && x.large && x.small !== x.large);
+  if (!l) return null;
+  const [s, b] = cup.sizes;
+  const fmt = (n) => `${n} ml`;
+  const wrong = [...new Set([l.small, Math.round(l.large * 1.25 / 10) * 10, Math.round(l.large * 0.8 / 10) * 10, l.small * 2])]
+    .filter((v) => v !== l.large).slice(0, 3).map(fmt);
+  if (wrong.length < 3) return null;
+  return Q(
+    `${name} ${s.oz ? `${s.oz} oz` : 'küçük'} bardakta ${fmt(l.small)} ${lc(l.name)} alır. ${b.oz ? `${b.oz} oz` : 'büyük'} bardakta kaç ml?`,
+    fmt(l.large), wrong,
+    `Büyük boy, küçüğün iki katı değildir; ölçüler reçetede ayrı ayrı yazılıdır. ${name} ${lc(l.name)}: ${l.text}.`,
+    'olcek'
+  );
+}
+
+/** Doğru/yanlış: bu içecekte şu malzeme var mı? */
+export function ingredientTF(recipe, name, foreign, flip) {
+  const own = recipe.ing.filter((i) => !BASIC.test(i.name));
+  if (!own.length || !foreign) return null;
+  const item = flip ? foreign : own[0].name;
+  return TF(
+    `${name} reçetesinde ${lc(item)} bulunur.`,
+    !flip,
+    `${name}: ${recipe.ing.map((i) => `${i.name} ${i.amt}`).join(', ')}.`,
+    'malzeme'
+  );
+}
+
+/** Ölçüden içeceği bulmak: "Hangisinde 30 ml karamel sos var?" */
+export function amountToDrinkQuestion(recipe, name, moduleRecipes, nameOf) {
+  const distinct = recipe.ing.filter((i) => !BASIC.test(i.name) && /\d/.test(i.amt));
+  for (const ing of seeded(distinct, name + 'amt')) {
+    const key = lc(ing.name), amt = ing.amt.trim();
+    const clash = moduleRecipes.some((r) => r !== recipe && r.ing.some((i) => lc(i.name) === key && i.amt.trim() === amt));
+    if (clash) continue;
+    const others = moduleRecipes.filter((r) => r !== recipe && r.ing.some((i) => lc(i.name) === key)).map(nameOf);
+    const pad = moduleRecipes.filter((r) => r !== recipe).map(nameOf);
+    const wrong = seeded([...new Set([...others, ...pad])], key + amt).slice(0, 3);
+    if (wrong.length < 3) continue;
+    return Q(
+      `Hangi içeceğin reçetesinde ${amt} ${lc(ing.name)} vardır?`,
+      name, wrong,
+      `${name}: ${recipe.ing.map((i) => `${i.name} ${i.amt}`).join(', ')}.`,
+      'eslestir'
+    );
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ders tablolarından ve prosedürlerden — tüm satırlar                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Standart tablosunun her satırından üç soru biçimi:
+ *   ileri  "X için doğru olan hangisi?"     (değer seçilir)
+ *   ters   "‘…’ hangi başlığa aittir?"       (başlık seçilir)
+ *   D/Y    satır doğru ya da başka satırın değeriyle karıştırılmış
+ * Önceden tablo başına yalnızca iki ileri soru üretiliyordu.
+ */
+export function specAllQuestions(lesson) {
+  const out = [];
+  for (const b of lesson.blocks || []) {
+    if (b.type !== 'spec' || b.rows.length < 4) continue;
+    const rows = b.rows.map((r) => ({ label: strip(r.label), value: strip(r.value) }))
+      .filter((r) => r.value.length >= 4 && r.label.length >= 2);
+    if (new Set(rows.map((r) => r.value)).size < 4) continue;
+    rows.forEach((r, i) => {
+      const others = rows.filter((x) => x.value !== r.value);
+      const wrongV = seeded(others.map((x) => x.value), r.label + 'v').slice(0, 3);
+      const wrongL = seeded(others.map((x) => x.label).filter((l) => l !== r.label), r.label + 'l').slice(0, 3);
+      if (wrongV.length === 3) out.push(Q(`${lesson.title}: “${r.label}” için doğru olan hangisi?`, r.value, wrongV, `${lesson.title} — ${r.label}: ${r.value}.`, 'kavram'));
+      if (wrongL.length === 3 && r.value.length <= 140) out.push(Q(`${lesson.title}: “${short(r.value, 120)}” hangisine aittir?`, r.label, wrongL, `${r.label}: ${r.value}.`, 'kavram'));
+      const swap = others[(i * 7 + 3) % others.length];
+      if (swap) {
+        const isTrue = i % 2 === 0;
+        out.push(TF(`${lesson.title}: ${r.label} — ${short(isTrue ? r.value : swap.value, 140)}`, isTrue,
+          `Doğrusu: ${r.label} — ${r.value}.`, 'kural'));
+      }
+    });
+  }
+  return out;
+}
+
+/** Prosedür adımlarından "bu adımdan sonra ne gelir?" */
+export function nextStepQuestions(lesson) {
+  const out = [];
+  for (const b of lesson.blocks || []) {
+    if (b.type !== 'steps' || b.items.length < 4) continue;
+    const items = b.items.map(strip).filter((s) => s.length > 8);
+    for (let i = 0; i < items.length - 1 && out.length < 3; i += 2) {
+      const wrong = seeded(items.filter((_, j) => j !== i + 1 && j !== i), lesson.id + i).slice(0, 3).map((s) => short(s, 90));
+      if (wrong.length < 3) continue;
+      out.push(Q(`${lesson.title}: “${short(items[i], 90)}” adımından sonra ne gelir?`, short(items[i + 1], 90), wrong,
+        `Sıra: ${items.map((s) => short(s, 50)).join(' → ')}`, 'adim'));
+    }
+  }
+  return out;
+}

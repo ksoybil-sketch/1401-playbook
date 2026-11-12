@@ -114,7 +114,7 @@ export const HomePage: React.FC = () => {
       </Link>
 
       <div className="grid grid-cols-2 gap-3">
-        <Tile to="/receteler" hue="amber" icon="coffee" label="Reçeteler" title={`${recipeCount} içecek`} hint="Ölçü · bardak · hazırlanış" />
+        <Tile to="/receteler" hue="amber" icon="coffee" label="Reçeteler" title={`${recipeCount} içecek`} />
         {exam ? (
           <Tile to={exam.ready ? `/sinav/${exam.mod.id}` : `/modul/${exam.mod.id}`} hue="rose" icon="clipboard"
             label={exam.ready ? 'Sınava hazırsın' : exam.assigned ? 'Atanan sınav' : 'Sıradaki sınav'}
@@ -122,12 +122,12 @@ export const HomePage: React.FC = () => {
             hint={exam.ready ? `${exam.mod.examSize} soru · ${Math.ceil(exam.mod.examSize * 1.5)} dk` : `Önce ${exam.left} ders`}
             badge={exam.readyCount > 1 ? exam.readyCount : undefined} />
         ) : (
-          <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" hint="Sonuçların ve başarımların" />
+          <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" />
         )}
         {next ? (
           <Tile to={`/ders/${next.lesson.id}`} hue="sky" icon="play" label="Kaldığın ders" title={next.lesson.title} hint={`${next.module.title} · ${next.lesson.durationMin} dk`} />
         ) : (
-          <Tile to="/akademi" hue="sky" icon="cap" label="Akademi" title="Tüm dersler bitti" hint="Tekrar için Akademi'ye göz at" />
+          <Tile to="/akademi" hue="sky" icon="cap" label="Akademi" title="Tüm dersler bitti" />
         )}
         <Tile to="/bulten" hue="mint" icon="bell" label={unreadBulletins ? 'Yeni duyuru' : 'Bülten'} title={latestBulletin?.title || 'Duyuru yok'}
           hint={unreadBulletins ? `${unreadBulletins} okunmamış` : 'Hepsini okudun'} badge={unreadBulletins} />
@@ -249,7 +249,6 @@ export const ResultsPage: React.FC = () => {
             <span className={t.iconChip('accent')}><Icon name="users" size={16} /></span>
             <div className="flex-1 min-w-0">
               <div className="text-[14px] font-medium">Ekibim</div>
-              <div className="text-[12px] text-fg-3">Ekibin ilerlemesi ve görev atama</div>
             </div>
             <Icon name="chevronRight" size={16} className={t.rowChevron} />
           </Link>
@@ -257,7 +256,6 @@ export const ResultsPage: React.FC = () => {
             <span className={t.iconChip('caution')}><Icon name="wrench" size={16} /></span>
             <div className="flex-1 min-w-0">
               <div className="text-[14px] font-medium">Talepler</div>
-              <div className="text-[12px] text-fg-3">Arıza, servis, malzeme — Kahve Operasyonu'na ilet</div>
             </div>
             <Icon name="chevronRight" size={16} className={t.rowChevron} />
           </Link>
