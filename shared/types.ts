@@ -82,6 +82,12 @@ export interface Barista {
   apronBadge?: 'rookie' | 'specialist' | 'senior' | 'pro' | null;
   apronBadgeAt?: number | null;
   apronBadgeByName?: string | null;
+  /** Rozet/başarım istisnaları (geri alma, elle verme) — bkz. src/lib/badges.ts BadgeOverrides. */
+  badgeOverrides?: {
+    revoked?: Record<string, { at: number; byName: string; reason: string }>;
+    granted?: Record<string, { at: number; byName: string; reason: string }>;
+    titleCap?: { from: 'rookie' | 'specialist' | 'senior' | 'pro'; at: number; byName: string; reason: string; until?: number | null } | null;
+  };
 }
 
 export interface Track {

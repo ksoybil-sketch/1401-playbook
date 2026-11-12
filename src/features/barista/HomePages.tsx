@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
-import { badgeReport } from '../../lib/badges';
+import { badgeReport, fromBarista } from '../../lib/badges';
+import { useBadgeConfig } from '../../store/badgeConfig';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
@@ -325,6 +326,7 @@ export const TeamPage: React.FC = () => {
     `team-a-${s.storeId}`
   );
   const { tracks } = useContent();
+  const badgeConfig = useBadgeConfig((x) => x.config);
   const { data: assignments } = useQueryLive<Assignment>(
     query(collection(db, 'assignments'), where('storeId', '==', s.storeId)),
     `team-asg-${s.storeId}`
@@ -351,7 +353,7 @@ export const TeamPage: React.FC = () => {
             const overdue = mine.filter((a) => isOverdue(a, assignmentDone(a, p))).length;
             const report = badgeReport({
               tracks, modules, lessons, progress: p || { baristaId: b.id, storeId: b.storeId, lessons: {}, modules: {}, updatedAt: 0 },
-              attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided), assignments: mine, startedAt: b.startedAt, createdAt: b.createdAt
+              attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided), assignments: mine, config: badgeConfig, ...fromBarista(b)
             });
             return (
               <div key={b.id} className={t.listRowStatic}>

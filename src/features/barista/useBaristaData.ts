@@ -6,7 +6,8 @@ import { EMPTY_PROGRESS } from '../../lib/progress';
 import type { Assignment, Attempt, Barista, Bulletin, Progress } from '../../../shared/types';
 import { useMemo } from 'react';
 import { useContent } from '../../store/content';
-import { badgeReport, type BadgeReport } from '../../lib/badges';
+import { badgeReport, fromBarista, type BadgeReport } from '../../lib/badges';
+import { useBadgeConfig } from '../../store/badgeConfig';
 
 type BaristaSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'barista' }>;
 let lastBarista: BaristaSession | null = null;
@@ -87,9 +88,10 @@ export function useMyBadgeReport(): { report: BadgeReport; attempts: Attempt[]; 
   const { items: all, loading } = useMyAttempts(300);
   const { data: me } = useDocLive<Barista>(`baristas/${s.baristaId}`);
   const attempts = useMemo(() => all.filter((a) => a.submittedAt && !a.voided), [all]);
+  const config = useBadgeConfig((x) => x.config);
   const report = useMemo(
-    () => badgeReport({ tracks, modules, lessons, progress, attempts, assignments, startedAt: me?.startedAt, createdAt: me?.createdAt }),
-    [tracks, modules, lessons, progress, attempts, assignments, me?.startedAt, me?.createdAt]
+    () => badgeReport({ tracks, modules, lessons, progress, attempts, assignments, config, ...fromBarista(me) }),
+    [tracks, modules, lessons, progress, attempts, assignments, config, me]
   );
   return { report, attempts, loading };
 }

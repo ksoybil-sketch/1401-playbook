@@ -15,8 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
+import { EXTRA_QUESTIONS } from './source/extra-questions.mjs';
 import { techniqueQuestions, serviceQuestion, serviceLabel, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions,
-  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions } from './question-gen.mjs';
+  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -441,7 +442,7 @@ function recipeQuestions(lessons, allRecipes) {
     const ranked = [...measurable].sort((a, b) => {
       const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
-    }).slice(0, 3);
+    });
     for (const ing of ranked) {
       const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
       const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
@@ -534,15 +535,20 @@ function recipeQuestions(lessons, allRecipes) {
     // Yeni türler: en çok malzeme paylaşan "kardeş" içecekle fark, katman
     // sırası, büyük boya ölçek, malzeme doğru/yanlış, ölçüden içecek.
     const mine = new Set(l._recipe.ing.map((x) => x.name.toLocaleLowerCase('tr')));
-    const sibling = moduleRecipes.filter((r) => r !== l._recipe)
+    // En yakın iki "kardeş" içecekle fark (Latte ↔ Mocha, Latte ↔ Flat White…).
+    moduleRecipes.filter((r) => r !== l._recipe)
       .map((r) => ({ r, n: r.ing.filter((x) => mine.has(x.name.toLocaleLowerCase('tr'))).length }))
-      .sort((a, b) => b.n - a.n)[0];
-    if (sibling && sibling.n >= 2) { const d = differenceQuestion(l._recipe, sibling.r, nameOf); if (d) out.push(d); }
+      .sort((a, b) => b.n - a.n).slice(0, 2)
+      .forEach((sib) => { if (sib.n >= 2) { const d = differenceQuestion(l._recipe, sib.r, nameOf); if (d) out.push(d); } });
     const fl = firstLayerQuestion(l._title, cup); if (fl) out.push(fl);
-    const sc = scaleQuestion(l._title, cup); if (sc) out.push(sc);
+    for (const nth of [0, 1]) { const sc = scaleQuestion(l._title, cup, nth); if (sc) out.push(sc); }
     const foreign = allIngredients.filter((n) => !mine.has(n.toLocaleLowerCase('tr')) && !/espresso|süt|^su$|buz|shot/i.test(n));
-    const tf = ingredientTF(l._recipe, l._title, foreign[(i * 13 + 5) % Math.max(foreign.length, 1)], i % 2 === 1); if (tf) out.push(tf);
-    const am = amountToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf); if (am) out.push(am);
+    // Malzeme doğru/yanlış: biri gerçekten içinde olan, biri olmayan.
+    for (const flip of [false, true]) {
+      const tf = ingredientTF(l._recipe, l._title, foreign[(i * 13 + (flip ? 5 : 11)) % Math.max(foreign.length, 1)], flip); if (tf) out.push(tf);
+    }
+    for (const nth of [0, 1]) { const am = amountToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf, nth); if (am) out.push(am); }
+    out.push(...recipeNextStep(l._title, steps));
   });
 
   // Tür etiketi verilmemiş eski şablonlar
@@ -1166,7 +1172,7 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       // Ders içeriğinden türeyen sorular (tablolar, vakalar). Aynı metin varsa eklenmez.
       const seen = new Set(m.questions.map((q) => q.prompt.toLocaleLowerCase('tr').trim()));
       for (const l of m.lessons) {
-        for (const q of [...lessonDerivedQuestions(l), ...specAllQuestions(l), ...nextStepQuestions(l)]) {
+        for (const q of [...lessonDerivedQuestions(l), ...specAllQuestions(l), ...nextStepQuestions(l), ...(l === m.lessons[0] ? EXTRA_QUESTIONS[m.id] || [] : [])]) {
           const k = q.prompt.toLocaleLowerCase('tr').trim();
           if (!seen.has(k) && q.options.length >= 2) { seen.add(k); m.questions.push(q); }
         }

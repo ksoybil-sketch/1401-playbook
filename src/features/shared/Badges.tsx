@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { badgeReport, GROUP_LABEL, TITLES, type BadgeContext, type BadgeGroup, type BadgeReport, type TitleId } from '../../lib/badges';
+import { badgeReport, GROUP_LABEL, TITLE_RANK, type BadgeContext, type BadgeGroup, type BadgeReport, type TitleId } from '../../lib/badges';
 import { Icon } from '../../ui/Icon';
 import { ProgressBar, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
@@ -29,7 +29,7 @@ export const TitleChip: React.FC<{ report: BadgeReport; size?: 'sm' | 'md' }> = 
 export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ report, self }) => {
   const [open, setOpen] = useState(false);
   const { title, next } = report;
-  const ladder = TITLES.map((x) => ({ ...x, reached: !!title && TITLES.indexOf(title) >= TITLES.indexOf(x) }));
+  const ladder = report.titles.map((x) => ({ ...x, reached: !!title && TITLE_RANK[title.id] >= TITLE_RANK[x.id] }));
   return (
     <div className={`${t.card} p-4 flex flex-col gap-3`}>
       <div className="flex items-center gap-3">
@@ -65,6 +65,11 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
           ))}
         </div>
       )}
+      {report.pendingTitle && (
+        <div className="text-[13px] text-caution">{report.pendingTitle.label} rozetini hak ettin — Kahve Operasyonu’nun onayı / teslimi bekleniyor.</div>
+      )}
+      {report.expired && <div className="text-[13px] text-caution">Önlükteki rozetinin süresi doldu; yeniden değerlendirilecek.</div>}
+      {report.capped && <div className="text-[13px] text-negative">{report.titles.find((x) => x.id === report.capped!.from)?.label} rozeti geri alındı: {report.capped.reason}</div>}
       {!next && title?.id === 'pro' && <div className="text-[13px] text-positive">En üst rozet. Önlükteki Pro rozeti senin.</div>}
 
       <Sheet open={open} title="Rozetler nasıl kazanılır" onClose={() => setOpen(false)}>
@@ -74,12 +79,13 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
           not ortalaması ve kıdem. Başarımlar sınav geçmişinden otomatik hesaplanır; kimse elle veremez.
           Yeni rozetini hak ettiğinde Kahve Operasyonu önlük rozetini teslim eder.
         </p>
-        {TITLES.map((x) => (
+        {report.titles.map((x) => (
           <div key={x.id} className={`${t.card} p-3 flex flex-col gap-1`}>
             <span className={`self-start inline-flex items-center gap-1 rounded-full border h-6 px-2.5 text-[12px] font-semibold ${TITLE_TONE[x.id]}`}><Icon name="medal" size={13} /> {x.label}</span>
             <span className="text-[13px] text-fg-2">
-              {x.badges} başarım · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).join(', ')}
+              {x.badges} başarım · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).filter(Boolean).join(', ') || '—'}
               {x.avg ? ` · ortalama %${x.avg}` : ''}{x.days ? ` · ${x.days >= 365 ? '1 yıl' : `${x.days} gün`} kıdem` : ''}
+              {x.validDays ? ` · ${x.validDays} gün geçerli` : ''}{x.mode === 'approval' ? ' · Kahve Operasyonu onayıyla' : ''}
             </span>
           </div>
         ))}
@@ -118,7 +124,10 @@ export const BadgeGrid: React.FC<{ report: BadgeReport }> = ({ report }) => {
               <span className={`w-12 h-12 rounded-full flex items-center justify-center ${b.earned ? 'bg-positive text-espresso' : 'bg-panel-3 text-fg-3'}`}><Icon name={b.icon} size={22} /></span>
               <div>
                 <div className="text-[12px] text-fg-3">{GROUP_LABEL[b.group]}</div>
-                <div className={`text-[14px] font-semibold ${b.earned ? 'text-positive' : ''}`}>{b.earned ? 'Kazanıldı' : 'Henüz kazanılmadı'}</div>
+                <div className={`text-[14px] font-semibold ${b.earned ? 'text-positive' : b.revoked ? 'text-negative' : ''}`}>
+                  {b.revoked ? 'Geri alındı' : b.granted ? 'Kahve Operasyonu verdi' : b.earned ? 'Kazanıldı' : 'Henüz kazanılmadı'}
+                </div>
+                {(b.revoked || b.granted) && <div className="text-[12px] text-fg-3">{(b.revoked || b.granted)!.reason} · {(b.revoked || b.granted)!.byName}</div>}
               </div>
             </div>
             <p className="text-[14px] leading-relaxed">{b.rule}</p>

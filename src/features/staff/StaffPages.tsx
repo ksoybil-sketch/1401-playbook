@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { badgeReport } from '../../lib/badges';
+import { badgeReport, fromBarista } from '../../lib/badges';
+import { useBadgeConfig } from '../../store/badgeConfig';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
+import { BadgeOverridesSheet } from './BadgeOverridesSheet';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
@@ -163,7 +165,6 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
-      <ApronBadgesSection />
       <PendingCodesSection />
       <StaffTeamSection />
     </Page>
@@ -274,22 +275,29 @@ const ROLE_HINT: Record<StaffRole, string> = {
  */
 const APRON_RANK = { rookie: 1, specialist: 2, senior: 3, pro: 4 } as const;
 
-const ApronBadgesSection: React.FC = () => {
+export const ApronBadgesSection: React.FC = () => {
   const me = useStaffSession();
   const { stores, tracks, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments } = useStaffData();
   const canMark = can(me.role, 'approve') || can(me.role, 'manageBaristas');
+  const badgeConfig = useBadgeConfig((x) => x.config);
   const rows = useMemo(() => baristas.filter((b) => b.active).map((b) => {
     const report = badgeReport({
       tracks, modules, lessons, progress: progress[b.id] || EMPTY,
       attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
       assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
-      startedAt: b.startedAt, createdAt: b.createdAt
+      config: badgeConfig, ...fromBarista(b)
     });
     return { b, report };
-  }), [baristas, tracks, modules, lessons, progress, attempts, assignments]);
-  const due = rows.filter(({ b, report }) => report.title && APRON_RANK[report.title.id] > (b.apronBadge ? APRON_RANK[b.apronBadge] : 0));
-  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, n: rows.filter((r) => r.report.title?.id === id).length }));
+  }), [baristas, tracks, modules, lessons, progress, attempts, assignments, badgeConfig]);
+  // Teslim edilecekler: şartı sağladığı rozet önlüktekinden yüksek ya da
+  // önlükteki rozetin geçerlilik süresi dolmuş ve hâlâ şartları sağlıyor.
+  const due = rows.filter(({ b, report }) => report.qualified
+    && (APRON_RANK[report.qualified.id] > (b.apronBadge ? APRON_RANK[b.apronBadge] : 0) || report.expired));
+  // Önlükte olup artık hak edilmeyenler (süresi dolup şartı kaybeden ya da geri alınan).
+  const lost = rows.filter(({ b, report }) => b.apronBadge
+    && (!report.qualified || APRON_RANK[report.qualified.id] < APRON_RANK[b.apronBadge]));
+  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: rows[0]?.report.titles.find((x) => x.id === id)?.label || id, n: rows.filter((r) => (r.b.apronBadge || null) === id).length }));
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
   return (
     <Section label={`Önlük rozetleri${due.length ? ` · ${due.length} teslim bekliyor` : ''}`}>
@@ -297,7 +305,7 @@ const ApronBadgesSection: React.FC = () => {
         {counts.map((c) => (
           <div key={c.id} className={`${t.card} p-3 flex flex-col items-center gap-0.5`}>
             <span className="text-[22px] font-bold tnum">{c.n}</span>
-            <span className="text-[12px] text-fg-3 capitalize">{c.id}</span>
+            <span className="text-[12px] text-fg-3">{c.label} · önlükte</span>
           </div>
         ))}
       </div>
@@ -307,21 +315,48 @@ const ApronBadgesSection: React.FC = () => {
             <div key={b.id} className={`${t.listRowStatic} flex-wrap`}>
               <Avatar name={b.name} size={32} />
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium truncate flex items-center gap-2">{b.name} <TitleChip report={report} /></div>
+                <div className="text-[14px] font-medium truncate flex items-center gap-2">{b.name} <Badge tone="positive">{report.qualified!.label}</Badge>{report.expired && <Badge tone="caution">Süresi doldu</Badge>}</div>
                 <div className="text-[12px] text-fg-3 truncate">
-                  {storeName(b.storeId)} · {report.earned} başarım{b.apronBadge ? ` · önlükte şu an: ${b.apronBadge}` : ' · önlükte rozet yok'}
+                  {storeName(b.storeId)} · {report.earned} başarım{b.apronBadge ? ` · önlükte şu an: ${report.titles.find((x) => x.id === b.apronBadge)?.label}` : ' · önlükte rozet yok'}
                 </div>
               </div>
               {canMark && (
                 <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
                   try {
-                    await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.title!.id, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
-                    toast(`${b.name.split(' ')[0]}: ${report.title!.label} rozeti teslim edildi`, 'positive');
+                    await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.qualified!.id, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
+                    toast(`${b.name.split(' ')[0]}: ${report.qualified!.label} rozeti teslim edildi`, 'positive');
                   } catch (e) { toast(errorText(e), 'negative'); }
                 }}><Icon name="check" size={13} /> Teslim edildi</button>
               )}
             </div>
           ))}
+        </div>
+      )}
+      {lost.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-medium text-caution">Önlükteki rozeti artık hak etmeyenler · {lost.length}</span>
+          <div className={t.listGroup}>
+            {lost.map(({ b, report }) => (
+              <div key={b.id} className={`${t.listRowStatic} flex-wrap`}>
+                <Avatar name={b.name} size={32} dim />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium truncate">{b.name}</div>
+                  <div className="text-[12px] text-fg-3 truncate">
+                    Önlükte: {report.titles.find((x) => x.id === b.apronBadge)?.label} · şu an hak ettiği: {report.qualified?.label || 'yok'}
+                    {report.capped ? ` · geri alındı: ${report.capped.reason}` : report.expired ? ' · süresi doldu' : ''}
+                  </div>
+                </div>
+                {canMark && (
+                  <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
+                    try {
+                      await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.qualified?.id || null, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
+                      toast('Önlük rozeti güncellendi');
+                    } catch (e) { toast(errorText(e), 'negative'); }
+                  }}>Önlükten al</button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Section>
@@ -502,13 +537,14 @@ export const StoreDetailPage: React.FC = () => {
 /** Panelde bir baristanın rozet raporu (staffData'daki son 300 sınavdan). */
 function useStaffBadgeReport(b: Barista) {
   const { tracks, modules, lessons } = useContent();
+  const badgeConfig = useBadgeConfig((x) => x.config);
   const { progress, attempts, assignments } = useStaffData();
   return useMemo(() => badgeReport({
     tracks, modules, lessons, progress: progress[b.id] || EMPTY,
     attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
     assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
-    startedAt: b.startedAt, createdAt: b.createdAt
-  }), [tracks, modules, lessons, progress, attempts, assignments, b]);
+    config: badgeConfig, ...fromBarista(b)
+  }), [tracks, modules, lessons, progress, attempts, assignments, b, badgeConfig]);
 }
 
 const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({ b, pct, showStore }) => {
@@ -684,12 +720,14 @@ export const BaristaDetailPage: React.FC = () => {
   const s = useStaffSession();
   const { stores, tracks, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments } = useStaffData();
+  const badgeConfig = useBadgeConfig((x) => x.config);
   const b = baristas.find((x) => x.id === baristaId);
   const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [openAttempt, setOpenAttempt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [badgeEdit, setBadgeEdit] = useState(false);
 
   if (!b) return <Page wide><PageTitle title="Barista bulunamadı" back="/baristalar" /></Page>;
   const p = progress[b.id] || EMPTY;
@@ -701,7 +739,7 @@ export const BaristaDetailPage: React.FC = () => {
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } catch (e) { toast(errorText(e), 'negative'); } setBusy(false); };
   const manage = can(s.role, 'manageBaristas');
   const report = badgeReport({
-    tracks, modules, lessons, progress: p, attempts: mine, assignments: tasks, startedAt: b.startedAt, createdAt: b.createdAt
+    tracks, modules, lessons, progress: p, attempts: mine, assignments: tasks, config: badgeConfig, ...fromBarista(b)
   });
 
   return (
@@ -773,6 +811,11 @@ export const BaristaDetailPage: React.FC = () => {
 
         <div className="flex flex-col gap-5">
           <TitleCard report={report} />
+          {can(s.role, 'approve') && (
+            <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm} self-start`} onClick={() => setBadgeEdit(true)}>
+              <Icon name="edit" size={13} /> Rozet ve başarımları düzenle
+            </button>
+          )}
           <Section label={`Başarımlar · ${report.earned}/${report.badges.length}`}>
             <BadgeGrid report={report} />
           </Section>
@@ -809,6 +852,7 @@ export const BaristaDetailPage: React.FC = () => {
       </div>
 
       <EditBaristaSheet open={editOpen} onClose={() => setEditOpen(false)} b={b} />
+      <BadgeOverridesSheet open={badgeEdit} onClose={() => setBadgeEdit(false)} b={b} report={report} byName={s.name} />
       <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} />
       <CodeSheet code={code} onClose={() => { setCode(null); if (!b.active) navigate('/baristalar'); }} />
     </Page>

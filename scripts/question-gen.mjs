@@ -78,7 +78,7 @@ export function techniqueQuestions(name, steps) {
       `Süre, sıcaklık ve miktar reçetenin parçasıdır; göz kararı değiştiğinde tat da değişir. Doğrusu: “${s}”`,
       'teknik'
     ));
-    if (out.length >= 2) break;
+    if (out.length >= 4) break;
   }
   return out;
 }
@@ -258,9 +258,9 @@ export function firstLayerQuestion(name, cup) {
 }
 
 /** Küçük bardaktan büyüğe ölçek — iki boy da reçetede yazılı. */
-export function scaleQuestion(name, cup) {
+export function scaleQuestion(name, cup, nth = 0) {
   if (!cup || cup.sizes?.length < 2) return null;
-  const l = cup.layers.find((x) => x.fill === 'ml' && x.small && x.large && x.small !== x.large);
+  const l = cup.layers.filter((x) => x.fill === 'ml' && x.small && x.large && x.small !== x.large)[nth];
   if (!l) return null;
   const [s, b] = cup.sizes;
   const fmt = (n) => `${n} ml`;
@@ -289,9 +289,9 @@ export function ingredientTF(recipe, name, foreign, flip) {
 }
 
 /** Ölçüden içeceği bulmak: "Hangisinde 30 ml karamel sos var?" */
-export function amountToDrinkQuestion(recipe, name, moduleRecipes, nameOf) {
+export function amountToDrinkQuestion(recipe, name, moduleRecipes, nameOf, nth = 0) {
   const distinct = recipe.ing.filter((i) => !BASIC.test(i.name) && /\d/.test(i.amt));
-  for (const ing of seeded(distinct, name + 'amt')) {
+  for (const ing of seeded(distinct, name + 'amt').slice(nth)) {
     const key = lc(ing.name), amt = ing.amt.trim();
     const clash = moduleRecipes.some((r) => r !== recipe && r.ing.some((i) => lc(i.name) === key && i.amt.trim() === amt));
     if (clash) continue;
@@ -356,6 +356,22 @@ export function nextStepQuestions(lesson) {
       out.push(Q(`${lesson.title}: “${short(items[i], 90)}” adımından sonra ne gelir?`, short(items[i + 1], 90), wrong,
         `Sıra: ${items.map((s) => short(s, 50)).join(' → ')}`, 'adim'));
     }
+  }
+  return out;
+}
+
+/** Reçete adımları: "A adımından sonra ne gelir?" (en fazla iki). */
+export function recipeNextStep(name, steps) {
+  const items = steps.map(strip).filter((s) => s.length > 8);
+  if (items.length < 4) return [];
+  const out = [];
+  for (const i of [1, items.length - 3]) {
+    if (i < 0 || i + 1 >= items.length || out.some((q) => q._i === i)) continue;
+    const wrong = seeded(items.filter((_, j) => j !== i && j !== i + 1), name + i).slice(0, 3).map((x) => short(x, 80));
+    if (wrong.length < 3) continue;
+    const q = Q(`${name} hazırlanırken “${short(items[i], 80)}” adımından sonra ne gelir?`, short(items[i + 1], 80), wrong,
+      `Sıra tadın kendisidir. ${name}: ${items.map((x) => short(x, 45)).join(' → ')}`, 'adim');
+    out.push(q);
   }
   return out;
 }

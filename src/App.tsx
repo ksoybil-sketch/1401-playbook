@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
 import { isManager } from './lib/roles';
+import { useBadgeConfig } from './store/badgeConfig';
 import { FullLoader, ToastHost } from './ui/kit';
 import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
 import { BaristaLayout } from './features/barista/BaristaLayout';
@@ -14,6 +15,7 @@ import { ExamPage } from './features/barista/ExamPage';
 import { RequestsPage as StoreRequestsPage } from './features/barista/RequestsPage';
 import { RequestsPage } from './features/staff/RequestsPage';
 import { ApprovalsPage } from './features/staff/ApprovalsPage';
+import { BadgeSettingsPage } from './features/staff/BadgeSettingsPage';
 import { StaffLayout } from './features/staff/StaffLayout';
 import { OverviewPage, StoresPage, StoreDetailPage, BaristasPage, BaristaDetailPage, TasksPage } from './features/staff/StaffPages';
 import { ContentPage, ModuleEditorPage, LessonEditorPage } from './features/staff/ContentPages';
@@ -30,6 +32,8 @@ export const App: React.FC = () => {
   const signedIn = session.kind === 'store' || session.kind === 'barista' || session.kind === 'staff';
   const sessionKey = session.kind === 'barista' ? session.baristaId : session.kind === 'staff' ? session.uid : session.kind;
   useEffect(() => (signedIn ? subscribeContent() : undefined), [signedIn, sessionKey, subscribeContent]);
+  const subscribeBadges = useBadgeConfig((s) => s.subscribe);
+  useEffect(() => (signedIn ? subscribeBadges() : undefined), [signedIn, sessionKey, subscribeBadges]);
 
   return (
     <>
@@ -101,6 +105,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="gorevler" element={<TasksPage />} />
             <Route path="talepler" element={<RequestsPage />} />
             <Route path="onaylar" element={<ApprovalsPage />} />
+            <Route path="rozetler" element={<BadgeSettingsPage />} />
             <Route path="bulten" element={<BulletinPage />} />
             <Route path="icerik" element={<ContentPage />} />
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />

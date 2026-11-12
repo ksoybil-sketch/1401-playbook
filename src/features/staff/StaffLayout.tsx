@@ -52,6 +52,7 @@ export const StaffLayout: React.FC = () => {
     { to: '/magazalar', label: 'Mağazalar', icon: 'store' },
     { to: '/gorevler', label: 'Görevler', icon: 'flag' },
     { to: '/bulten', label: 'Bülten', icon: 'bell' },
+    { to: '/rozetler', label: 'Rozetler', icon: 'medal' },
     // Yol adı /icerik kalıyor: değiştirmek panelde kayıtlı bağlantıları ve
     // ders editörüne dönüş adreslerini kırardı. Görünen ad "Akademi".
     { to: '/icerik', label: 'Akademi', icon: 'layers' }

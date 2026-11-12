@@ -84,6 +84,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Rozet ve başarım ayarları: herkes okur, Kahve Operasyon Müdürü yazar.
+    match /config/badges {
+      allow get: if signedIn();
+      allow write: if isDirector();
+    }
+
     match /stores/{storeId} {
       allow read: if signedIn();
       allow write: if canManageBaristas();
@@ -96,7 +102,7 @@ service cloud.firestore {
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
       // Önlük rozeti teslimini Kahve Operasyon Müdürü de işaretler.
       allow update: if canManageBaristas()
-        || (isDirector() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName']))
+        || (isDirector() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName', 'badgeOverrides']))
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinPending']));
     }
