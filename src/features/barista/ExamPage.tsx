@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AppError, errorText } from '../../api/backend';
 import {
-  findActiveAttempt, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult
-} from '../../api/exam';
+  findActiveAttempt, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK } from '../../api/exam';
 import { useContent } from '../../store/content';
 import { useBaristaSession } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
@@ -98,7 +97,7 @@ export const ExamPage: React.FC = () => {
       let msg = errorText(e);
       if (e instanceof AppError && e.code === 'weekly-limit') {
         const nextAt = (e.data as { nextAt: number } | undefined)?.nextAt;
-        msg = `Bu haftaki 3 sınav hakkını kullandın.${nextAt ? ` Yeni hakkın ${fmtDateTime(nextAt)} tarihinde açılacak.` : ''}`;
+        msg = `Bu sınav için haftalık ${EXAMS_PER_WEEK} deneme hakkını kullandın.${nextAt ? ` Yeni hakkın ${fmtDateTime(nextAt)} tarihinde açılacak.` : ''}`;
       }
       setError(msg);
       setPhase({ k: 'intro' });

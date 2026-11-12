@@ -10,10 +10,19 @@ import { ThemePicker, useStaffTheme } from './theme';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean }
 
-export function useStaffSession() {
+type StaffSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'staff' }>;
+let lastStaff: StaffSession | null = null;
+
+/**
+ * Çıkış sırasında oturum "loading"e geçerken panelin açık bileşenleri bir
+ * kez daha çizilebiliyor (App onları kaldırmadan önce). O an hata atmak
+ * ekranı çökertiyordu; son bilinen oturumla çizilip sessizce kaldırılır.
+ */
+export function useStaffSession(): StaffSession {
   const s = useSession((x) => x.session);
-  if (s.kind !== 'staff') throw new Error('Yönetici oturumu yok');
-  return s;
+  if (s.kind === 'staff') { lastStaff = s; return s; }
+  if (lastStaff) return lastStaff;
+  throw new Error('Yönetici oturumu yok');
 }
 
 export const StaffLayout: React.FC = () => {

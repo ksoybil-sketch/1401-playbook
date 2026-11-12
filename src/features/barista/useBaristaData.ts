@@ -8,10 +8,15 @@ import { useMemo } from 'react';
 import { useContent } from '../../store/content';
 import { badgeReport, type BadgeReport } from '../../lib/badges';
 
-export function useBaristaSession() {
+type BaristaSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'barista' }>;
+let lastBarista: BaristaSession | null = null;
+
+/** Çıkış anındaki son çizimde hata atmamak için son bilinen oturum (bkz. useStaffSession). */
+export function useBaristaSession(): BaristaSession {
   const s = useSession((x) => x.session);
-  if (s.kind !== 'barista') throw new Error('Barista oturumu yok');
-  return s;
+  if (s.kind === 'barista') { lastBarista = s; return s; }
+  if (lastBarista) return lastBarista;
+  throw new Error('Barista oturumu yok');
 }
 
 export function useMyProgress(): { progress: Progress; loading: boolean } {

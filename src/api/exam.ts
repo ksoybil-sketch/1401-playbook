@@ -117,6 +117,14 @@ export async function findActiveAttempt(baristaId: string, moduleId?: string): P
   return open[0] || null;
 }
 
+/**
+ * Haftalık deneme hakkı — MODÜL BAŞINA. Önceden tüm sınavlar toplam 3
+ * hakkı paylaşıyordu: üç farklı modülün sınavına giren barista dördüncü
+ * modülü bir hafta bekliyordu. Demo ve emülatörde sınav denemek serbest.
+ */
+const TEST_ENV = import.meta.env.VITE_DEMO === 'true' || import.meta.env.MODE === 'emulator';
+export const EXAMS_PER_WEEK = TEST_ENV ? 20 : MAX_EXAMS_PER_WEEK;
+
 export async function startExam(mod: Module, who: { baristaId: string; storeId: string; name: string }): Promise<ExamSession> {
   // Önce süresi geçmiş açık denemeleri kapat; sonra bu modülde devam eden
   // bir deneme varsa yeni hak harcatmadan ona geri dön.
@@ -131,8 +139,8 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
   }
   const since = Date.now() - 7 * DAY_MS;
   const recentSnap = await getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('startedAt', '>=', since)));
-  const recent = recentSnap.docs.map((d) => d.data() as Attempt).filter((a) => !a.voided);
-  if (recent.length >= MAX_EXAMS_PER_WEEK) {
+  const recent = recentSnap.docs.map((d) => d.data() as Attempt).filter((a) => !a.voided && a.moduleId === mod.id);
+  if (recent.length >= EXAMS_PER_WEEK) {
     const oldest = Math.min(...recent.map((a) => a.startedAt));
     throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
   }

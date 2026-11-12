@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { create } from 'zustand';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 
@@ -113,16 +113,30 @@ export const Badge: React.FC<{ tone?: 'neutral' | 'positive' | 'caution' | 'nega
   return <span className={`${t.badge} ${cls}`}>{children}</span>;
 };
 
-export const Stat: React.FC<{ label: string; value: React.ReactNode; hint?: string; icon?: IconName; tone?: t.Tone }> = ({ label, value, hint, icon, tone = 'neutral' }) => (
-  <div className={`${t.card} p-4 flex flex-col gap-2`}>
-    <div className="flex items-center gap-2">
-      {icon && <span className={t.iconChip(tone)}><Icon name={icon} size={16} /></span>}
-      <span className="text-[12px] text-fg-3 font-medium">{label}</span>
-    </div>
-    <span className="text-[24px] font-bold tnum leading-none">{value}</span>
-    {hint && <span className="text-[11px] text-fg-3">{hint}</span>}
-  </div>
-);
+/**
+ * Sayı kartı. `to` verilirse ilgili sayfaya gider, `onClick` verilirse
+ * (ör. listeyi süzer) düğme olur; `active` seçili süzgeci gösterir.
+ */
+export const Stat: React.FC<{
+  label: string; value: React.ReactNode; hint?: string; icon?: IconName; tone?: t.Tone;
+  to?: string; onClick?: () => void; active?: boolean;
+}> = ({ label, value, hint, icon, tone = 'neutral', to, onClick, active }) => {
+  const body = (
+    <>
+      <div className="flex items-center gap-2">
+        {icon && <span className={t.iconChip(tone)}><Icon name={icon} size={16} /></span>}
+        <span className="text-[12px] text-fg-3 font-medium flex-1">{label}</span>
+        {(to || onClick) && <Icon name="chevronRight" size={14} className="text-fg-4" />}
+      </div>
+      <span className="text-[24px] font-bold tnum leading-none">{value}</span>
+      {hint && <span className="text-[11px] text-fg-3">{hint}</span>}
+    </>
+  );
+  const cls = `${to || onClick ? t.cardInteractive : t.card} p-4 flex flex-col gap-2 text-left ${active ? 'ring-2 ring-crema/60 border-line-2' : ''}`;
+  if (to) return <Link to={to} className={cls}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} aria-pressed={active} className={cls}>{body}</button>;
+  return <div className={cls}>{body}</div>;
+};
 
 export const ErrorText: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
   children ? (

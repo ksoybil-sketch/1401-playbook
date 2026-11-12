@@ -337,7 +337,8 @@ export const ModuleEditorPage: React.FC = () => {
   const { modules, lessons, tracks } = useContent();
   const mod = modules.find((m) => m.id === moduleId);
   const { data: questions } = useQueryLive<Question>(moduleId ? query(collection(db, 'questions'), where('moduleId', '==', moduleId)) : null, `q-${moduleId}`);
-  const [tab, setTab] = useState<'lessons' | 'questions'>('lessons');
+  const [moduleParams] = useSearchParams();
+  const [tab, setTab] = useState<'lessons' | 'questions'>(moduleParams.get('sekme') === 'sorular' ? 'questions' : 'lessons');
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [editQ, setEditQ] = useState<Partial<Question> | null>(null);
   const [importing, setImporting] = useState(false);

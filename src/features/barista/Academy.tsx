@@ -10,7 +10,7 @@ import * as t from '../../ui/tokens';
 import { HUE, trackHue } from '../../ui/palette';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
-import { MAX_EXAMS_PER_WEEK } from '../../../shared/types';
+import { EXAMS_PER_WEEK } from '../../api/exam';
 
 /* ------------------------------------------------------------------ */
 /* Eğitim yolları                                                      */
@@ -110,12 +110,12 @@ export const ModulePage: React.FC = () => {
   const { items: attempts } = useMyAttempts(50);
   const mod = modules.find((m) => m.id === moduleId);
 
-  const weekAttempts = useMemo(() => attempts.filter((a) => a.startedAt > Date.now() - 7 * 86400000), [attempts]);
+  const weekAttempts = useMemo(() => attempts.filter((a) => a.moduleId === moduleId && !a.voided && a.startedAt > Date.now() - 7 * 86400000), [attempts, moduleId]);
   const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
   const st = moduleState(mod, lessons, progress);
-  const left = Math.max(0, MAX_EXAMS_PER_WEEK - weekAttempts.length);
+  const left = Math.max(0, EXAMS_PER_WEEK - weekAttempts.length);
   const allLessonsDone = st.lessonsDone === st.lessons.length;
 
   return (
@@ -153,7 +153,7 @@ export const ModulePage: React.FC = () => {
             <div className="flex-1">
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · %${st.score}` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
-                {mod.examSize} soru · Geçme notu %{mod.passScore} · Bu hafta {left}/{MAX_EXAMS_PER_WEEK} sınav hakkın kaldı
+                {mod.examSize} soru · Geçme notu %{mod.passScore} · Bu hafta {left}/{EXAMS_PER_WEEK} deneme hakkın kaldı
               </div>
             </div>
           </div>

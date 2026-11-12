@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useContent } from '../../store/content';
 import { CATEGORIES, isClosed, markSeen, STATUS } from '../../api/requests';
 import { can } from '../../lib/roles';
@@ -7,6 +8,7 @@ import { useStaffSession } from './StaffLayout';
 import { RequestSummary, RequestThread } from '../shared/Requests';
 import { Page, PageTitle, Section, Sheet, Empty, Stat } from '../../ui/kit';
 import * as t from '../../ui/tokens';
+import { Icon } from '../../ui/Icon';
 import type { RequestCategory, StoreRequest } from '../../../shared/types';
 
 /**
@@ -22,7 +24,19 @@ export const RequestsPage: React.FC = () => {
   const approver = can(me.role, 'approve');
   const requests = useStaffData((x) => x.requests);
   const { stores } = useContent();
-  const [tab, setTab] = useState<'open' | 'approval' | 'closed'>('open');
+  // Kartlar listeyi süzer; adres çubuğunda da tutulur (?durum=acil) ki
+  // Genel bakış'tan ya da paylaşılan bağlantıdan aynı görünüm açılsın.
+  const [params, setParams] = useSearchParams();
+  const focus = (params.get('durum') || '') as '' | 'acik' | 'acil' | 'onay' | 'cozulen';
+  const [tab, setTab] = useState<'open' | 'approval' | 'closed'>(focus === 'onay' ? 'approval' : focus === 'cozulen' ? 'closed' : 'open');
+  const listRef = useRef<HTMLDivElement>(null);
+  const pick = (f: typeof focus) => {
+    const next = focus === f ? '' : f;
+    setParams(next ? { durum: next } : {}, { replace: true });
+    setTab(next === 'onay' ? 'approval' : next === 'cozulen' ? 'closed' : 'open');
+    if (next) setTimeout(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+  useEffect(() => { if (focus) setTab(focus === 'onay' ? 'approval' : focus === 'cozulen' ? 'closed' : 'open'); }, [focus]);
   const [store, setStore] = useState('');
   const [cat, setCat] = useState<RequestCategory | ''>('');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -38,7 +52,11 @@ export const RequestsPage: React.FC = () => {
       closed: filtered.filter((r) => isClosed(r.status))
     };
   }, [filtered]);
-  const list = lists[tab];
+  const week0 = Date.now() - 7 * 86400000;
+  const list = lists[tab].filter((r) =>
+    focus === 'acil' ? r.priority === 'urgent'
+      : focus === 'cozulen' ? r.status === 'done' && (r.closedAt || 0) > week0
+        : true);
   const current = requests.find((r) => r.id === openId) || null;
 
   const open = (r: StoreRequest) => {
@@ -58,17 +76,26 @@ export const RequestsPage: React.FC = () => {
         subtitle="Mağaza ve vardiya müdürlerinin arıza, servis, malzeme ve personel talepleri. Sözlü talep geçersiz: kayıt burada." />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Açık talep" value={lists.open.length + lists.approval.length} icon="inbox" tone={lists.open.length ? 'caution' : 'neutral'} />
-        <Stat label="Acil" value={requests.filter((r) => r.priority === 'urgent' && !isClosed(r.status)).length} icon="alert" tone="negative" />
-        <Stat label="Onay bekleyen servis" value={lists.approval.length} icon="shield" tone="accent" />
-        <Stat label="7 günde çözülen" value={doneWeek.length} hint={avgHours !== null ? `Ortalama ${avgHours} saat` : undefined} icon="check" tone="positive" />
+        <Stat label="Açık talep" value={lists.open.length} icon="inbox" tone={lists.open.length ? 'caution' : 'neutral'}
+          onClick={() => pick('acik')} active={focus === 'acik'} />
+        <Stat label="Acil" value={lists.open.filter((r) => r.priority === 'urgent').length} icon="alert" tone="negative"
+          onClick={() => pick('acil')} active={focus === 'acil'} />
+        <Stat label="Onay bekleyen servis" value={lists.approval.length} icon="shield" tone="accent"
+          onClick={() => pick('onay')} active={focus === 'onay'} />
+        <Stat label="7 günde çözülen" value={doneWeek.length} hint={avgHours !== null ? `Ortalama ${avgHours} saat` : undefined} icon="check" tone="positive"
+          onClick={() => pick('cozulen')} active={focus === 'cozulen'} />
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      <div ref={listRef} className="flex flex-wrap gap-2 items-center scroll-mt-20">
+        {(focus === 'acil' || focus === 'cozulen') && (
+          <button onClick={() => pick(focus)} className={`${t.chip} ${t.chipOn}`}>
+            {focus === 'acil' ? 'Yalnızca acil' : 'Son 7 günde çözülen'} <Icon name="close" size={12} />
+          </button>
+        )}
         <div className={t.segment}>
-          <button className={`${t.segmentItem} ${tab === 'open' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('open')}>Açık · {lists.open.length}</button>
-          <button className={`${t.segmentItem} ${tab === 'approval' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('approval')}>Onayda · {lists.approval.length}</button>
-          <button className={`${t.segmentItem} ${tab === 'closed' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('closed')}>Kapanan · {lists.closed.length}</button>
+          <button className={`${t.segmentItem} ${tab === 'open' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => { setTab('open'); if (focus) setParams({}, { replace: true }); }}>Açık · {lists.open.length}</button>
+          <button className={`${t.segmentItem} ${tab === 'approval' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => { setTab('approval'); if (focus) setParams({}, { replace: true }); }}>Onayda · {lists.approval.length}</button>
+          <button className={`${t.segmentItem} ${tab === 'closed' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => { setTab('closed'); if (focus) setParams({}, { replace: true }); }}>Kapanan · {lists.closed.length}</button>
         </div>
         <select className={`${t.input} h-9 w-auto text-[14px]`} value={store} onChange={(e) => setStore(e.target.value)}>
           <option value="">Tüm mağazalar</option>
@@ -82,7 +109,7 @@ export const RequestsPage: React.FC = () => {
 
       <Section>
         {list.length === 0 ? (
-          <Empty icon="inbox" text={tab === 'open' ? 'Açık talep yok.' : tab === 'approval' ? 'Onay bekleyen servis talebi yok.' : 'Kapanan talep yok.'} />
+          <Empty icon="inbox" text={focus === 'acil' ? 'Acil talep yok.' : focus === 'cozulen' ? 'Son 7 günde çözülen talep yok.' : tab === 'open' ? 'Açık talep yok.' : tab === 'approval' ? 'Onay bekleyen servis talebi yok.' : 'Kapanan talep yok.'} />
         ) : (
           <div className="flex flex-col gap-2">
             {list.map((r) => (

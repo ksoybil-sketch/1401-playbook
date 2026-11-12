@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { badgeReport } from '../../lib/badges';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { backend, errorText } from '../../api/backend';
@@ -74,10 +74,10 @@ export const OverviewPage: React.FC = () => {
 
   // En çok yanlış yapılan sorular — eğitim içeriğinde neyin anlaşılmadığını gösterir.
   const missed = useMemo(() => {
-    const map = new Map<string, { prompt: string; module: string; n: number; answer: string }>();
+    const map = new Map<string, { prompt: string; module: string; moduleId: string; n: number; answer: string }>();
     attempts.filter((a) => a.startedAt > Date.now() - 30 * 86400000).forEach((a) =>
       (a.mistakes || []).forEach((m) => {
-        const cur = map.get(m.questionId) || { prompt: m.prompt, module: a.moduleTitle, n: 0, answer: m.options[m.answer] };
+        const cur = map.get(m.questionId) || { prompt: m.prompt, module: a.moduleTitle, moduleId: a.moduleId, n: 0, answer: m.options[m.answer] };
         cur.n++;
         map.set(m.questionId, cur);
       }));
@@ -89,10 +89,10 @@ export const OverviewPage: React.FC = () => {
       <PageTitle title="Genel bakış" subtitle="Tüm mağazaların eğitim durumu." />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" />
-        <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" />
-        <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama %${avgScore}` : 'Henüz yok'} icon="clipboard" tone="accent" />
-        <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} />
+        <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to="/baristalar" />
+        <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to="/baristalar?gorunum=tablo" />
+        <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama %${avgScore}` : 'Henüz yok'} icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to="/gorevler?durum=geciken" />
       </div>
 
       <Section label="Mağazalar">
@@ -128,18 +128,22 @@ export const OverviewPage: React.FC = () => {
           {missed.length === 0 ? <Empty icon="target" text="Henüz yeterli sınav verisi yok." /> : (
             <div className={t.listGroup}>
               {missed.map((m, i) => (
-                <div key={i} className={`${t.listRowStatic} items-start`}>
+                // Sorunun modülüne (soru bankası sekmesi) gider: yanlış anlaşılan
+                // soruyu ya da dersi oradan düzeltmek mümkün.
+                <Link key={i} to={`/icerik/modul/${m.moduleId}?sekme=sorular`} className={`${t.listRow} items-start`}>
                   <Badge tone="negative">{m.n}×</Badge>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium leading-snug">{m.prompt}</div>
                     <div className="text-[12px] text-fg-3 mt-1">{m.module} · Doğru: <span className="text-positive">{m.answer}</span></div>
                   </div>
-                </div>
+                  <Icon name="chevronRight" size={16} className={t.rowChevron} />
+                </Link>
               ))}
             </div>
           )}
         </Section>
 
+        <div id="son-sinavlar" className="scroll-mt-20 flex flex-col">
         <Section label="Son sınavlar">
           {attempts.filter((a) => a.submittedAt && !a.voided).length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
             <div className={t.listGroup}>
@@ -156,6 +160,7 @@ export const OverviewPage: React.FC = () => {
             </div>
           )}
         </Section>
+        </div>
       </div>
 
       <ApronBadgesSection />
@@ -588,7 +593,8 @@ export const BaristasPage: React.FC = () => {
   const { baristas, progress } = useStaffData();
   const [storeFilter, setStoreFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
-  const [view, setView] = useState<'list' | 'matrix'>('list');
+  const [params] = useSearchParams();
+  const [view, setView] = useState<'list' | 'matrix'>(params.get('gorunum') === 'tablo' ? 'matrix' : 'list');
   const [addOpen, setAddOpen] = useState(false);
   const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
   const [q, setQ] = useState('');
@@ -737,13 +743,14 @@ export const BaristaDetailPage: React.FC = () => {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Genel ilerleme" value={`%${pct}`} icon="target" tone="positive" />
-        <Stat label="Geçilen modül" value={`${Object.keys(p.modules || {}).length}/${modules.filter((m) => m.published).length}`} icon="award" />
-        <Stat label="Tamamlanan ders" value={Object.keys(p.lessons || {}).length} icon="book" />
-        <Stat label="Sınav denemesi" value={mine.length} hint={mine.length ? `Ortalama %${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)}` : undefined} icon="clipboard" />
+        <Stat label="Genel ilerleme" value={`%${pct}`} icon="target" tone="positive" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Geçilen modül" value={`${Object.keys(p.modules || {}).length}/${modules.filter((m) => m.published).length}`} icon="award" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Tamamlanan ders" value={Object.keys(p.lessons || {}).length} icon="book" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Sınav denemesi" value={mine.length} hint={mine.length ? `Ortalama %${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)}` : undefined} icon="clipboard" onClick={() => document.getElementById('b-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 items-start">
+        <div id="b-moduller" className="scroll-mt-20 flex flex-col">
         <Section label="Modüller">
           <div className={t.listGroup}>
             {tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published)).map((m) => {
@@ -762,6 +769,7 @@ export const BaristaDetailPage: React.FC = () => {
             })}
           </div>
         </Section>
+        </div>
 
         <div className="flex flex-col gap-5">
           <TitleCard report={report} />
@@ -788,6 +796,7 @@ export const BaristaDetailPage: React.FC = () => {
               </div>
             )}
           </Section>
+          <div id="b-sinavlar" className="scroll-mt-20 flex flex-col">
           <Section label="Sınav geçmişi">
             {mine.length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
               <div className="flex flex-col gap-2">
@@ -795,6 +804,7 @@ export const BaristaDetailPage: React.FC = () => {
               </div>
             )}
           </Section>
+          </div>
         </div>
       </div>
 
@@ -857,12 +867,14 @@ export const TasksPage: React.FC = () => {
   // Kahve Operasyon Müdürü kimin ne atadığını bu süzgeçle görür.
   const [byFilter, setByFilter] = useState('');
   const creators = [...new Map(assignments.map((a) => [a.createdBy, a.createdByName])).entries()];
+  const [params, setParams] = useSearchParams();
+  const onlyOverdue = params.get('durum') === 'geciken';
 
   const rows = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
     const targets = baristas.filter((b) => b.active && b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
     const done = targets.filter((b) => assignmentDone(a, progress[b.id]));
     return { a, targets, done };
-  });
+  }).filter(({ a, targets, done }) => !onlyOverdue || (done.length < targets.length && !!a.dueAt && a.dueAt < Date.now()));
 
   return (
     <Page wide>
@@ -877,8 +889,11 @@ export const TasksPage: React.FC = () => {
           <option value="">Atayan: herkes</option>
           {creators.map(([uid, name]) => <option key={uid} value={uid}>{uid === s.uid ? `${name} (sen)` : name}</option>)}
         </select>
+        <button onClick={() => setParams(onlyOverdue ? {} : { durum: 'geciken' }, { replace: true })} className={`${t.chip} ${onlyOverdue ? t.chipOn : t.chipOff}`}>
+          Yalnızca gecikenler {onlyOverdue && <Icon name="close" size={12} />}
+        </button>
       </div>
-      {rows.length === 0 ? <Empty icon="flag" text="Henüz görev atanmadı." /> : (
+      {rows.length === 0 ? <Empty icon="flag" text={onlyOverdue ? 'Gecikmiş görev yok.' : 'Henüz görev atanmadı.'} /> : (
         <div className={t.listGroup}>
           {rows.map(({ a, targets, done }) => {
             const complete = targets.length > 0 && done.length === targets.length;
