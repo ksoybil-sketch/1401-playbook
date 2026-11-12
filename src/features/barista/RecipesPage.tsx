@@ -1,3 +1,4 @@
+import { ReportContentLink } from '../shared/Feedback';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../store/session';
@@ -207,6 +208,20 @@ export const RecipeDetailPage: React.FC = () => {
         <button onClick={() => setZoom(false)} className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-5" aria-label="Kapat">
           <img src={pic} alt={recipe.title} className="max-w-full max-h-full rounded-2xl" />
         </button>
+      )}
+
+      <ReportContentLink lessonId={recipe.id} lessonTitle={recipe.title} />
+
+      {/* Yeni ürün: reçetenin kendi 3 soruluk mini sınavı. */}
+      {mod && signedInBarista && !!recipe.quiz && (
+        <Link to={`/sinav/${mod.id}?ders=${recipe.id}`} className={`${t.cardInteractive} p-3.5 flex items-center gap-3 mt-2 border-[#E07A6E]/40`}>
+          <span className={t.iconChip('caution')}><Icon name="clipboard" size={16} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-semibold">Mini sınava gir</div>
+            <div className="text-[12px] text-fg-3 truncate">{recipe.quiz} soru · bu reçeteyi ne kadar bildiğini gör</div>
+          </div>
+          <Icon name="chevronRight" size={16} className={t.rowChevron} />
+        </Link>
       )}
 
       {/* Reçete eğitim ilerlemesine sayılmaz; sınav Akademi'de. Mağaza

@@ -183,6 +183,13 @@ export interface Lesson {
   durationMin: number;
   blocks: LessonBlock[];
   published: boolean;
+  /** 'panel': panelde oluşturuldu, müfredat güncellemesi silmez. */
+  kaynak?: 'panel';
+  /**
+   * Bu derse ait mini sınavdaki soru sayısı (Yeni ürün akışı). Sorular
+   * modülün bankasında `lessonId` ile işaretli durur; modül sınavına da girer.
+   */
+  quiz?: number;
 }
 
 export type QuestionType = 'single' | 'truefalse';
@@ -206,6 +213,10 @@ export interface Question {
   answer: number;
   explanation?: string;
   kind?: QuestionKind;
+  /** Bir derse (yeni ürün reçetesine) ait mini sınav sorusu. */
+  lessonId?: string;
+  /** 'panel': panelde oluşturuldu, müfredat güncellemesi silmez. */
+  kaynak?: 'panel';
 }
 
 /** Sınav sırasında telefona giden soru — doğru cevap içermez. */
@@ -254,6 +265,8 @@ export interface Attempt {
   timedOut?: boolean;
   /** Eski sürümden kalan, puanlanamayan deneme: haftalık haktan sayılmaz. */
   voided?: boolean;
+  /** Mini sınav (tek ders) ise o dersin kimliği. */
+  lessonId?: string | null;
 }
 
 export interface Progress {
@@ -265,6 +278,8 @@ export interface Progress {
   modules: Record<string, { score: number; passedAt: number }>;
   /** bulletinId → okunma zamanı (ms). Okunmadı rozeti bunu sayar. */
   bulletins?: Record<string, number>;
+  /** lessonId → mini sınavın en iyi geçme sonucu (Yeni ürün akışı). */
+  quizzes?: Record<string, { score: number; passedAt: number }>;
   updatedAt: number;
 }
 
@@ -309,12 +324,37 @@ export interface Bulletin {
   createdByName: string;
 }
 
-export type AssignmentKind = 'lesson' | 'module';
+/** feedback/{id}: uygulama içinden gelen geri bildirim (Kutay'a düşer). */
+export type FeedbackKind = 'hata' | 'icerik' | 'oneri';
+export type FeedbackStatus = 'yeni' | 'inceleniyor' | 'cozuldu';
+export interface Feedback {
+  id: string;
+  kind: FeedbackKind;
+  text: string;
+  imageUrl?: string;
+  lessonId?: string;
+  lessonTitle?: string;
+  /** Gönderildiği ekran, uygulama sürümü, cihaz. */
+  path: string;
+  version: string;
+  device: string;
+  by: string;
+  byName: string;
+  role: string;
+  storeName?: string;
+  status: FeedbackStatus;
+  note?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+/** lesson: dersi tamamla · module: modül sınavını geç · quiz: dersin mini sınavını geç. */
+export type AssignmentKind = 'lesson' | 'module' | 'quiz';
 
 export interface Assignment {
   id: string;
   kind: AssignmentKind;
-  /** lessonId veya moduleId */
+  /** lessonId (lesson, quiz) veya moduleId */
   targetId: string;
   title: string;
   note?: string;
@@ -336,16 +376,16 @@ export const MAX_EXAMS_PER_WEEK = 3;
 /** Bir belgeye yapılacak tek işlem. `set` belgeyi baştan yazar. */
 export interface ChangeOp {
   op: 'set' | 'update' | 'delete';
-  col: 'lessons' | 'modules' | 'tracks' | 'questions' | 'bulletins';
+  col: 'lessons' | 'modules' | 'tracks' | 'questions' | 'bulletins' | 'assignments';
   id: string;
   data?: Record<string, unknown>;
 }
 
-export type ProposalKind = 'lesson' | 'module' | 'track' | 'question' | 'bulletin' | 'order';
+export type ProposalKind = 'lesson' | 'module' | 'track' | 'question' | 'bulletin' | 'order' | 'product';
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
 
 /**
- * proposals/{id} — Bölge müdürü ya da operasyon ekibinin yaptığı, Kahve
+ * proposals/{id} — Bölge müdürü ya da operasyon ekibinin yaptığı,
  * Kahve Operasyon Direktörü'nün onayını bekleyen değişiklik. Onaylanınca `ops`
  * olduğu gibi (ya da müdürün düzelttiği hâliyle) uygulanır.
  */
@@ -377,10 +417,19 @@ export type RequestCategory = 'ariza' | 'servis' | 'malzeme' | 'personel' | 'dig
 /**
  * İşletme kitapçığındaki akış: şube talebi açar → Bölge Müdürü görür ve
  * çözümü organize eder → yetkili servis gerekiyorsa Kahve Operasyon
- * Müdürü onaylar (approval) → çözüldü.
+ * Direktörü onaylar (approval) → çözüldü.
  */
 export type RequestStatus = 'open' | 'seen' | 'in_progress' | 'approval' | 'done' | 'rejected';
 export type RequestPriority = 'normal' | 'urgent';
+
+/**
+ * Talep neden hâlâ açık? Operasyon işleme alırken ya da onaya gönderirken
+ * seçer, iş ilerledikçe değiştirir. İstatistik sayfası hangi nedenin ne
+ * kadar beklettiğini buradan hesaplar (aksayan yeri bulmak için).
+ */
+export type RequestWaitReason = 'parca' | 'servis' | 'onay' | 'butce' | 'tedarikci' | 'magaza' | 'diger';
+/** Talep neden reddedildi. */
+export type RequestRejectReason = 'kapsam' | 'tekrar' | 'gereksiz' | 'magaza_cozdu' | 'diger';
 
 export interface RequestNote {
   at: number;
@@ -391,6 +440,8 @@ export interface RequestNote {
   text: string;
   /** Bu notla birlikte durum değiştiyse. */
   status?: RequestStatus;
+  /** Bekleme nedeni (işlemde/onayda) ya da red nedeni. */
+  reason?: RequestWaitReason | RequestRejectReason;
 }
 
 /**
@@ -418,4 +469,8 @@ export interface StoreRequest {
   /** Son yanıtı kim, hangi taraftan yazdı — okunmamış rozeti için. */
   lastSide: 'ops' | 'store';
   closedAt?: number | null;
+  /** Şu an neyi bekliyor (açıkken). */
+  waitReason?: RequestWaitReason | null;
+  /** Reddedildiyse nedeni. */
+  rejectReason?: RequestRejectReason | null;
 }

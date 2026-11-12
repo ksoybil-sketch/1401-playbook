@@ -107,6 +107,30 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // E-posta bildirim ayarları (kim hangi olayda e-posta alır) ve gönderim
+    // kaydı. Gönderimi sunucu (Cloud Functions, yönetici yetkisiyle) yapar.
+    match /config/notifications {
+      allow get: if isStaff();
+      allow write: if isDirector();
+    }
+    match /mailLog/{id} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    // Uygulama içi geri bildirim: her oturum (barista, mağaza telefonu,
+    // operasyon) kendi adına gönderir; geliştirici ve direktör okur, durumunu
+    // değiştirir. Silinmez: neyin bildirildiği kayıttır.
+    match /feedback/{id} {
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid
+        && request.resource.data.status == 'yeni'
+        && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
+      allow read: if isDirector();
+      allow update: if isDirector()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'updatedAt']);
+      allow delete: if false;
+    }
+
     match /stores/{storeId} {
       allow read: if signedIn();
       allow write: if canManageBaristas();
@@ -205,7 +229,7 @@ service cloud.firestore {
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
       allow update: if canManageBaristas() || isDirector()
         || (isBarista() && myBaristaId() == baristaId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'quizzes', 'updatedAt']));
       allow delete: if false;
     }
 

@@ -651,7 +651,7 @@ export const LessonEditorPage: React.FC = () => {
  * gömülür. Video için bu mümkün değil — yalnızca dış bağlantı (YouTube vb.)
  * eklenebilir.
  */
-const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => void }> = ({ block: b, onChange }) => {
+export const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => void }> = ({ block: b, onChange }) => {
   switch (b.type) {
     case 'heading':
       return <input className={t.input} value={b.text} onChange={(e) => onChange({ ...b, text: e.target.value })} placeholder="Bölüm başlığı" />;

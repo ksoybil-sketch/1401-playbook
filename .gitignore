@@ -24,3 +24,7 @@ apk/
 
 # Demo kaydı raporları (deneyenlerin adları ve yaptıkları)
 demo-kayitlari/
+
+# Cloud Functions yerel parametre ve gizli dosyaları
+functions/.env.local
+functions/.secret.local

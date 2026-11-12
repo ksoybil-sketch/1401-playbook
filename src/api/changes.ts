@@ -62,7 +62,11 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
   const s = staff();
   const data = clean(ops);
   if (can(s.role, 'publish')) {
-    await applyOps(data);
+    // Görev (yeni ürün akışı) onaylanınca yayınlayanın adına yazılır:
+    // kurallar görevi yalnızca atayanın kendi kimliğiyle yazmasına izin verir.
+    const applied = data.map((o) => (o.col === 'assignments' && o.op === 'set'
+      ? { ...o, data: { ...o.data, createdBy: s.uid, createdByName: s.name } } : o));
+    await applyOps(applied);
     if (proposalId) {
       const before = await getDoc(doc(db, 'proposals', proposalId));
       const original = JSON.stringify(before.data()?.ops || []);

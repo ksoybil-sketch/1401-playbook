@@ -138,7 +138,8 @@ if (EMULATOR) {
   };
   deleteStale = async (col, keepIds) => {
     const snap = await db.collection(col).get();
-    const stale = snap.docs.filter((d) => !keepIds.has(d.id));
+    // Panelde oluşturulan içerik (Yeni ürün akışı) müfredatta yok; silinmez.
+    const stale = snap.docs.filter((d) => !keepIds.has(d.id) && d.get('kaynak') !== 'panel');
     for (let i = 0; i < stale.length; i += 400) {
       const batch = db.batch();
       stale.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
@@ -289,11 +290,12 @@ if (EMULATOR) {
     let pageToken = '';
     do {
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${col}`
-        + `?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        + `?pageSize=300&mask.fieldPaths=kaynak${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
       if (!res.ok) throw new Error(`${col} listelenemedi: ${res.status} ${await res.text()}`);
       const body = await res.json();
-      (body.documents || []).forEach((d) => ids.push(d.name.split('/').pop()));
+      // Panelde oluşturulan içerik (Yeni ürün akışı) müfredatta yok; silinmez.
+      (body.documents || []).forEach((d) => { if (d.fields?.kaynak?.stringValue !== 'panel') ids.push(d.name.split('/').pop()); });
       pageToken = body.nextPageToken || '';
     } while (pageToken);
 

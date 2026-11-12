@@ -8,6 +8,13 @@ import { watchForUpdates } from './lib/updateCheck';
 // Açık kalan sekmeler yeni sürümü kendiliğinden alsın.
 watchForUpdates();
 
+// Çevrimdışı kabuk (public/sw.js): Wi-Fi gidince de uygulama açılsın.
+// Geliştirmede ve Android uygulamasında (dosyalar zaten cihazda) yok.
+const native = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+if (!import.meta.env.DEV && !native && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>

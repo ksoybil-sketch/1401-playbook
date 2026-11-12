@@ -14,6 +14,10 @@ import { BulletinsPage } from './features/barista/BulletinsPage';
 import { ExamPage } from './features/barista/ExamPage';
 import { RequestsPage as StoreRequestsPage } from './features/barista/RequestsPage';
 import { RequestsPage } from './features/staff/RequestsPage';
+import { RequestStatsPage } from './features/staff/RequestStatsPage';
+import { NewProductPage } from './features/staff/NewProductPage';
+import { FeedbackPage } from './features/staff/FeedbackPage';
+import { NotificationsPage } from './features/staff/NotificationsPage';
 import { ApprovalsPage } from './features/staff/ApprovalsPage';
 import { BadgeSettingsPage } from './features/staff/BadgeSettingsPage';
 import { StaffLayout } from './features/staff/StaffLayout';
@@ -108,10 +112,14 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />
             <Route path="gorevler" element={<TasksPage />} />
             <Route path="talepler" element={<RequestsPage />} />
+            <Route path="talepler/istatistik" element={<RequestStatsPage />} />
             <Route path="onaylar" element={<ApprovalsPage />} />
             <Route path="rozetler" element={<BadgeSettingsPage />} />
             <Route path="bulten" element={<BulletinPage />} />
             <Route path="icerik" element={<ContentPage />} />
+            <Route path="yeni-urun" element={<NewProductPage />} />
+            <Route path="geri-bildirim" element={<FeedbackPage />} />
+            {can(session.role, 'approve') && <Route path="bildirimler" element={<NotificationsPage />} />}
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
             <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />
             {ACTIVITY_LOG && can(session.role, 'manageAi') && <Route path="demo-kaydi" element={<DemoLogPage />} />}

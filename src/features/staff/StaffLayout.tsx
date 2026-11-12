@@ -56,7 +56,12 @@ export const StaffLayout: React.FC = () => {
     { to: '/rozetler', label: 'Rozetler', icon: 'medal' },
     // Yol adı /icerik kalıyor: değiştirmek panelde kayıtlı bağlantıları ve
     // ders editörüne dönüş adreslerini kırardı. Görünen ad "Akademi".
+    // Yeni ürün: reçete + mini sınav + bülten + görev tek seferde.
+    { to: '/yeni-urun', label: 'Yeni ürün', icon: 'coffee' },
     { to: '/icerik', label: 'Akademi', icon: 'layers' },
+    { to: '/geri-bildirim', label: 'Geri bildirim', icon: 'message' },
+    // E-posta bildirim ayarları: Kahve Operasyon Direktörü ve geliştirici.
+    ...(approver ? [{ to: '/bildirimler', label: 'Bildirimler', icon: 'bell' as IconName }] : []),
     // Demo ve emülatör paketinde: demoyu deneyenlerin izi (yalnızca geliştirici).
     ...(ACTIVITY_LOG && can(s.role, 'manageAi') ? [{ to: '/demo-kaydi', label: 'Demo kaydı', icon: 'info' as IconName }] : [])
   ];

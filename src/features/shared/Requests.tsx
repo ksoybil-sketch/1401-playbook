@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { addNote, catOf, isClosed, STATUS } from '../../api/requests';
+import { addNote, catOf, isClosed, reasonLabel, REJECT_REASONS, STATUS, WAIT_REASONS } from '../../api/requests';
 import { errorText } from '../../api/backend';
 import { Icon } from '../../ui/Icon';
 import { Avatar, Badge, Spinner, toast, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import type { RequestStatus, StoreRequest } from '../../../shared/types';
+import type { RequestRejectReason, RequestStatus, RequestWaitReason, StoreRequest } from '../../../shared/types';
 
 /**
  * Bir talebin kartı ve yazışması — mağaza ve Kahve Operasyonu aynı
@@ -28,6 +28,8 @@ export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; un
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-fg-3">{c.label}{r.equipment ? ` · ${r.equipment}` : ''}</span>
           <Badge tone={tone(r.status)}>{STATUS[r.status].label}</Badge>
           {r.priority === 'urgent' && !isClosed(r.status) && <Badge tone="negative">Acil</Badge>}
+          {!isClosed(r.status) && r.waitReason && <Badge tone="neutral">{reasonLabel(r.waitReason)}</Badge>}
+          {r.status === 'rejected' && r.rejectReason && <Badge tone="neutral">{reasonLabel(r.rejectReason)}</Badge>}
           {unread && <Badge tone="caution">Yeni yanıt</Badge>}
         </div>
         <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{r.title}</div>
@@ -50,7 +52,7 @@ const NEXT: Record<RequestStatus, RequestStatus[]> = {
   rejected: ['in_progress']
 };
 const ACTION: Record<RequestStatus, string> = {
-  open: 'Yeniden aç', seen: 'Görüldü', in_progress: 'İşleme al', approval: 'Müdür onayına gönder',
+  open: 'Yeniden aç', seen: 'Görüldü', in_progress: 'İşleme al', approval: 'Direktör onayına gönder',
   done: 'Çözüldü', rejected: 'Reddet'
 };
 
@@ -65,15 +67,30 @@ export const RequestThread: React.FC<{
 }> = ({ r, side, me, canChange, canApprove }) => {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
-  useEffect(() => setText(''), [r.id]);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState<RequestRejectReason | ''>('');
+  useEffect(() => { setText(''); setRejecting(false); setRejectReason(''); }, [r.id]);
+
+  /** Bekleme nedeni: yalnızca neden değişir, durum ve mağaza tarafı aynı kalır. */
+  const setWait = async (reason: RequestWaitReason) => {
+    setBusy('reason');
+    try { await addNote(r, { side, by: me, text: '', reason }); }
+    catch (e) { toast(errorText(e), 'negative'); }
+    finally { setBusy(null); }
+  };
 
   const send = async (status?: RequestStatus) => {
     if (!text.trim() && !status) return;
-    if (status === 'rejected' && !text.trim()) { toast('Reddederken mağazaya nedenini yaz.', 'negative'); return; }
+    if (status === 'rejected') {
+      if (!rejecting) { setRejecting(true); return; }
+      if (!rejectReason) { toast('Red nedenini seç.', 'negative'); return; }
+      if (!text.trim()) { toast('Reddederken mağazaya kısaca açıkla.', 'negative'); return; }
+    }
     setBusy(status || 'send');
     try {
-      await addNote(r, { side, by: me, text, status });
+      await addNote(r, { side, by: me, text, status, reason: status === 'rejected' ? rejectReason || null : undefined });
       setText('');
+      setRejecting(false);
     } catch (e) {
       toast(errorText(e), 'negative');
     } finally {
@@ -96,17 +113,37 @@ export const RequestThread: React.FC<{
               <div key={i} className={`flex gap-2 ${n.side === side ? 'flex-row-reverse text-right' : ''}`}>
                 <Avatar name={n.byName} size={26} />
                 <div className={`max-w-[80%] rounded-xl px-3 py-2 ${n.side === 'ops' ? 'bg-panel-3' : 'bg-panel'} border border-line`}>
-                  <div className="text-[11px] text-fg-3">{n.byName} · {fmtDateTime(n.at)}{n.status ? ` · ${STATUS[n.status].label}` : ''}</div>
+                  <div className="text-[11px] text-fg-3">{n.byName} · {fmtDateTime(n.at)}{n.status ? ` · ${STATUS[n.status].label}` : ''}{n.reason ? ` · ${reasonLabel(n.reason)}` : ''}</div>
                   <div className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-left">{n.text}</div>
                 </div>
               </div>
             ) : (
               <div key={i} className="text-[11.5px] text-fg-3 text-center">
-                {n.byName} · {n.status ? STATUS[n.status].label : ''} · {fmtDateTime(n.at)}
+                {n.byName} · {n.status ? STATUS[n.status].label : 'Neden'}{n.reason ? `: ${reasonLabel(n.reason)}` : ''} · {fmtDateTime(n.at)}
               </div>
             )
           ))}
         </div>
+      )}
+
+      {side === 'ops' && canChange && !closed && (
+        <label className="flex items-center gap-2 text-[13px] text-fg-2">
+          <span className="shrink-0">Şu an neyi bekliyor?</span>
+          <select className={`${t.input} h-9 text-[13px] flex-1`} value={r.waitReason || ''} disabled={!!busy}
+            onChange={(e) => e.target.value && setWait(e.target.value as RequestWaitReason)}>
+            <option value="">Seç (istatistik için)</option>
+            {WAIT_REASONS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+          </select>
+        </label>
+      )}
+      {rejecting && (
+        <label className="flex items-center gap-2 text-[13px] text-negative">
+          <span className="shrink-0">Red nedeni</span>
+          <select className={`${t.input} h-9 text-[13px] flex-1`} value={rejectReason} onChange={(e) => setRejectReason(e.target.value as RequestRejectReason)}>
+            <option value="">Seç</option>
+            {REJECT_REASONS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+          </select>
+        </label>
       )}
 
       <div className="flex flex-col gap-2">
@@ -118,7 +155,7 @@ export const RequestThread: React.FC<{
             .map((st) => (
               <button key={st} disabled={!!busy} onClick={() => send(st)}
                 className={`${t.btn} ${st === 'rejected' ? t.btnDanger : st === 'done' ? t.btnSecondary : t.btnSecondary} ${t.btnSm}`}>
-                {busy === st ? <Spinner size={13} /> : ACTION[st]}
+                {busy === st ? <Spinner size={13} /> : st === 'rejected' && rejecting ? 'Reddi gönder' : ACTION[st]}
               </button>
             ))}
           {side === 'ops' && canApprove && r.status === 'approval' && (

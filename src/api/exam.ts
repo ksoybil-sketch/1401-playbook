@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { AppError } from './backend';
-import type { Attempt, AttemptReviewItem, ExamQuestion, Module, Progress, Question } from '../../shared/types';
+import type { Attempt, AttemptReviewItem, ExamQuestion, Lesson, Module, Progress, Question } from '../../shared/types';
 import { MAX_EXAMS_PER_WEEK } from '../../shared/types';
 
 export const SECONDS_PER_QUESTION = 90;
@@ -115,7 +115,7 @@ export interface ExamSession {
 }
 
 /** Bu modülde süresi dolmamış, açık bir deneme var mı? */
-export async function findActiveAttempt(baristaId: string, moduleId?: string): Promise<Attempt | null> {
+export async function findActiveAttempt(baristaId: string, moduleId?: string, lessonId?: string | null): Promise<Attempt | null> {
   const snap = await getDocs(query(
     collection(db, 'attempts'),
     where('baristaId', '==', baristaId),
@@ -124,7 +124,7 @@ export async function findActiveAttempt(baristaId: string, moduleId?: string): P
   const now = Date.now();
   const open = snap.docs
     .map((d) => ({ id: d.id, ...d.data() } as Attempt))
-    .filter((a) => (!moduleId || a.moduleId === moduleId) && a.deadline && a.deadline > now);
+    .filter((a) => (!moduleId || (a.moduleId === moduleId && (a.lessonId || null) === (lessonId || null))) && a.deadline && a.deadline > now);
   return open[0] || null;
 }
 
@@ -136,27 +136,39 @@ export async function findActiveAttempt(baristaId: string, moduleId?: string): P
 const TEST_ENV = import.meta.env.VITE_DEMO === 'true' || import.meta.env.MODE === 'emulator';
 export const EXAMS_PER_WEEK = TEST_ENV ? 20 : MAX_EXAMS_PER_WEEK;
 
-export async function startExam(mod: Module, who: { baristaId: string; storeId: string; name: string }): Promise<ExamSession> {
+/** Mini sınav (Yeni ürün akışı): 3 sorudan 2'si. */
+export const QUIZ_PASS = 67;
+
+export async function startExam(mod: Module, who: { baristaId: string; storeId: string; name: string }, lesson?: Lesson | null): Promise<ExamSession> {
   // Önce süresi geçmiş açık denemeleri kapat; sonra bu modülde devam eden
   // bir deneme varsa yeni hak harcatmadan ona geri dön.
+  // Sınav sunucuda puanlanır ve soru seçimi geçmişe bakar: internetsiz
+  // başlatılırsa önbellekteki boş soru listesi "soru yok" gibi görünüyordu.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new AppError('Sınava girmek için internet bağlantısı gerekiyor. Bağlantı gelince yeniden dene.');
+  }
   await finalizeExpired(who.baristaId);
-  const active = await findActiveAttempt(who.baristaId, mod.id);
+  const quiz = lesson?.id || null;
+  const active = await findActiveAttempt(who.baristaId, mod.id, quiz);
   if (active) return resumeExam(active);
 
   const pSnap = await getDoc(doc(db, 'progress', who.baristaId));
   const progress = (pSnap.data() as Progress | undefined) || { modules: {} as Progress['modules'] };
-  if (mod.prerequisiteId && !progress.modules?.[mod.prerequisiteId]) {
+  if (!quiz && mod.prerequisiteId && !progress.modules?.[mod.prerequisiteId]) {
     throw new AppError('Bu sınav kilitli. Önce önceki modülü geçmelisin.');
   }
   const since = Date.now() - 7 * DAY_MS;
   const recentSnap = await getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('startedAt', '>=', since)));
-  const recent = recentSnap.docs.map((d) => d.data() as Attempt).filter((a) => !a.voided && a.moduleId === mod.id);
+  const recent = recentSnap.docs.map((d) => d.data() as Attempt).filter((a) => !a.voided && a.moduleId === mod.id && (a.lessonId || null) === quiz);
   if (recent.length >= EXAMS_PER_WEEK) {
     const oldest = Math.min(...recent.map((a) => a.startedAt));
     throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
   }
-  const qSnap = await getDocs(query(collection(db, 'questions'), where('moduleId', '==', mod.id)));
-  if (qSnap.empty) throw new AppError('Bu modülde henüz soru yok.');
+  const qSnap = await getDocs(quiz
+    ? query(collection(db, 'questions'), where('moduleId', '==', mod.id), where('lessonId', '==', quiz))
+    : query(collection(db, 'questions'), where('moduleId', '==', mod.id)));
+  if (qSnap.empty && qSnap.metadata.fromCache) throw new AppError('Sınava girmek için internet bağlantısı gerekiyor. Bağlantı gelince yeniden dene.');
+  if (qSnap.empty) throw new AppError(quiz ? 'Bu reçetenin mini sınavı yok.' : 'Bu modülde henüz soru yok.');
 
   const missed = new Set<string>();
   recent.forEach((a) => (a.mistakes || []).forEach((m) => missed.add(m.questionId)));
@@ -171,7 +183,8 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
   });
 
   const pool = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
-  const size = Math.min(mod.examSize || 10, pool.length);
+  const size = quiz ? pool.length : Math.min(mod.examSize || 10, pool.length);
+  const passScore = quiz ? QUIZ_PASS : mod.passScore;
   const picked = pickQuestions(pool, size, missed, seenAt);
 
   const orders: Record<string, number[]> = {};
@@ -184,7 +197,7 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
   const deadline = startedAt + picked.length * SECONDS_PER_QUESTION * 1000;
   const ref = await addDoc(collection(db, 'attempts'), {
     baristaId: who.baristaId, baristaName: who.name, storeId: who.storeId,
-    moduleId: mod.id, moduleTitle: mod.title, passScore: mod.passScore,
+    moduleId: mod.id, moduleTitle: quiz ? `${lesson!.title} · mini sınav` : mod.title, passScore, lessonId: quiz,
     startedAt, deadline, total: picked.length,
     questionIds: picked.map((q) => q.id), orders, answers: {},
     // Kural "submittedAt == null" ile bitmemiş denemeyi ayırt eder.
@@ -193,7 +206,7 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
 
   const qs = new Map(picked.map((q) => [q.id, q]));
   return {
-    attemptId: ref.id, passScore: mod.passScore, deadline, resumed: false, answers: {},
+    attemptId: ref.id, passScore, deadline, resumed: false, answers: {},
     questions: toExamQuestions(picked.map((q) => q.id), orders, qs)
   };
 }
@@ -260,11 +273,14 @@ export async function submitExam(attemptId: string, answers?: Record<string, num
 
   if (passed) {
     const pRef = doc(db, 'progress', a.baristaId);
+    // Mini sınav modül geçişi sayılmaz; ayrı alanda tutulur.
+    const field = a.lessonId ? 'quizzes' : 'modules';
+    const key = a.lessonId || a.moduleId;
     await runTransaction(db, async (tx) => {
       const p = await tx.get(pRef);
-      const prev = (p.data() as Progress | undefined)?.modules?.[a.moduleId];
+      const prev = ((p.data() as Progress | undefined)?.[field] as Progress['modules'] | undefined)?.[key];
       if (!prev || prev.score < score) {
-        tx.update(pRef, { [`modules.${a.moduleId}`]: { score, passedAt: prev?.passedAt || now }, updatedAt: now });
+        tx.update(pRef, { [`${field}.${key}`]: { score, passedAt: prev?.passedAt || now }, updatedAt: now });
       }
     });
   }

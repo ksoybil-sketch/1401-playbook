@@ -93,7 +93,7 @@ const sheet = (page) => page.locator('[role=dialog], .fixed.inset-0').last();
   await page.locator('main button').filter({ hasText: /Matcha|ube/ }).first().click();
   await page.waitForTimeout(800);
   await page.locator('textarea').last().fill('Sevkiyat yarın sabah 09:00’da şubede. Hafta sonuna yeter.');
-  await shot(page, 'y-u-talep-yanit', { yanit: page.locator('textarea').last(), isleme: page.getByRole('button', { name: 'İşleme al' }), onay: page.getByRole('button', { name: 'Müdür onayına gönder' }) });
+  await shot(page, 'y-u-talep-yanit', { yanit: page.locator('textarea').last(), isleme: page.getByRole('button', { name: 'İşleme al' }), onay: page.getByRole('button', { name: 'Direktör onayına gönder' }) });
   await page.getByRole('button', { name: 'İşleme al' }).click();
   await page.waitForTimeout(1000);
   await page.keyboard.press('Escape');
@@ -104,9 +104,9 @@ const sheet = (page) => page.locator('[role=dialog], .fixed.inset-0').last();
     await espresso.click();
     await page.waitForTimeout(600);
     await page.locator('textarea').last().fill('Conta değişimi için yetkili servis teklifi: 2.400 ₺. Onayınıza sunuyorum.');
-    await page.getByRole('button', { name: 'Müdür onayına gönder' }).click();
+    await page.getByRole('button', { name: 'Direktör onayına gönder' }).click();
     await page.waitForTimeout(1000);
-    await shot(page, 'y-u-onaya-gonder', { durum: page.getByText(/Müdür onayında/).first() });
+    await shot(page, 'y-u-onaya-gonder', { durum: page.getByText(/Direktör onayında/).first() });
     await page.keyboard.press('Escape');
   }
 

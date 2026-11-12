@@ -1,3 +1,4 @@
+import { FeedbackRow } from '../shared/Feedback';
 import React, { useMemo, useState } from 'react';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { badgeReport, fromBarista } from '../../lib/badges';
@@ -213,7 +214,8 @@ export const HomePage: React.FC = () => {
 const AssignmentRow: React.FC<{ a: Assignment; progress: Progress }> = ({ a, progress }) => {
   const done = assignmentDone(a, progress);
   const overdue = isOverdue(a, done);
-  const to = a.kind === 'lesson' ? `/ders/${a.targetId}` : `/modul/${a.targetId}`;
+  // Mini sınav görevi reçeteye gider; sınav düğmesi orada.
+  const to = a.kind === 'lesson' ? `/ders/${a.targetId}` : a.kind === 'quiz' ? `/recete/${a.targetId}` : `/modul/${a.targetId}`;
   return (
     <Link to={to} className={t.listRow}>
       <span className={t.iconChip(overdue ? 'negative' : 'caution')}><Icon name={a.kind === 'lesson' ? 'book' : 'clipboard'} size={16} /></span>
@@ -280,6 +282,8 @@ export const ResultsPage: React.FC = () => {
           </div>
         )}
       </Section>
+
+      <FeedbackRow />
     </Page>
   );
 };

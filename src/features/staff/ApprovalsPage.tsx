@@ -31,7 +31,8 @@ const KIND: Record<ProposalKind, { label: string; icon: IconName }> = {
   track: { label: 'Eğitim yolu', icon: 'flag' },
   question: { label: 'Soru', icon: 'target' },
   bulletin: { label: 'Bülten', icon: 'bell' },
-  order: { label: 'Sıralama', icon: 'list' }
+  order: { label: 'Sıralama', icon: 'list' },
+  product: { label: 'Yeni ürün', icon: 'coffee' }
 };
 
 const STATUS: Record<Proposal['status'], { label: string; tone: 'neutral' | 'positive' | 'caution' | 'negative' }> = {

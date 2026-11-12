@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useContent } from '../../store/content';
 import { CATEGORIES, isClosed, markSeen, STATUS } from '../../api/requests';
 import { can } from '../../lib/roles';
@@ -15,7 +15,7 @@ import type { RequestCategory, StoreRequest } from '../../../shared/types';
  * Mağaza talepleri — Kahve Operasyonu tarafı.
  *
  * Bölge Müdürü talepleri görür, işleme alır, yanıtlar; yetkili servis
- * gerekiyorsa "Müdür onayına gönder" der, Kahve Operasyon Direktörü onaylar.
+ * gerekiyorsa "Direktör onayına gönder" der, Kahve Operasyon Direktörü onaylar.
  * Operasyon ekibinin diğer üyeleri listeyi görür, değiştirmez.
  */
 export const RequestsPage: React.FC = () => {
@@ -73,7 +73,8 @@ export const RequestsPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Talepler"
-        subtitle="Mağaza ve vardiya müdürlerinin arıza, servis, malzeme ve personel talepleri. Sözlü talep geçersiz: kayıt burada." />
+        subtitle="Mağaza ve vardiya müdürlerinin arıza, servis, malzeme ve personel talepleri. Sözlü talep geçersiz: kayıt burada."
+        action={<Link to="/talepler/istatistik" className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`}><Icon name="chart" size={15} /> İstatistik</Link>} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Açık talep" value={lists.open.length} icon="inbox" tone={lists.open.length ? 'caution' : 'neutral'}

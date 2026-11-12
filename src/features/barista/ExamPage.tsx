@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppError, errorText } from '../../api/backend';
 import {
-  findActiveAttempt, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK } from '../../api/exam';
+  findActiveAttempt, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
 import { useBaristaSession } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
@@ -27,6 +27,10 @@ export const ExamPage: React.FC = () => {
   const navigate = useNavigate();
   const s = useBaristaSession();
   const mod = useContent((x) => x.modules.find((m) => m.id === moduleId));
+  // ?ders=<lessonId>: yeni ürünün mini sınavı (yalnızca o reçetenin soruları).
+  const [params] = useSearchParams();
+  const lesson = useContent((x) => x.lessons.find((l) => l.id === params.get('ders'))) || null;
+  const back = lesson ? `/recete/${lesson.id}` : `/modul/${moduleId}`;
   const [phase, setPhase] = useState<Phase>({ k: 'intro' });
   const [error, setError] = useState<string | null>(null);
   const [idx, setIdx] = useState(0);
@@ -39,8 +43,8 @@ export const ExamPage: React.FC = () => {
   // Bu modülde süresi dolmamış açık deneme var mı? Varsa "Başla" yerine "Devam et".
   useEffect(() => {
     if (!mod) return;
-    findActiveAttempt(s.baristaId, mod.id).then((a) => setResumable(a?.deadline ? { deadline: a.deadline } : null)).catch(() => {});
-  }, [s.baristaId, mod]);
+    findActiveAttempt(s.baristaId, mod.id, lesson?.id).then((a) => setResumable(a?.deadline ? { deadline: a.deadline } : null)).catch(() => {});
+  }, [s.baristaId, mod, lesson]);
 
   // Geri sayım
   useEffect(() => {
@@ -80,13 +84,14 @@ export const ExamPage: React.FC = () => {
 
   if (!mod) return <Page><p className="text-fg-3">Modül bulunamadı.</p></Page>;
 
-  const minutes = Math.ceil((mod.examSize * SECONDS_PER_QUESTION) / 60);
+  const size = lesson ? lesson.quiz || 3 : mod.examSize;
+  const minutes = Math.ceil((size * SECONDS_PER_QUESTION) / 60);
 
   const start = async () => {
     setError(null);
     setPhase({ k: 'loading' });
     try {
-      const res = await startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name });
+      const res = await startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name }, lesson);
       setAnswers(res.answers);
       // Devam edilen denemede ilk boş soruya git.
       const firstBlank = res.questions.findIndex((q) => res.answers[q.id] === undefined);
@@ -117,17 +122,17 @@ export const ExamPage: React.FC = () => {
     return (
       <Page>
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/modul/${mod.id}`)} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
-          <span className="text-[13px] text-fg-3">Modül sınavı</span>
+          <button onClick={() => navigate(back)} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
+          <span className="text-[13px] text-fg-3">{lesson ? 'Mini sınav' : 'Modül sınavı'}</span>
         </div>
         <div className="flex flex-col items-center text-center gap-4 pt-6">
           <span className={`${t.iconChip('accent')} w-14 h-14 rounded-2xl`}><Icon name="clipboard" size={26} /></span>
-          <h1 className="text-[22px] font-bold">{mod.title}</h1>
+          <h1 className="text-[22px] font-bold">{lesson ? lesson.title : mod.title}</h1>
           <div className={`${t.listGroup} w-full text-left`}>
             {[
-              ['Soru sayısı', `${mod.examSize}`],
+              ['Soru sayısı', `${size}`],
               ['Süre', `${minutes} dakika`],
-              ['Geçme notu', `%${mod.passScore}`]
+              ['Geçme notu', `%${lesson ? QUIZ_PASS : mod.passScore}`]
             ].map(([a, b]) => (
               <div key={a} className={`${t.listRowStatic} justify-between`}>
                 <span className="text-[14px] text-fg-2">{a}</span>
@@ -175,7 +180,7 @@ export const ExamPage: React.FC = () => {
         )}
 
         <div className="flex flex-col gap-2">
-          <button onClick={() => navigate(`/modul/${mod.id}`, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Modüle dön</button>
+          <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>{lesson ? 'Reçeteye dön' : 'Modüle dön'}</button>
         </div>
       </Page>
     );
@@ -193,7 +198,7 @@ export const ExamPage: React.FC = () => {
     <Page>
       <div className="flex items-center gap-3">
         <button
-          onClick={() => confirm('Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?') && navigate(`/modul/${mod.id}`)}
+          onClick={() => confirm('Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?') && navigate(back)}
           className={t.iconBtn}
           aria-label="Sınavdan çık"
         >

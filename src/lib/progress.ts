@@ -37,12 +37,14 @@ export function overallPercent(modules: Module[], lessons: Lesson[], progress: P
 
 export function assignmentDone(a: Assignment, progress: Progress | null | undefined): boolean {
   if (!progress) return false;
-  return a.kind === 'lesson' ? !!progress.lessons?.[a.targetId] : !!progress.modules?.[a.targetId];
+  return a.kind === 'lesson' ? !!progress.lessons?.[a.targetId] : a.kind === 'quiz' ? !!progress.quizzes?.[a.targetId] : !!progress.modules?.[a.targetId];
 }
 
 export function assignmentDoneAt(a: Assignment, progress: Progress | null | undefined): number | null {
   if (!progress) return null;
-  return a.kind === 'lesson' ? progress.lessons?.[a.targetId] ?? null : progress.modules?.[a.targetId]?.passedAt ?? null;
+  return a.kind === 'lesson' ? progress.lessons?.[a.targetId] ?? null
+    : a.kind === 'quiz' ? progress.quizzes?.[a.targetId]?.passedAt ?? null
+      : progress.modules?.[a.targetId]?.passedAt ?? null;
 }
 
 /** Ders sonrası önerilecek bir sonraki ders: ilk tamamlanmamış, kilitsiz modülün ilk tamamlanmamış dersi. */
