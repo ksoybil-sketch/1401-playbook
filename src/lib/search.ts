@@ -100,12 +100,16 @@ export function searchLessons(index: Indexed[], query: string, limit = 40): Less
     let matchedIngredient: string | undefined;
     let ok = true;
 
+    // Kelime başından eşleşme: "ube" yazınca "Ube Latte" gelsin, "Şube
+    // açılış prosedürü" gelmesin (ş→s sadeleştirmesiyle "sube" içinde
+    // "ube" geçiyordu).
+    const at = (text: string, w: string) => text.startsWith(w) || text.includes(' ' + w);
     for (const w of words) {
       if (item.nTitle.startsWith(w)) score += 100;
-      else if (item.nTitle.includes(w)) score += 60;
-      else if (item.nModule.includes(w)) score += 20;
+      else if (at(item.nTitle, w)) score += 60;
+      else if (at(item.nModule, w)) score += 20;
       else {
-        const ing = item.nIngredients.find((x) => x.n.includes(w));
+        const ing = item.nIngredients.find((x) => at(x.n, w));
         if (ing) {
           score += 12;
           matchedIngredient ??= ing.raw;

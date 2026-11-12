@@ -218,8 +218,16 @@ const Legend: React.FC<{ block: CupBlock }> = ({ block }) => {
           <span className="w-2.5 h-2.5 rounded-[3px] shrink-0 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]"
                 style={{ background: TONE[l.tone] }} />
           <span className="text-[13px] text-fg-2 min-w-0">{l.name}</span>
-          <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'small')}</span>
-          {two && <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'large')}</span>}
+          {two && l.fill !== 'ml' ? (
+            // Hacimsiz ölçü ("standart ölçü", "garniş") iki boyda aynı: iki
+            // dar sütuna sığmayıp taşıyordu; tek hücrede, gerekirse alt satıra.
+            <span className="col-span-2 text-[12.5px] font-semibold text-right leading-snug">{amountText(l, 'small')}</span>
+          ) : (
+            <>
+              <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'small')}</span>
+              {two && <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'large')}</span>}
+            </>
+          )}
         </div>
       ))}
       {block.dose && (
