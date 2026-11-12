@@ -20,6 +20,8 @@
  *     ~/.local/share/chatterbox/.venv içine kurulu. REF_SES=ornek.wav ile
  *     verilen kişinin sesiyle konuşur (izni olan biri!).
  *     MOTOR=chatterbox SADECE=kurul node capture/ses.mjs
+ *   gemini — Google Gemini TTS (ücretsiz kota, anahtar .env.local'de).
+ *     Ton USLUP ile tarif edilir. MOTOR=gemini SES=Sulafat SADECE=kurul node capture/ses.mjs
  */
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
@@ -28,17 +30,21 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { REHBERLER, cumleler } from '../src/rehber/senaryo.ts';
 import { kurulCumleleri } from '../src/kurul/senaryo.ts';
+import { geminiTTS } from './gemini-tts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'public', 'rehber-ses');
 mkdirSync(OUT, { recursive: true });
 const ENGINE = process.env.MOTOR || 'edge';
-const VOICE = process.env.SES || (ENGINE === 'edge' ? 'tr-TR-EmelNeural' : ENGINE === 'chatterbox' ? (process.env.REF_SES ? `ref:${process.env.REF_SES}` : 'varsayilan') : 'Yelda');
-const RATE = process.env.HIZ || (ENGINE === 'edge' ? '-4%' : ENGINE === 'chatterbox' ? (process.env.ABARTI || '0.5') : '172');
+const VOICE = process.env.SES || (ENGINE === 'edge' ? 'tr-TR-EmelNeural' : ENGINE === 'gemini' ? 'Sulafat' : ENGINE === 'chatterbox' ? (process.env.REF_SES ? `ref:${process.env.REF_SES}` : 'varsayilan') : 'Yelda');
+// Gemini'de "hız" yerine ton tarifi (USLUP).
+const RATE = process.env.HIZ || process.env.USLUP || (ENGINE === 'edge' ? '-4%' : ENGINE === 'gemini' ? 'Calm, warm and confident; a clear, natural Turkish presentation voice. Unhurried pace.' : ENGINE === 'chatterbox' ? (process.env.ABARTI || '0.5') : '172');
 const EXT = ENGINE === 'edge' ? 'mp3' : 'wav';
 const UVX = join(process.env.HOME, '.local', 'bin', 'uvx');
 const CB_PY = join(process.env.HOME, '.local', 'share', 'chatterbox', '.venv', 'bin', 'python');
 const ALL = process.argv.includes('--hepsi');
+// Gemini'de model seçimi (ücretsiz kota model başına ayrı: günde 10 istek).
+const GMODEL = process.env.GEMINI_MODEL || '';
 // SADECE=kurul : yalnızca yönetim kurulu videosunun cümleleri (yavaş motorlar için).
 const ONLY = process.env.SADECE;
 const jsonPath = join(OUT, 'sesler.json');
@@ -51,7 +57,7 @@ const texts = [...new Set(all)];
 const spokenOf = (text) => text.replace(/[“”"«»]/g, '').replace(/PIN/g, 'pin');
 const jobs = [];
 for (const text of texts) {
-  const h = createHash('sha1').update(`${ENGINE}|${VOICE}|${RATE}|${text}`).digest('hex').slice(0, 12);
+  const h = createHash('sha1').update(`${ENGINE}|${VOICE}|${RATE}|${GMODEL ? GMODEL + '|' : ''}${text}`).digest('hex').slice(0, 12);
   const file = `rehber-ses/${h}.${EXT}`;
   const abs = join(OUT, `${h}.${EXT}`);
   if (ALL || !existsSync(abs)) jobs.push({ text, spoken: spokenOf(text), abs });
@@ -65,7 +71,10 @@ if (ENGINE === 'chatterbox') {
   if (jobs.length) execFileSync(CB_PY, [join(here, 'chatterbox_tts.py'), list], { stdio: 'inherit' });
 } else {
   for (const j of jobs) {
-    if (ENGINE === 'edge') {
+    if (ENGINE === 'gemini') {
+      await geminiTTS(j.spoken, j.abs, { voice: VOICE, style: RATE, model: GMODEL || undefined });
+      console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
+    } else if (ENGINE === 'edge') {
       // Servis arada bir bağlantıyı düşürebiliyor: üç deneme.
       for (let i = 0; ; i++) {
         try { execFileSync(UVX, ['edge-tts', '--voice', VOICE, `--rate=${RATE}`, '--text', j.spoken, '--write-media', j.abs], { stdio: 'pipe' }); break; }

@@ -34,3 +34,14 @@ klasörde `npm install`.
 Metin ve sahneler `src/kurul/senaryo.ts`'te (neden, neyi çözer, ne kazandırır, önerilen adım).
 Rakamlar uygulamanın kendisinden: `src/generated/curriculum.json` ve reçete listesi. Ses ve süre
 rehberlerle aynı yoldan (`npm run ses`).
+
+### Seslendirme motorları
+
+| Motor | Nasıl | Not |
+|---|---|---|
+| Gemini (kurul videosu: **Charon**) | `MOTOR=gemini SES=Charon SADECE=kurul npm run ses` | En doğal ses. Anahtar `.env.local` → `GEMINI_API_KEY=` (git'e girmez). Ücretsiz kota model başına **günde 10 istek**; `GEMINI_MODEL=gemini-3.8-flash-lite-tts` ayrı kotadır. Ton `USLUP` ile tarif edilir. |
+| Edge (rehberler: **Emel**) | `npm run ses` | Ücretsiz, kotasız, internet gerekir. |
+| Chatterbox | `MOTOR=chatterbox SADECE=kurul npm run ses` | Yerel, MIT. 8 GB bellekte çok yavaş; kayıttan ses taklidi için `REF_SES`. |
+| macOS Yelda | `MOTOR=say SES="Yelda (Enhanced)" npm run ses` | İnternetsiz yedek, robotik. |
+
+Seslendirme kontrolü: `capture/ses_kontrol.py` her cümleyi Whisper ile yazıya geri çevirip metinle karşılaştırır.

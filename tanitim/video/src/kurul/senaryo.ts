@@ -27,6 +27,7 @@ export interface Sahne {
 export const KURUL: Sahne[] = [
   {
     metin: '1401 Campus: 1401’in eğitim kitapçığını, reçetelerini ve mağaza operasyonunu tek bir uygulamada toplayan yeni sistemimiz.',
+    ses: 'Bin dört yüz bir Kampüs. Bin dört yüz birin eğitim kitapçığını, reçetelerini ve mağaza operasyonunu tek bir uygulamada toplayan yeni sistemimiz.',
     gorsel: { tur: 'logo' }
   },
   {
@@ -40,6 +41,7 @@ export const KURUL: Sahne[] = [
   },
   {
     metin: 'Bu cevaplar bugüne kadar kitapçıkta ve kişilerin hafızasındaydı; ölçmek ve takip etmek zordu. 1401 Campus bunları ölçülebilir hâle getiriyor.',
+    ses: 'Bu cevaplar bugüne kadar kitapçıkta ve kişilerin hafızasındaydı; ölçmek ve takip etmek zordu. Bin dört yüz bir Kampüs bunları ölçülebilir hâle getiriyor.',
     gorsel: { tur: 'donusum', once: 'Kitapçık ve hafıza', sonra: 'Ölçülebilir, takip edilebilir' }
   },
   {
