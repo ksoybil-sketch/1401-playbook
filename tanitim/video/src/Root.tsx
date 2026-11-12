@@ -1,6 +1,8 @@
 import React from 'react';
 import { Composition, continueRender, delayRender, staticFile } from 'remotion';
 import { Tanitim } from './Video';
+import { Yonetim } from './Yonetim';
+import { D_TOTAL } from './senaryo-yonetim';
 import { FPS, TOTAL } from './script';
 
 // Uygulamanın kendi yazı tipi (Inter, gömülü) — video da aynı harflerle konuşsun.
@@ -11,5 +13,10 @@ Promise.all([
 ]).then((faces) => { faces.forEach((f) => document.fonts.add(f)); continueRender(handle); });
 
 export const Root: React.FC = () => (
-  <Composition id="Tanitim" component={Tanitim} durationInFrames={TOTAL} fps={FPS} width={1080} height={1920} />
+  // 0,75 hız: ilk sürüm 1x'ti; izleyince 0,75x daha rahat okunuyordu.
+  <>
+    <Composition id="Tanitim" component={Tanitim} durationInFrames={Math.round(TOTAL / 0.75)} fps={FPS} width={1080} height={1920} defaultProps={{ speed: 0.75 }} />
+    {/* Uğur Bey ve Cenk Bey için: masaüstü ekranları, yatay. */}
+    <Composition id="Yonetim" component={Yonetim} durationInFrames={Math.round(D_TOTAL / 0.75)} fps={FPS} width={1920} height={1080} defaultProps={{ speed: 0.75 }} />
+  </>
 );

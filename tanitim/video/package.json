@@ -4,9 +4,9 @@
   "type": "module",
   "description": "1401 Campus tanıtım videosu (Remotion). Ekranlar capture/ ile emülatörden çekilir.",
   "scripts": {
-    "capture": "node capture/capture.mjs",
+    "capture": "node capture/reset-emu.mjs && node capture/capture.mjs && node capture/yonetim.mjs",
     "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts Tanitim out/1401-campus-tanitim.mp4 --codec h264 --crf 18"
+    "render": "remotion render src/index.ts Tanitim out/1401-campus-tanitim.mp4 --codec h264 --crf 18 && remotion render src/index.ts Yonetim out/1401-campus-yonetim.mp4 --codec h264 --crf 18"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.543",

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { Img, interpolate, spring, staticFile, useVideoConfig, Easing } from 'remotion';
+import { useT } from './time';
 import meta from '../public/ekranlar/meta.json';
 import type { Beat } from './script';
 
@@ -17,7 +18,7 @@ const K = SCREEN_W / 390;
  * işaretleme ve dokunma hepsi meta.json'daki gerçek konumlardan.
  */
 export const Phone: React.FC<{ beat: Beat; hue: string }> = ({ beat, hue }) => {
-  const frame = useCurrentFrame();
+  const frame = useT();
   const { fps } = useVideoConfig();
   const m = M[beat.screen];
   if (!m) throw new Error(`Ekran yok: ${beat.screen}`);
@@ -96,7 +97,7 @@ export const Phone: React.FC<{ beat: Beat; hue: string }> = ({ beat, hue }) => {
 
 /** Parmak dokunuşu: koyulaşan nokta + yayılan halka. */
 const Tap: React.FC<{ r: { left: number; top: number; width: number; height: number }; at: number; hue: string }> = ({ r, at, hue }) => {
-  const frame = useCurrentFrame();
+  const frame = useT();
   const t = frame - at;
   if (t < -10) return null;
   const x = r.left + r.width / 2, y = r.top + r.height / 2;

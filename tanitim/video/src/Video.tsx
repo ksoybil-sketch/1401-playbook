@@ -1,5 +1,6 @@
 import React from 'react';
-import { AbsoluteFill, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { AbsoluteFill, Sequence, interpolate, spring, staticFile, useVideoConfig, Easing } from 'remotion';
+import { useT, useSpeed, real, SpeedCtx } from './time';
 import { CHAPTERS, CHAPTER_LEAD, HUES, INTRO, OUTRO, chapterLength, type Chapter } from './script';
 import { Phone, SCREEN_H } from './Phone';
 
@@ -19,7 +20,7 @@ const Logo: React.FC<{ size: number; color?: string }> = ({ size, color = INK })
 
 /** Satır satır, alttan maskeyle gelen başlık. */
 const Lines: React.FC<{ text: string; size: number; start: number; color?: string; weight?: number }> = ({ text, size, start, color = INK, weight = 800 }) => {
-  const frame = useCurrentFrame();
+  const frame = useT();
   const { fps } = useVideoConfig();
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -39,7 +40,7 @@ const Lines: React.FC<{ text: string; size: number; start: number; color?: strin
 };
 
 const Intro: React.FC = () => {
-  const frame = useCurrentFrame();
+  const frame = useT();
   const { fps } = useVideoConfig();
   const logo = spring({ frame, fps, config: { damping: 14, stiffness: 120 } });
   const out = interpolate(frame, [INTRO - 10, INTRO], [1, 0], { extrapolateLeft: 'clamp' });
@@ -55,7 +56,7 @@ const Intro: React.FC = () => {
 };
 
 const Outro: React.FC = () => {
-  const frame = useCurrentFrame();
+  const frame = useT();
   const { fps } = useVideoConfig();
   const items: [string, string, string][] = [
     ['Reçeteler', 'Giriş ekranından, PIN’siz', HUES.amber],
@@ -88,7 +89,8 @@ const Outro: React.FC = () => {
 
 /** Bir bölüm: üstte etiket + başlık + "nerede", altta telefonda vuruşlar. */
 const ChapterView: React.FC<{ c: Chapter; index: number }> = ({ c, index }) => {
-  const frame = useCurrentFrame();
+  const frame = useT();
+  const speed = useSpeed();
   const { fps } = useVideoConfig();
   const hue = HUES[c.hue];
   const len = chapterLength(c);
@@ -128,7 +130,7 @@ const ChapterView: React.FC<{ c: Chapter; index: number }> = ({ c, index }) => {
           opacity: phoneIn
         }}>
           <div style={{ opacity: screenSwap }}>
-            <Sequence from={beatStart} layout="none" key={bi}>
+            <Sequence from={real(beatStart, speed)} layout="none" key={bi}>
               <Phone beat={beat} hue={hue} />
             </Sequence>
           </div>
@@ -151,17 +153,19 @@ const ChapterView: React.FC<{ c: Chapter; index: number }> = ({ c, index }) => {
   );
 };
 
-export const Tanitim: React.FC = () => {
+export const Tanitim: React.FC<{ speed: number }> = ({ speed }) => {
   let at = INTRO;
   return (
-    <AbsoluteFill style={{ background: BG, fontFamily: FONT }}>
-      <Sequence durationInFrames={INTRO}><Intro /></Sequence>
-      {CHAPTERS.map((c, i) => {
-        const from = at;
-        at += chapterLength(c);
-        return <Sequence key={c.id} from={from} durationInFrames={chapterLength(c)}><ChapterView c={c} index={i} /></Sequence>;
-      })}
-      <Sequence from={at} durationInFrames={OUTRO}><Outro /></Sequence>
-    </AbsoluteFill>
+    <SpeedCtx.Provider value={speed}>
+      <AbsoluteFill style={{ background: BG, fontFamily: FONT }}>
+        <Sequence durationInFrames={real(INTRO, speed)}><Intro /></Sequence>
+        {CHAPTERS.map((c, i) => {
+          const from = at;
+          at += chapterLength(c);
+          return <Sequence key={c.id} from={real(from, speed)} durationInFrames={real(chapterLength(c), speed)}><ChapterView c={c} index={i} /></Sequence>;
+        })}
+        <Sequence from={real(at, speed)} durationInFrames={real(OUTRO, speed)}><Outro /></Sequence>
+      </AbsoluteFill>
+    </SpeedCtx.Provider>
   );
 };
