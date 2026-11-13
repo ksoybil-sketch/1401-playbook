@@ -22,14 +22,16 @@ export const H = 3600000;
 /** Olaylar — panelde de aynı liste (src/lib/notifications.ts). */
 export const EVENTS = [
   'talep_yeni', 'talep_acil', 'talep_yanit', 'talep_onay', 'talep_karar', 'talep_geciken',
-  'oneri_yeni', 'oneri_karar', 'geri_bildirim', 'gunluk_ozet', 'haftalik_rapor'
+  'oneri_yeni', 'oneri_karar', 'geri_bildirim', 'gunluk_ozet', 'haftalik_rapor',
+  'kurul_soru', 'kurul_yanit'
 ];
 
 /** Rol → varsayılan olaylar (config/notifications yoksa). */
 const DEFAULTS = {
   developer: ['geri_bildirim', 'haftalik_rapor'],
-  director: ['talep_acil', 'talep_onay', 'oneri_yeni', 'gunluk_ozet', 'haftalik_rapor'],
-  regional: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_karar', 'talep_geciken', 'oneri_karar', 'gunluk_ozet']
+  director: ['talep_acil', 'talep_onay', 'oneri_yeni', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
+  regional: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_karar', 'talep_geciken', 'oneri_karar', 'kurul_soru', 'gunluk_ozet'],
+  board: ['kurul_yanit', 'haftalik_rapor']
 };
 
 export async function recipients(event) {
@@ -38,7 +40,7 @@ export async function recipients(event) {
   if (!people) {
     const users = await db.collection('users').where('role', 'in', Object.keys(DEFAULTS)).get();
     people = users.docs.filter((d) => d.get('active') !== false && d.get('email')).map((d) => ({
-      uid: d.id, name: d.get('name') || d.get('email'), email: d.get('email'), events: DEFAULTS[d.get('role')] || []
+      uid: d.id, name: d.get('name') || d.get('email'), email: d.get('email'), role: d.get('role'), events: DEFAULTS[d.get('role')] || []
     }));
   }
   return people.filter((p) => p.email && p.active !== false && (p.events || []).includes(event));

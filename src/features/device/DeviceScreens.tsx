@@ -347,7 +347,7 @@ export const StaffLogin: React.FC = () => {
 
   return (
     <Shell>
-      <Brand sub="Kahve Operasyonu paneli" />
+      <Brand sub="Kahve Operasyonu ve Yönetim Kurulu" />
       <DemoStaffNotice />
       <form onSubmit={submit} className="w-full max-w-[360px] flex flex-col gap-4">
         <label className={t.field}>

@@ -13,6 +13,9 @@ import type { BaristaRole, StaffRole } from '../../shared/types';
  *              onda. İçerik ve bülten değişiklikleri doğrudan yayına
  *              girmez, Cenk Bey'in "Bekleyen onaylar" listesine düşer.
  *   ops        Kahve Operasyonu ekibi — öneri yapar, görev atar.
+ *   board      Yönetim Kurulu üyesi — gidişatı, raporları ve süren işleri
+ *              okur; hiçbir şeyi değiştirmez. Kendi ekranı var (src/features/board);
+ *              Kahve Operasyon Direktörü ve Bölge Müdürü'ne soru sorar.
  *   admin      Eski sürümden kalan tam yetkili rol (developer gibi davranır).
  */
 export type Capability =
@@ -30,26 +33,33 @@ const TABLE: Record<StaffRole, Capability[]> = {
   admin: ['publish', 'approve', 'manageTeam', 'manageBaristas', 'publishCurriculum', 'handleRequests', 'deleteRecords', 'manageAi'],
   director: ['publish', 'approve', 'manageTeam', 'publishCurriculum', 'handleRequests'],
   regional: ['manageBaristas', 'handleRequests'],
-  ops: []
+  ops: [],
+  board: []
 };
 
 export function can(role: StaffRole | undefined, cap: Capability): boolean {
   return !!role && (TABLE[role] || []).includes(cap);
 }
 
-export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'regional', 'ops', 'admin'];
+export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'regional', 'ops', 'admin', 'board'];
+
+/** Yönetim Kurulu: salt okunur, ayrı ekran. */
+export const isBoard = (r: StaffRole | undefined) => r === 'board';
+/** Kurul sorularını yanıtlayabilenler. */
+export const answersBoard = (r: StaffRole | undefined) => r === 'developer' || r === 'admin' || r === 'director' || r === 'regional';
 
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   developer: 'Uygulama geliştiricisi',
   director: 'Kahve Operasyon Direktörü',
   regional: 'Bölge Müdürü',
   ops: 'Kahve Operasyonu',
-  admin: 'Tam yetkili'
+  admin: 'Tam yetkili',
+  board: 'Yönetim Kurulu Üyesi'
 };
 
 /** Ekibe kimin hangi rolle kişi ekleyebileceği. */
 export function assignableRoles(me: StaffRole): StaffRole[] {
-  if (me === 'developer' || me === 'admin') return ['director', 'regional', 'ops', 'developer'];
+  if (me === 'developer' || me === 'admin') return ['director', 'regional', 'ops', 'board', 'developer'];
   if (me === 'director') return ['regional', 'ops'];
   return [];
 }

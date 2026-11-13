@@ -250,7 +250,7 @@ const StaffTeamSection: React.FC = () => {
   const [role, setRole] = useState<StaffRole>('ops');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rank = (r: StaffRole) => ['developer', 'admin', 'director', 'regional', 'ops'].indexOf(r);
+  const rank = (r: StaffRole) => ['board', 'developer', 'admin', 'director', 'regional', 'ops'].indexOf(r);
 
   const add = async () => {
     setError(null);
@@ -326,7 +326,8 @@ const ROLE_HINT: Record<StaffRole, string> = {
   admin: 'her şeyi görür ve yapar',
   director: 'yayınlar, onaylar, ekibi yönetir',
   regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
-  ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer'
+  ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer',
+  board: 'gidişatı, raporları ve süren işleri okur; hiçbir şeyi değiştirmez, soru sorar'
 };
 
 /**

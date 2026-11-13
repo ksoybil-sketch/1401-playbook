@@ -39,7 +39,7 @@ export const RequestsPage: React.FC = () => {
   useEffect(() => { if (focus) setTab(focus === 'onay' ? 'approval' : focus === 'cozulen' ? 'closed' : 'open'); }, [focus]);
   const [store, setStore] = useState('');
   const [cat, setCat] = useState<RequestCategory | ''>('');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(params.get('talep'));
 
   const filtered = requests.filter((r) => (!store || r.storeId === store) && (!cat || r.category === cat));
   const lists = useMemo(() => {

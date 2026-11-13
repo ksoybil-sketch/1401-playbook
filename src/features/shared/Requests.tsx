@@ -64,7 +64,9 @@ export const RequestThread: React.FC<{
   canChange?: boolean;
   /** Onay bekleyen talebi onaylayabilir mi (Kahve Operasyon Direktörü). */
   canApprove?: boolean;
-}> = ({ r, side, me, canChange, canApprove }) => {
+  /** Yalnızca yazışmayı göster (Yönetim Kurulu): yanıt kutusu ve düğmeler yok. */
+  readOnly?: boolean;
+}> = ({ r, side, me, canChange, canApprove, readOnly }) => {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
@@ -126,7 +128,7 @@ export const RequestThread: React.FC<{
         </div>
       )}
 
-      {side === 'ops' && canChange && !closed && (
+      {!readOnly && side === 'ops' && canChange && !closed && (
         <label className="flex items-center gap-2 text-[13px] text-fg-2">
           <span className="shrink-0">Şu an neyi bekliyor?</span>
           <select className={`${t.input} h-9 text-[13px] flex-1`} value={r.waitReason || ''} disabled={!!busy}
@@ -146,7 +148,7 @@ export const RequestThread: React.FC<{
         </label>
       )}
 
-      <div className="flex flex-col gap-2">
+      {!readOnly && <div className="flex flex-col gap-2">
         <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
           placeholder={side === 'ops' ? 'Mağazaya yanıt: servis yarın 10:00\'da geliyor…' : closed ? 'Talep kapandı. Yeniden açılması için yaz…' : 'Ek bilgi yaz…'} />
         <div className="flex flex-wrap gap-2 justify-end">
@@ -167,7 +169,7 @@ export const RequestThread: React.FC<{
             {busy === 'send' ? <Spinner size={13} /> : <><Icon name="send" size={13} /> Gönder</>}
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 };

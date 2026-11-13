@@ -39,7 +39,11 @@ export const TEST = {
   /** Yetki sıralamasına göre diğer Kahve Operasyonu hesapları. */
   staffExtra: [
     { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol', role: 'director' },
-    { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğur Can Gürbüz', role: 'regional' }
+    { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğur Can Gürbüz', role: 'regional' },
+    // Yönetim Kurulu: salt okunur ekran (src/features/board).
+    { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı', role: 'board' },
+    { email: 'bulentozgurkilic@1401coffee.com', password: '351925', name: 'Bülent Özgür Kılıç', role: 'board' },
+    { email: 'alpbasar@1401coffee.com', password: '351925', name: 'R. Alp Başar', role: 'board' }
   ],
   stores: [
     { id: 'moda-cadde', name: 'Moda Cadde', city: 'İstanbul' },
@@ -400,7 +404,7 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
   for (const extra of TEST.staffExtra || []) {
     const acc = await ensureUser(extra.email, extra.password, extra.name);
     await setDoc(`users/${acc.uid}`, { role: extra.role, name: extra.name, email: extra.email, active: true, createdAt: now });
-    staffUid[extra.role] = { uid: acc.uid, name: extra.name };
+    staffUid[extra.role] ||= { uid: acc.uid, name: extra.name };
     console.log(`  yönetici: ${extra.email} (${extra.role})`);
   }
 

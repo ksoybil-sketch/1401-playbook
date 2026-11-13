@@ -114,6 +114,50 @@ export const geriBildirim = onDocumentCreated({ document: 'feedback/{id}', ...op
 });
 
 /* ------------------------------------------------------------------ */
+/* Yönetim Kurulu soruları                                              */
+/* ------------------------------------------------------------------ */
+
+const TO = { director: 'Kahve Operasyon Direktörü', regional: 'Bölge Müdürü', both: 'Direktör ve Bölge Müdürü' };
+
+export const kurulSorusu = onDocumentCreated({ document: 'boardQuestions/{id}', ...opts }, async (e) => {
+  const q = e.data?.data();
+  if (!q) return;
+  // Soru kime sorulduysa ona; rolü bilinmeyen (elle eklenmiş) alıcıya da gider.
+  const to = (await recipients('kurul_soru')).filter((p) => q.to === 'both' || !p.role || p.role === q.to || p.role === 'developer');
+  if (!to.length) return;
+  await sendTo(to, 'kurul_soru', `Yönetim Kurulu sorusu · ${q.topic?.title || ''}`, {
+    title: `${q.createdByName} soruyor: ${q.topic?.title || ''}`,
+    lines: [esc(q.messages?.[0]?.text || ''), `Kime: ${esc(TO[q.to] || '')}`],
+    button: { label: 'Yanıtla', url: app(`/kurul-sorulari?soru=${e.params.id}`) }
+  }, { ref: `boardQuestions/${e.params.id}` });
+});
+
+export const kurulYazisma = onDocumentUpdated({ document: 'boardQuestions/{id}', ...opts }, async (e) => {
+  const before = e.data?.before.data();
+  const q = e.data?.after.data();
+  if (!before || !q) return;
+  const added = (q.messages || []).slice((before.messages || []).length);
+  const ref = { ref: `boardQuestions/${e.params.id}` };
+  const answer = added.find((m) => m.side === 'ops');
+  if (answer) {
+    await send('kurul_yanit', `Yanıt geldi · ${q.topic?.title || ''}`, {
+      title: `${answer.byName} yanıtladı: ${q.topic?.title || ''}`,
+      lines: [`<b>Soru:</b> ${esc(q.messages?.[0]?.text || '')}`, `<b>Yanıt:</b> ${esc(answer.text)}`],
+      button: { label: 'Yazışmayı aç', url: app(`/sorular?soru=${e.params.id}`) }
+    }, ref);
+  }
+  const followUp = added.find((m) => m.side === 'board');
+  if (followUp) {
+    const to = (await recipients('kurul_soru')).filter((p) => q.to === 'both' || !p.role || p.role === q.to || p.role === 'developer');
+    if (to.length) await sendTo(to, 'kurul_soru', `Kurul ek soru · ${q.topic?.title || ''}`, {
+      title: `${followUp.byName} ek soru yazdı: ${q.topic?.title || ''}`,
+      lines: [esc(followUp.text)],
+      button: { label: 'Yanıtla', url: app(`/kurul-sorulari?soru=${e.params.id}`) }
+    }, ref);
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Zamanlanmış: günlük özet (her sabah 08:30) ve haftalık rapor (pazartesi 09:00) */
 /* ------------------------------------------------------------------ */
 

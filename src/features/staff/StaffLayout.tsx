@@ -4,7 +4,8 @@ import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { can, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { answersBoard, can, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
@@ -43,6 +44,9 @@ export const StaffLayout: React.FC = () => {
     ? proposals.filter((p) => p.status === 'pending').length
     : proposals.filter((p) => p.createdBy === s.uid && p.status === 'rejected' && (p.reviewedAt || 0) > Date.now() - 7 * 86400000).length;
   // Yanıt bekleyen talepler: mağaza yazdı, operasyon henüz dönmedi.
+  // Yönetim Kurulu'nun bana sorduğu, yanıt bekleyen sorular.
+  const board = useBoardQuestions(answersBoard(s.role));
+  const boardWaiting = board.data.filter((q) => q.status === 'open' && askedTo(q, s.role)).length;
   const openRequests = requests.filter((r) => r.status !== 'done' && r.status !== 'rejected' && r.lastSide === 'store').length;
 
   const NAV: NavItem[] = [
@@ -50,6 +54,8 @@ export const StaffLayout: React.FC = () => {
     { to: '/talepler', label: 'Talepler', icon: 'wrench', badge: openRequests, primary: true },
     { to: '/onaylar', label: approver ? 'Bekleyen onaylar' : 'Önerilerim', short: approver ? 'Onaylar' : 'Öneriler', icon: 'stamp', badge: pendingCount, primary: true },
     { to: '/baristalar', label: 'Baristalar', icon: 'users', primary: true },
+    // Yönetim Kurulu'nun soruları: direktör, bölge müdürü ve geliştirici yanıtlar.
+    ...(answersBoard(s.role) ? [{ to: '/kurul-sorulari', label: 'Kurul soruları', icon: 'award' as IconName, badge: boardWaiting }] : []),
     { to: '/magazalar', label: 'Mağazalar', icon: 'store' },
     { to: '/gorevler', label: 'Görevler', icon: 'flag' },
     { to: '/bulten', label: 'Bülten', icon: 'bell' },

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
-import { can, isManager } from './lib/roles';
+import { answersBoard, can, isBoard, isManager } from './lib/roles';
 import { useBadgeConfig } from './store/badgeConfig';
 import { FullLoader, ToastHost } from './ui/kit';
 import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
@@ -28,6 +28,9 @@ import { BulletinPage } from './features/staff/BulletinPages';
 import { ACTIVITY_LOG } from './demo/log';
 import { DemoTracker } from './demo/DemoTracker';
 import { DemoLogPage } from './demo/DemoLogPage';
+import { BoardLayout } from './features/board/BoardLayout';
+import { BoardOverviewPage, BoardStoresPage, BoardWorkPage, BoardReportsPage, BoardPrintReport } from './features/board/BoardPages';
+import { BoardQuestionsPage } from './features/board/BoardQuestions';
 
 export const App: React.FC = () => {
   const session = useSession((s) => s.session);
@@ -103,6 +106,20 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
       );
     case 'staff':
       if (!contentReady) return <FullLoader />;
+      // Yönetim Kurulu: ayrı, salt okunur ekran (src/features/board).
+      if (isBoard(session.role)) return (
+        <Routes>
+          <Route element={<BoardLayout />}>
+            <Route index element={<BoardOverviewPage />} />
+            <Route path="magazalar" element={<BoardStoresPage />} />
+            <Route path="isler" element={<BoardWorkPage />} />
+            <Route path="sorular" element={<BoardQuestionsPage side="board" me={session} />} />
+            <Route path="raporlar" element={<BoardReportsPage />} />
+            <Route path="rapor" element={<BoardPrintReport />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      );
       return (
         <Routes>
           <Route element={<StaffLayout />}>
@@ -121,6 +138,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="yeni-urun" element={<NewProductPage />} />
             <Route path="geri-bildirim" element={<FeedbackPage />} />
             <Route path="soru-havuzu" element={<QuestionPoolPage />} />
+            {answersBoard(session.role) && <Route path="kurul-sorulari" element={<BoardQuestionsPage side="ops" me={session} />} />}
             {can(session.role, 'approve') && <Route path="bildirimler" element={<NotificationsPage />} />}
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
             <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />

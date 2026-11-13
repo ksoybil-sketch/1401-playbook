@@ -14,6 +14,7 @@
  *   assignments/{assignmentId}    Görevler
  *   proposals/{id}                Onay bekleyen içerik/bülten değişiklikleri
  *   requests/{id}                 Mağaza talepleri (arıza, servis, malzeme…)
+ *   boardQuestions/{id}           Yönetim Kurulu'nun Kahve Operasyonu'na soruları
  *
  *   users/{uid}                   Her hesabın rolü (bkz. Profile)
  *   pairingCodes/{code}           Telefon eşleştirme (30 dk, tek kullanım)
@@ -23,7 +24,8 @@
  */
 
 /** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
-export type StaffRole = 'developer' | 'director' | 'regional' | 'ops' | 'admin';
+/** board: Yönetim Kurulu üyesi — her şeyi okur, hiçbir şeyi değiştirmez; Kahve Operasyonu'na soru sorar. */
+export type StaffRole = 'developer' | 'director' | 'regional' | 'ops' | 'admin' | 'board';
 /** lead: mağaza müdürü · shift: vardiya müdürü. */
 export type BaristaRole = 'barista' | 'lead' | 'shift';
 export type Role = StaffRole | BaristaRole | 'store';
@@ -496,4 +498,31 @@ export interface StoreRequest {
   waitReason?: RequestWaitReason | null;
   /** Reddedildiyse nedeni. */
   rejectReason?: RequestRejectReason | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Yönetim Kurulu soruları                                              */
+/* ------------------------------------------------------------------ */
+
+/** Sorunun neyle ilgili olduğu: talep, öneri, mağaza, görev, barista ya da genel. */
+export type BoardTopicKind = 'request' | 'proposal' | 'store' | 'assignment' | 'barista' | 'report' | 'general';
+export interface BoardTopic { kind: BoardTopicKind; id?: string | null; title: string }
+export interface BoardMessage { at: number; by: string; byName: string; side: 'board' | 'ops'; text: string }
+/**
+ * boardQuestions/{id} — Yönetim Kurulu üyesi "bu konu ne oldu?" diye sorar,
+ * Kahve Operasyon Direktörü ya da Bölge Müdürü yanıtlar. Kurulun bütün
+ * üyeleri bütün soruları görür (kurul tek bir masadır).
+ */
+export interface BoardQuestion {
+  id: string;
+  topic: BoardTopic;
+  /** Kime soruldu: director (Kahve Operasyon Direktörü), regional (Bölge Müdürü) ya da ikisi. */
+  to: 'director' | 'regional' | 'both';
+  messages: BoardMessage[];
+  status: 'open' | 'answered' | 'closed';
+  lastSide: 'board' | 'ops';
+  createdAt: number;
+  createdBy: string;
+  createdByName: string;
+  updatedAt: number;
 }

@@ -27,7 +27,16 @@ service cloud.firestore {
     //   director   Kahve Operasyon Direktörü: yayınlar, onaylar, ekibi yönetir
     //   regional   Bölge Müdürü: barista/mağaza/kod işleri, talepler
     //   ops        Kahve Operasyonu ekibi: görür, görev atar, öneri yapar
+    //   board      Yönetim Kurulu üyesi: her şeyi okur, hiçbir şey yazmaz
+    //              (yalnızca kurul sorusu sorar). isStaff() kurulu KAPSAMAZ:
+    //              yazma izinleri isStaff() üzerinden verildiği için kurul
+    //              okuma kurallarına ayrıca (canRead) eklenir.
     function isStaff() { return myRole() in ['developer', 'admin', 'director', 'regional', 'ops']; }
+    function isBoard() { return myRole() == 'board'; }
+    /** Okuma: Kahve Operasyonu ve Yönetim Kurulu. */
+    function canRead() { return isStaff() || isBoard(); }
+    /** Kurul sorularını yanıtlayanlar: direktör ve bölge müdürü. */
+    function answersBoard() { return myRole() in ['developer', 'admin', 'director', 'regional']; }
     /** Geri dönüşsüz işler (sınav kaydı silmek) ve rol üstü her şey. */
     function isAdmin() { return myRole() in ['developer', 'admin']; }
     /** İçeriği ve bülteni doğrudan yayınlar, önerileri onaylar. */
@@ -42,7 +51,7 @@ service cloud.firestore {
     function isLead() { return myRole() in ['lead', 'shift']; }
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
     /** Kahve Operasyon Direktörü'nün ekibe verebileceği roller. */
-    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'regional', 'ops', 'admin'] : ['regional', 'ops']; }
+    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'regional', 'ops', 'admin', 'board'] : ['regional', 'ops']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
@@ -51,7 +60,9 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if isStaff() || (signedIn() && request.auth.uid == uid);
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
-      allow list: if isStaff();
+      allow list: if isStaff()
+        // Kurul, soru sorarken kime soracağını seçmek için direktörü ve bölge müdürünü görür.
+        || (isBoard() && resource.data.role in ['director', 'regional']);
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
       // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
@@ -137,7 +148,7 @@ service cloud.firestore {
     }
 
     match /baristas/{baristaId} {
-      allow read: if isStaff() || inStore(resource.data.storeId);
+      allow read: if canRead() || inStore(resource.data.storeId);
       allow create, delete: if canManageBaristas();
       // Davet kodunu kullanan barista kendi "pinPending" bayrağını kapatır
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
@@ -172,7 +183,7 @@ service cloud.firestore {
 
     // --- Onay bekleyen değişiklikler ------------------------------------
     match /proposals/{id} {
-      allow read: if isStaff();
+      allow read: if canRead();
       allow create: if (isStaff() && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'pending') || isAdmin();
       // Müdür onaylar/reddeder (ve düzeltip yayınlarken ops'u günceller).
@@ -188,7 +199,7 @@ service cloud.firestore {
     // Mağaza / vardiya müdürü açar ve yazar; Bölge Müdürü ve Kahve Operasyon
     // Müdürü durumunu değiştirir. Silinmez: "sözlü talep geçersiz", kayıt kalır.
     match /requests/{id} {
-      allow read: if isStaff() || (isLead() && resource.data.storeId == myStoreId());
+      allow read: if canRead() || (isLead() && resource.data.storeId == myStoreId());
       allow create: if (isLead() && request.resource.data.storeId == myStoreId()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'open' && request.resource.data.lastSide == 'store')
@@ -202,7 +213,7 @@ service cloud.firestore {
 
     // --- Sonuçlar ----------------------------------------------------
     match /attempts/{id} {
-      allow read: if isStaff()
+      allow read: if canRead()
         || (isBarista() && resource.data.baristaId == myBaristaId())
         || (isLead() && resource.data.storeId == myStoreId());
       allow create: if (isBarista() && request.resource.data.baristaId == myBaristaId()
@@ -228,7 +239,7 @@ service cloud.firestore {
     }
 
     match /progress/{baristaId} {
-      allow read: if isStaff() || inStore(resource.data.storeId);
+      allow read: if canRead() || inStore(resource.data.storeId);
       allow create: if canManageBaristas();
       // Barista hem ders tamamlamalarını hem (sunucu olmadığı için) kendi
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
@@ -248,14 +259,14 @@ service cloud.firestore {
     // gerektirirdi. Bülten içeriği zaten şirket içi duyuru; hedefleme
     // arayüzde uygulanıyor.
     match /bulletins/{id} {
-      allow read: if isStaff() || isStoreSession();
+      allow read: if canRead() || isStoreSession();
       allow create, update: if isDirector() && request.resource.data.createdBy is string;
       allow delete: if isDirector();
     }
 
     // --- Görevler ------------------------------------------------------
     match /assignments/{id} {
-      allow read: if isStaff() || inStore(resource.data.storeId);
+      allow read: if canRead() || inStore(resource.data.storeId);
       allow create: if ((isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
         && request.resource.data.createdBy == request.auth.uid) || isAdmin();
       // Görevi atayan değiştirir/siler; Kahve Operasyon Direktörü herkesinkini.
@@ -284,6 +295,26 @@ service cloud.firestore {
       allow create: if canManageBaristas();
       allow delete: if isStoreSession() || canManageBaristas();
       allow update: if false;
+    }
+
+    // --- Yönetim Kurulu soruları ----------------------------------------
+    // Kurul üyesi sorar; direktör ve bölge müdürü yanıtlar. Kurulun bütün
+    // üyeleri bütün soruları görür. Silinmez: sorulan ve verilen yanıt kayıttır.
+    match /boardQuestions/{id} {
+      allow read: if isBoard() || answersBoard();
+      allow create: if isBoard() && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'open' && request.resource.data.lastSide == 'board'
+        && request.resource.data.to in ['director', 'regional', 'both']
+        && request.resource.data.messages.size() == 1;
+      // Kurul: ek soru yazar ya da "tamam" deyip kapatır.
+      allow update: if (isBoard() && request.resource.data.lastSide == 'board'
+            && request.resource.data.status in ['open', 'closed']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt']))
+        // Operasyon: yanıtlar (soru "yanıtlandı" olur).
+        || (answersBoard() && request.resource.data.lastSide == 'ops'
+            && request.resource.data.status == 'answered'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt']));
+      allow delete: if false;
     }
 
     match /{document=**} {

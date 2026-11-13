@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import type { Assignment, Attempt, Barista, Progress, Proposal, StoreRequest } from '../../../shared/types';
 
@@ -16,7 +16,11 @@ interface StaffData {
   proposals: Proposal[];
   /** Mağaza talepleri (son 300). */
   requests: StoreRequest[];
-  subscribe: () => () => void;
+  /**
+   * Yönetim Kurulu dönem raporları için daha uzun geçmiş ister: belirli bir
+   * tarihten bu yana bütün sınavlar ve daha çok talep.
+   */
+  subscribe: (opts?: { attemptsSince?: number; requestLimit?: number }) => () => void;
 }
 
 export const useStaffData = create<StaffData>((set) => ({
@@ -26,7 +30,7 @@ export const useStaffData = create<StaffData>((set) => ({
   assignments: [],
   proposals: [],
   requests: [],
-  subscribe: () => {
+  subscribe: (opts) => {
     const unsubs = [
       onSnapshot(collection(db, 'baristas'), (s) =>
         set({ baristas: s.docs.map((d) => ({ id: d.id, ...d.data() }) as Barista).sort((a, b) => a.name.localeCompare(b.name, 'tr')) })),
@@ -35,14 +39,16 @@ export const useStaffData = create<StaffData>((set) => ({
         s.docs.forEach((d) => (map[d.id] = d.data() as Progress));
         set({ progress: map });
       }),
-      onSnapshot(query(collection(db, 'attempts'), orderBy('startedAt', 'desc'), limit(300)), (s) =>
+      onSnapshot(opts?.attemptsSince
+        ? query(collection(db, 'attempts'), where('startedAt', '>=', opts.attemptsSince), orderBy('startedAt', 'desc'))
+        : query(collection(db, 'attempts'), orderBy('startedAt', 'desc'), limit(300)), (s) =>
         set({ attempts: s.docs.map((d) => ({ id: d.id, ...d.data() }) as Attempt) })),
       onSnapshot(collection(db, 'assignments'), (s) =>
         set({ assignments: s.docs.map((d) => ({ id: d.id, ...d.data() }) as Assignment).sort((a, b) => b.createdAt - a.createdAt) })),
       onSnapshot(query(collection(db, 'proposals'), orderBy('createdAt', 'desc'), limit(200)), (s) =>
         set({ proposals: s.docs.map((d) => ({ id: d.id, ...d.data() }) as Proposal) }),
         () => set({ proposals: [] })),
-      onSnapshot(query(collection(db, 'requests'), orderBy('updatedAt', 'desc'), limit(300)), (s) =>
+      onSnapshot(query(collection(db, 'requests'), orderBy('updatedAt', 'desc'), limit(opts?.requestLimit || 300)), (s) =>
         set({ requests: s.docs.map((d) => ({ id: d.id, ...d.data() }) as StoreRequest) }),
         () => set({ requests: [] }))
     ];
