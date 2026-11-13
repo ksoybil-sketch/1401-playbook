@@ -152,14 +152,21 @@ export function ingredientToDrinkQuestion(recipe, name, moduleRecipes, nameOf) {
 /* adim: sıra (doğru/yanlış)                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Tarifteki not / kural satırları adım değildir ("Önemli Kural: …", "ASLA …",
+ * "Tıpkı Latte'deki gibi…", "Cortado Espresso / Süt Oranı = 1:1"). Sıra ve
+ * "ilk adım" sorularında şık olurlarsa anlam karmaşası yaratıyorlar.
+ */
+export const isNote = (s) => /^(önemli|not\b|kural|asla|tıpkı|dikkat|ipucu)|oranı\s*=|=\s*\d|\bASLA\b/i.test(String(s).trim());
+
 export function stepOrderQuestion(name, steps, flip) {
-  const clean = steps.map(strip).filter((s) => s.length > 8);
+  const clean = steps.map(strip).filter((s) => s.length > 8 && !isNote(s));
   if (clean.length < 3) return null;
   const a = 0;
   const b = clean.length - 1;
   const [x, y] = flip ? [clean[b], clean[a]] : [clean[a], clean[b]];
   return TF(
-    `${name} hazırlanırken “${short(x, 60)}” adımı, “${short(y, 60)}” adımından önce gelir.`,
+    `${name} hazırlanırken “${short(x, 160)}” adımı, “${short(y, 160)}” adımından önce gelir.`,
     !flip,
     `Sıra tadın kendisidir. ${name}: ${clean.map((s) => short(s, 50)).join(' → ')}`,
     'adim'
@@ -328,16 +335,21 @@ export function specAllQuestions(lesson) {
     const rows = b.rows.map((r) => ({ label: strip(r.label), value: strip(r.value) }))
       .filter((r) => r.value.length >= 4 && r.label.length >= 2);
     if (new Set(rows.map((r) => r.value)).size < 4) continue;
+    // Aynı başlık birden çok satırda geçiyorsa (ör. "Doğru" / "Yanlış" örnek
+    // tabloları) "hangisine aittir" sorusunun tek doğru cevabı olmaz.
+    const labelN = new Map();
+    rows.forEach((r) => labelN.set(r.label, (labelN.get(r.label) || 0) + 1));
     rows.forEach((r, i) => {
+      const unique = labelN.get(r.label) === 1;
       const others = rows.filter((x) => x.value !== r.value);
-      const wrongV = seeded(others.map((x) => x.value), r.label + 'v').slice(0, 3);
-      const wrongL = seeded(others.map((x) => x.label).filter((l) => l !== r.label), r.label + 'l').slice(0, 3);
+      const wrongV = unique ? seeded(others.map((x) => x.value), r.label + 'v').slice(0, 3) : [];
+      const wrongL = unique ? seeded([...new Set(others.map((x) => x.label))].filter((l) => l !== r.label), r.label + 'l').slice(0, 3) : [];
       if (wrongV.length === 3) out.push(Q(`${lesson.title}: “${r.label}” için doğru olan hangisi?`, r.value, wrongV, `${lesson.title} — ${r.label}: ${r.value}.`, 'kavram'));
-      if (wrongL.length === 3 && r.value.length <= 140) out.push(Q(`${lesson.title}: “${short(r.value, 120)}” hangisine aittir?`, r.label, wrongL, `${r.label}: ${r.value}.`, 'kavram'));
+      if (wrongL.length === 3 && r.value.length <= 140) out.push(Q(`${lesson.title}: “${r.value}” hangisine aittir?`, r.label, wrongL, `${r.label}: ${r.value}.`, 'kavram'));
       const swap = others[(i * 7 + 3) % others.length];
       if (swap) {
         const isTrue = i % 2 === 0;
-        out.push(TF(`${lesson.title}: ${r.label} — ${short(isTrue ? r.value : swap.value, 140)}`, isTrue,
+        out.push(TF(`${lesson.title}: ${r.label} — ${isTrue ? r.value : swap.value}`, isTrue,
           `Doğrusu: ${r.label} — ${r.value}.`, 'kural'));
       }
     });
@@ -350,12 +362,18 @@ export function nextStepQuestions(lesson) {
   const out = [];
   for (const b of lesson.blocks || []) {
     if (b.type !== 'steps' || b.items.length < 4) continue;
-    const items = b.items.map(strip).filter((s) => s.length > 8);
+    const items = b.items.map(strip).filter((s) => s.length > 8 && !isNote(s));
+    // Adımlar "Başlık: açıklama" biçimindeyse (açılış/kapanış prosedürü) şık olarak
+    // başlık kullanılır: yüzlerce karakterlik şık okunmaz. Değilse şık tam yazılır
+    // ("…" ile kesilen şık okunamıyor).
+    const labelOf = (x) => { const m = x.match(/^([^:]{2,40}):\s/); return m ? m[1] : null; };
+    const labeled = items.every((x) => labelOf(x)) && new Set(items.map(labelOf)).size === items.length;
+    const opt = (x) => (labeled ? labelOf(x) : x);
     for (let i = 0; i < items.length - 1 && out.length < 3; i += 2) {
-      const wrong = seeded(items.filter((_, j) => j !== i + 1 && j !== i), lesson.id + i).slice(0, 3).map((s) => short(s, 90));
+      const wrong = seeded(items.filter((_, j) => j !== i + 1 && j !== i), lesson.id + i).slice(0, 3).map(opt);
       if (wrong.length < 3) continue;
-      out.push(Q(`${lesson.title}: “${short(items[i], 90)}” adımından sonra ne gelir?`, short(items[i + 1], 90), wrong,
-        `Sıra: ${items.map((s) => short(s, 50)).join(' → ')}`, 'adim'));
+      out.push(Q(`${lesson.title}: “${labeled ? labelOf(items[i]) : short(items[i], 160)}” adımından sonra ne gelir?`, opt(items[i + 1]), wrong,
+        `Sıra: ${items.map((x) => (labeled ? labelOf(x) : short(x, 50))).join(' → ')}`, 'adim'));
     }
   }
   return out;
@@ -363,14 +381,14 @@ export function nextStepQuestions(lesson) {
 
 /** Reçete adımları: "A adımından sonra ne gelir?" (en fazla iki). */
 export function recipeNextStep(name, steps) {
-  const items = steps.map(strip).filter((s) => s.length > 8);
+  const items = steps.map(strip).filter((s) => s.length > 8 && !isNote(s));
   if (items.length < 4) return [];
   const out = [];
   for (const i of [1, items.length - 3]) {
     if (i < 0 || i + 1 >= items.length || out.some((q) => q._i === i)) continue;
-    const wrong = seeded(items.filter((_, j) => j !== i && j !== i + 1), name + i).slice(0, 3).map((x) => short(x, 80));
+    const wrong = seeded(items.filter((_, j) => j !== i && j !== i + 1), name + i).slice(0, 3);
     if (wrong.length < 3) continue;
-    const q = Q(`${name} hazırlanırken “${short(items[i], 80)}” adımından sonra ne gelir?`, short(items[i + 1], 80), wrong,
+    const q = Q(`${name} hazırlanırken “${short(items[i], 160)}” adımından sonra ne gelir?`, items[i + 1], wrong,
       `Sıra tadın kendisidir. ${name}: ${items.map((x) => short(x, 45)).join(' → ')}`, 'adim');
     out.push(q);
   }

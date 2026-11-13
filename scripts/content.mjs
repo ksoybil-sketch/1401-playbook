@@ -18,7 +18,7 @@ import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
 import { EXTRA_QUESTIONS } from './source/extra-questions.mjs';
 import { techniqueQuestions, serviceQuestion, serviceLabel, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions,
-  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep } from './question-gen.mjs';
+  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep, isNote } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -464,9 +464,12 @@ function recipeQuestions(lessons, allRecipes) {
       const amt = ing.amt.trim();
       const isPair = !!pair(amt);
       const same = (a) => a.replace(/\s/g, '') === amt.replace(/\s/g, '');
+      // Yanlış şık doğru cevapla aynı sayıyı taşımasın ("40 ml" ile "40 ml (İsteğe Bağlı)" gibi).
+      const numsOf = (a) => (a.match(/\d+(?:[.,]\d+)?/g) || []).join('|');
+      const sameNum = (a) => numsOf(a) === numsOf(amt);
       const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])]
-        .filter((a) => !same(a) && /\d/.test(a) && !!pair(a) === isPair);
-      const wrong = [...new Set([...pool, ...(isPair ? pairVariants(amt) : numericVariants(amt))])].filter((a) => !same(a)).slice(0, 3);
+        .filter((a) => !same(a) && !sameNum(a) && /\d/.test(a) && !!pair(a) === isPair);
+      const wrong = [...new Set([...pool, ...(isPair ? pairVariants(amt) : numericVariants(amt))])].filter((a) => !same(a) && !sameNum(a)).slice(0, 3);
       if (wrong.length < 3) continue;
       const ingName = ing.name.toLocaleLowerCase('tr');
       const tag = isPair && sizes ? ` (${sizes.join(' / ')})` : sizes ? ` (${sizes.join(' ve ')} için aynı)` : l._cup ? ` (${l._cup})` : '';
@@ -514,13 +517,15 @@ function recipeQuestions(lessons, allRecipes) {
     }
 
     /* --- Hazırlanışın ilk adımı -------------------------------------- */
-    const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
+    // Not / kural satırları ("Önemli Kural: …", "ASLA …") adım sayılmaz: şık olunca anlam karmaşası yaratıyor.
+    const steps = ((l.blocks.find((b) => b.type === 'steps') || {}).items || []).filter((x) => !isNote(x));
     if (steps.length >= 3) {
+      // Şıklar kısaltılmaz: "…" ile biten şık okunamıyor ve doğru cevabı belirsizleştiriyor.
       const kisalt = (s) => (s.length > 72 ? s.slice(0, 70).replace(/[\s,;.]+$/, '') + '…' : s);
       out.push(Q(
         `${name} hazırlanırken ilk adım nedir?`,
-        kisalt(steps[0]),
-        [kisalt(steps[steps.length - 1]), kisalt(steps[1]), 'Bardağı servise hazırlayıp misafire sunmak'].slice(0, 3),
+        steps[0],
+        [steps[steps.length - 1], steps[1], 'Bardağı servise hazırlayıp misafire sunmak'].slice(0, 3),
         `Sıra tadın kendisidir: adımların yeri değişince oran, sıcaklık ve dokusu değişir. ${name} sırası: ${steps.map(kisalt).join(' → ')}`
       ));
     }
@@ -531,7 +536,9 @@ function recipeQuestions(lessons, allRecipes) {
       const espresso = cup.layers.find((x) => x.tone === 'espresso');
       const sut = cup.layers.find((x) => x.tone === 'sut');
       if (espresso && sut) {
-        const buzlu = cup.vessel === 'cold';
+        // Cevap şemadaki gerçek sıradan (tarifte açıkça yazılı sıra dahil, bkz. recipe-cup.mjs SIRA):
+        // buzlu içeceklerin çoğunda espresso üstte, ama ör. Iced Protein Shake'te sütün altında.
+        const buzlu = espresso.order > sut.order;
         const dogru = buzlu ? 'En üste, sütün üzerine dökülür' : 'En alta, sütten önce konur';
         const yanlis = [
           buzlu ? 'En alta, sütten önce konur' : 'En üste, sütün üzerine dökülür',
@@ -542,8 +549,10 @@ function recipeQuestions(lessons, allRecipes) {
           `${name} hazırlanırken espresso bardağın neresine gelir?`,
           dogru, yanlis,
           buzlu
-            ? `Buzlu içeceklerde espresso en son ve en üste dökülür; misafir bardağı karıştırana kadar katman görünür kalır. ${name}: önce buz ve süt, en üste espresso.`
-            : `Sıcak içeceklerde espresso bardağın dibindedir, süt onun üzerine dökülür — latte art da bu sayede oluşur. ${name}: önce espresso, üzerine süt.`
+            ? `${name}: espresso en son ve en üste dökülür; misafir bardağı karıştırana kadar katman görünür kalır.`
+            : cup.vessel === 'cold'
+              ? `${name}: tarife göre espresso önce bardağa girer, süt onun üzerine dökülür.`
+              : `Sıcak içeceklerde espresso bardağın dibindedir, süt onun üzerine dökülür — latte art da bu sayede oluşur. ${name}: önce espresso, üzerine süt.`
         ));
       }
     }
@@ -1228,7 +1237,9 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
         const id = `${m.id}-${createHash('sha1').update(key).digest('hex').slice(0, 10)}`;
         if (ids.has(id)) return;
         ids.add(id);
-        questions.push({ id, moduleId: m.id, imageUrl: '', ...q });
+        // Türkçe küçük harf "Icehot"u "ıcehot" yapıyor: marka adı düzeltilir.
+        const fix = (x) => (typeof x === 'string' ? x.replace(/ıcehot/g, 'Icehot') : x);
+        questions.push({ id, moduleId: m.id, imageUrl: '', ...q, prompt: fix(q.prompt), options: q.options.map(fix), explanation: fix(q.explanation) });
       });
       mm.questionCount = ids.size;
     });

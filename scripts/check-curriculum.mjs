@@ -38,11 +38,19 @@ for (const lesson of data.lessons) {
     const esp = at('espresso'), sut = at('sut');
     const sos = Math.min(...['sos', 'cikolata'].map(at).filter((x) => x >= 0), Infinity);
 
-    if (b.mode === 'katman' && esp >= 0 && sut >= 0) {
+    // Sırası tarifte açıkça yazılı içecekler (b.sira === 'tarif', bkz. recipe-cup.mjs SIRA)
+    // genel kurala uymak zorunda değil: Americano'da espresso suyun üstünde gibi.
+    const tarif = b.sira === 'tarif';
+    if (b.mode === 'katman' && esp >= 0 && sut >= 0 && !tarif) {
       if (b.vessel !== 'cold' && esp > sut) fail(`sıcak içecekte espresso sütün üstünde (${esp} > ${sut})`);
       if (b.vessel === 'cold' && esp < sut) fail(`buzlu içecekte espresso sütün altında (${esp} < ${sut})`);
     }
-    if (sos !== Infinity && sos !== 0) fail(`sos dipte değil (sıra ${sos})`);
+    // Sos ya dipte durur ya da (buzlu içecekte) espressoyla karıştırılıp onun hemen altında üste dökülür.
+    if (b.mode === 'katman' && !tarif && sos !== Infinity && sos !== 0) {
+      const sosLayers = body.filter((x) => x.tone === 'sos' || x.tone === 'cikolata').map((x) => x.order);
+      const kahveyle = esp >= 0 && sosLayers.every((o) => o < esp && body.every((x) => x.order <= o || x.order >= esp || x.tone === 'sos' || x.tone === 'cikolata'));
+      if (!kahveyle) fail(`sos dipte değil (sıra ${sos})`);
+    }
 
     for (const l of b.layers) {
       if (l.fill === 'ml' && !(l.small > 0 && l.large > 0)) fail(`"${l.name}" ml olarak işaretli ama ölçüsü yok`);
@@ -161,3 +169,31 @@ if (kindProblems.length) {
   process.exit(1);
 }
 console.log('✓ Soru türü denetimi: her modülde en az üç tür var');
+
+/* ------------------------------------------------------------------ */
+/* Şık denetimi                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sahadan gelen şikâyetler (13.11.2026): "…" ile kesilen şık okunmuyor;
+ * "40 ml" ile "40 ml (İsteğe Bağlı)" aynı anda şık; tarifteki not satırı
+ * ("Önemli Kural: …") adım gibi şık; aynı şık iki kez. Hepsi burada yakalanır.
+ */
+const optProblems = [];
+const numsOf = (s) => (String(s).match(/\d+(?:[.,]\d+)?/g) || []).join('|');
+const NOTE = /^(önemli|not\b|kural|asla|tıpkı|dikkat|ipucu)|oranı\s*=|=\s*\d/i;
+for (const q of data.questions) {
+  const ans = q.options[q.answer];
+  const tag = `${q.prompt.slice(0, 90)}`;
+  if (q.options.some((o) => /…$/.test(o))) optProblems.push(`kesik şık: ${tag}`);
+  if (new Set(q.options.map((o) => o.toLocaleLowerCase('tr').trim())).size < q.options.length) optProblems.push(`tekrarlanan şık: ${tag}`);
+  if (q.kind === 'olcu' && numsOf(ans) && q.options.some((o, i) => i !== q.answer && numsOf(o) === numsOf(ans))) optProblems.push(`doğru cevapla aynı ölçüde yanlış şık: ${tag}`);
+  if (q.kind === 'adim' && q.options.some((o) => NOTE.test(o.trim()))) optProblems.push(`not satırı adım şıkkı: ${tag}`);
+  if (/ıcehot/.test(q.prompt + q.options.join(' '))) optProblems.push(`"Icehot" küçük harf hatası: ${tag}`);
+}
+if (optProblems.length) {
+  console.error(`\n✗ Şık denetimi: ${optProblems.length} sorun\n`);
+  optProblems.slice(0, 40).forEach((p) => console.error('   ' + p));
+  process.exit(1);
+}
+console.log('✓ Şık denetimi: kesik, tekrarlanan, belirsiz şık yok');
