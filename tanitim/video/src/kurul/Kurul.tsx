@@ -210,6 +210,59 @@ const Kapanis: React.FC<{ hazir: string[]; adim: string[] }> = ({ hazir, adim })
   );
 };
 
+/** Kapanış 1: Öğren → Ölç → Geliştir döngüsü (sağda), başlık solda. */
+const Sistem: React.FC<{ adimlar: [string, string][]; dur: number }> = ({ adimlar, dur }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const dongu = useIn(Math.round(dur * 0.62));
+  return (
+    <div style={{ position: 'absolute', left: 900, top: 0, bottom: 120, width: 880, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0 }}>
+      {adimlar.map(([b, a], i) => {
+        const q = spring({ frame: frame - (ONCE + 10 + i * Math.round(dur * 0.14)), fps, config: { damping: 200 } });
+        return (
+          <React.Fragment key={b}>
+            {i > 0 && <div style={{ height: 54, marginLeft: 58, borderLeft: `3px solid ${AMBER}`, opacity: q * 0.8 }} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 34, opacity: q, transform: `translateX(${(1 - q) * 40}px)` }}>
+              <span style={{ width: 118, height: 118, borderRadius: 30, border: `3px solid ${i === 2 ? AMBER : LINE}`, background: i === 2 ? 'rgba(217,160,102,0.12)' : 'transparent', color: AMBER, fontSize: 50, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 66, fontWeight: 800, color: INK, letterSpacing: -2, lineHeight: 1 }}>{b}</span>
+                <span style={{ fontSize: 30, color: DIM }}>{a}</span>
+              </span>
+            </div>
+          </React.Fragment>
+        );
+      })}
+      <div style={{ marginTop: 44, marginLeft: 4, fontSize: 30, fontWeight: 700, color: AMBER, letterSpacing: 2, textTransform: 'uppercase', opacity: dongu }}>↻ Her gün, her şubede yeniden</div>
+    </div>
+  );
+};
+
+/** Kapanış 2: marka vizyonu — üç satır sırayla, sonunda logo ve imza. */
+const Vizyon: React.FC<{ satirlar: string[]; dur: number }> = ({ satirlar, dur }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const imzaAt = Math.round(dur * 0.58);
+  const imza = spring({ frame: frame - imzaAt, fps, config: { damping: 200 } });
+  const solgun = interpolate(imza, [0, 1], [1, 0.35]);
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingBottom: 120 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, opacity: solgun, transform: `translateY(${-imza * 70}px) scale(${1 - imza * 0.22})` }}>
+        {satirlar.map((x, i) => {
+          const q = spring({ frame: frame - (ONCE + i * 22), fps, config: { damping: 200 } });
+          return <div key={x} style={{ fontSize: 84, fontWeight: 800, color: i === satirlar.length - 1 ? AMBER : INK, letterSpacing: -3, lineHeight: 1.08, opacity: q, transform: `translateY(${(1 - q) * 26}px)` }}>{x}.</div>;
+        })}
+      </div>
+      <div style={{ position: 'absolute', top: '54%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, opacity: imza, transform: `translateY(${(1 - imza) * 40}px)` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+          <Logo size={110} />
+          <span style={{ fontSize: 104, fontWeight: 800, color: INK, letterSpacing: -4 }}>1401 Campus</span>
+        </div>
+        <span style={{ fontSize: 38, color: DIM, letterSpacing: 1 }}>Markamızın gücü, ölçülebilir bir standartta.</span>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const Acilis: React.FC = () => {
   const a = useIn(0, 100), b = useIn(10), c = useIn(20);
   return (
@@ -235,11 +288,13 @@ const SahneView: React.FC<{ s: Sahne; dur: number }> = ({ s, dur }) => {
       {g.tur === 'logo' && <Acilis />}
       {g.tur === 'sorular' && <Sorular maddeler={g.maddeler} dur={dur} />}
       {g.tur === 'donusum' && <Donusum once={g.once} sonra={g.sonra} dur={dur} />}
-      {(g.tur === 'telefon' || g.tur === 'masaustu' || g.tur === 'cihazlar') && <Sol s={s} />}
+      {(g.tur === 'telefon' || g.tur === 'masaustu' || g.tur === 'cihazlar' || g.tur === 'sistem') && <Sol s={s} />}
       {g.tur === 'telefon' && <Telefon ekran={g.ekran} dur={dur} kaydir={g.kaydir} />}
       {g.tur === 'masaustu' && <Masaustu ekran={g.ekran} dur={dur} yakin={g.yakin} merkez={g.merkez} />}
       {g.tur === 'cihazlar' && <Cihazlar />}
       {g.tur === 'kapanis' && <Kapanis hazir={g.hazir} adim={g.adim} />}
+      {g.tur === 'sistem' && <Sistem adimlar={g.adimlar} dur={dur} />}
+      {g.tur === 'vizyon' && <Vizyon satirlar={g.satirlar} dur={dur} />}
       <Altyazi text={s.metin} />
     </AbsoluteFill>
   );

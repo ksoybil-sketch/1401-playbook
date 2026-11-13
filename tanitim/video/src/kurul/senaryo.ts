@@ -13,7 +13,9 @@ export type Gorsel =
   | { tur: 'telefon'; ekran: string; kaydir?: [number, number] }
   | { tur: 'masaustu'; ekran: string; yakin?: number; merkez?: string }
   | { tur: 'cihazlar' }
-  | { tur: 'kapanis'; hazir: string[]; adim: string[] };
+  | { tur: 'kapanis'; hazir: string[]; adim: string[] }
+  | { tur: 'sistem'; adimlar: [string, string][] }
+  | { tur: 'vizyon'; satirlar: string[] };
 
 export interface Sahne {
   ust?: string;            // küçük başlık ("Eğitim")
@@ -85,9 +87,22 @@ export const KURUL: Sahne[] = [
     metin: 'Uygulama telefon, tablet ve bilgisayarda çalışır; ek donanım gerekmez. Ücretsiz bulut planında çalıştığı için bugünkü ölçekte sunucu maliyeti yoktur.',
     gorsel: { tur: 'cihazlar' }
   },
+  // Kapanış (Cenk Bey'in revizyonu, 13.11.2026): "öneri" yerine uygulamanın
+  // 1401 için profesyonel bir takip ve gelişim sistemi olduğu; markanın gücü ve vizyonu.
   {
-    metin: 'Uygulama hazır, kullanım rehberleri hazır, ekip demoda deniyor. Önerimiz: uygulamayı bu hâliyle hemen başlatmak; gereksinimlere ve sahadan gelecek geri bildirimlere göre hızla geliştirmek.',
-    gorsel: { tur: 'kapanis', hazir: ['Uygulama', 'Kullanım rehberleri', 'Deneme ortamı (demo)'], adim: ['Bu hâliyle başlat', 'Sahadan geri bildirim', 'Hızlı geliştirme'] }
+    ust: 'Profesyonel bir sistem', baslik: 'Takip ve\ngelişim sistemi',
+    metin: '1401 Campus bir eğitim uygulamasından fazlası: her baristanın ilk gününden ustalığına kadar gelişimini, her şubenin standardını ve her talebin sonucunu izleyen profesyonel bir takip ve gelişim sistemi.',
+    ses: 'Bin dört yüz bir Kampüs, bir eğitim uygulamasından fazlası: her baristanın ilk gününden ustalığına kadar gelişimini, her şubenin standardını ve her talebin sonucunu izleyen profesyonel bir takip ve gelişim sistemi.',
+    gorsel: { tur: 'sistem', adimlar: [
+      ['Öğren', 'Kitapçık, reçeteler, dersler'],
+      ['Ölç', 'Sınavlar, rozetler, talep süreleri'],
+      ['Geliştir', 'Mağaza karnesi, gelişim takibi']
+    ] }
+  },
+  {
+    metin: 'Her şubede aynı lezzet, aynı misafir deneyimi, aynı standart. 1401 büyüdükçe yeni şubeler aynı bilgiyle ve ilk günden aynı kaliteyle açılır. 1401 Campus, markamızın gücünü ölçülebilir bir standarda ve geleceğe taşıyan bir vizyona dönüştürüyor.',
+    ses: 'Her şubede aynı lezzet, aynı misafir deneyimi, aynı standart. Bin dört yüz bir büyüdükçe yeni şubeler aynı bilgiyle ve ilk günden aynı kaliteyle açılır. Bin dört yüz bir Kampüs, markamızın gücünü ölçülebilir bir standarda ve geleceğe taşıyan bir vizyona dönüştürüyor.',
+    gorsel: { tur: 'vizyon', satirlar: ['Her şubede aynı lezzet', 'Aynı misafir deneyimi', 'Aynı standart'] }
   }
 ];
 

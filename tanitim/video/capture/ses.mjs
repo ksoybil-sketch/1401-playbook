@@ -16,6 +16,8 @@
  *   SADECE=rehber SES=tr-TR-AhmetNeural …    seçili profilde ses/motor değiştirilir
  *   GEMINI_MODEL=gemini-3.8-flash-lite-tts   Gemini'de ayrı kotalı model
  *   MOTOR=say SES="Yelda (Enhanced)"         internetsiz yedek (robotik)
+ *   MOTOR=eleven SES=<voice_id>              ElevenLabs (anahtar .env.local'de; ücretsiz planda ayda ~10.000 kredi)
+ *   ELEVEN_MODEL=eleven_flash_v2_5           ElevenLabs'te yarı krediyle çalışan hızlı model
  *   --hepsi                                  var olanları da yeniden üret
  */
 import { execFileSync } from 'child_process';
@@ -26,6 +28,7 @@ import { dirname, join } from 'path';
 import { REHBERLER, cumleler } from '../src/rehber/senaryo.ts';
 import { kurulCumleleri } from '../src/kurul/senaryo.ts';
 import { geminiTTS } from './gemini-tts.mjs';
+import { elevenTTS, elevenCredits } from './eleven-tts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'public', 'rehber-ses');
@@ -51,8 +54,8 @@ for (const [ad, p] of Object.entries(PROFILLER)) {
   const ENGINE = env('MOTOR') || p.motor;
   const VOICE = env('SES') || (ENGINE === p.motor ? p.ses : ENGINE === 'say' ? 'Yelda' : ENGINE === 'edge' ? 'tr-TR-EmelNeural' : 'Charon');
   const RATE = env('HIZ') || env('USLUP') || (ENGINE === p.motor ? p.ayar : ENGINE === 'say' ? '172' : ENGINE === 'edge' ? '-4%' : PROFILLER.kurul.ayar);
-  const GMODEL = env('GEMINI_MODEL') || '';
-  const EXT = ENGINE === 'edge' ? 'mp3' : 'wav';
+  const GMODEL = ENGINE === 'eleven' ? (env('ELEVEN_MODEL') || p.model || 'eleven_multilingual_v2') : (env('GEMINI_MODEL') || '');
+  const EXT = ENGINE === 'edge' || ENGINE === 'eleven' ? 'mp3' : 'wav';
 
   const texts = [...new Set(p.cumleler())];
   const jobs = [];
@@ -63,7 +66,10 @@ for (const [ad, p] of Object.entries(PROFILLER)) {
     out[text] = { file: `rehber-ses/${h}.${EXT}`, abs };
   }
   for (const j of jobs) {
-    if (ENGINE === 'gemini') {
+    if (ENGINE === 'eleven') {
+      await elevenTTS(j.spoken, j.abs, { voice: VOICE, model: GMODEL });
+      console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
+    } else if (ENGINE === 'gemini') {
       await geminiTTS(j.spoken, j.abs, { voice: VOICE, style: RATE, model: GMODEL || undefined });
       console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
     } else if (ENGINE === 'edge') {
@@ -84,6 +90,7 @@ for (const [ad, p] of Object.entries(PROFILLER)) {
     total += sec;
   }
   console.log(`${ad}: ${texts.length} cümle (${jobs.length} yeni) · ${Math.round(total)} sn · ${ENGINE} · ${VOICE}`);
+  if (ENGINE === 'eleven') { const c = await elevenCredits(); console.log(`  ElevenLabs kredi: ${c.used}/${c.limit} kullanıldı`); }
 }
 
 // Senaryodan çıkmış cümleler listeden düşer.
