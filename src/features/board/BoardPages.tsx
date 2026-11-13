@@ -11,12 +11,12 @@ import { badgeReport, fromBarista, TITLE_IDS } from '../../lib/badges';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from '../../lib/progress';
 import { closedOf, fmtDur, requestStats } from '../../lib/requestStats';
 import {
-  attention, downloadCsv, modulePerformance, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
+  attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
   type BoardCtx, type Period, type PeriodId, type ScoreRow
 } from '../../lib/boardStats';
 import { catOf, isClosed, reasonLabel, STATUS } from '../../api/requests';
 import { RequestSummary, RequestThread } from '../shared/Requests';
-import { AskSheet } from './BoardQuestions';
+import { AskSheet, useOpsPeople, type OpsPeople } from './BoardQuestions';
 import { Avatar, Badge, Empty, Page, PageTitle, ProgressBar, Section, Sheet, Stat, fmtDate, fmtDateTime } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
@@ -30,7 +30,9 @@ import type { Bulletin, BoardTopic, StoreRequest } from '../../../shared/types';
 function useBoardCtx(): BoardCtx {
   const { stores, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments, requests, proposals } = useStaffData();
-  return { stores, modules, lessons, baristas, progress, attempts, assignments, requests, proposals };
+  // Personel talepleri (davet kodu, PIN, vardiya) kurulun işi değil: hiçbir kurul ekranına girmez.
+  const boardRequests = useMemo(() => requests.filter(forBoard), [requests]);
+  return { stores, modules, lessons, baristas, progress, attempts, assignments, requests: boardRequests, proposals };
 }
 
 /** Dönem adres çubuğunda (?donem=90) tutulur: sayfalar arasında aynı kalır. */
@@ -57,8 +59,8 @@ const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }
 /** "Sor" düğmesi: konuyu Kahve Operasyonu'na soru olarak açar. */
 const AskBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Sor' }) => (
   <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
-    className={`${t.btn} ${t.btnSecondary} ${t.btnSm} shrink-0 print:hidden`} title="Kahve Operasyonu'na bu konuyu sor">
-    <Icon name="message" size={13} /> {label}
+    className={`${t.btn} ${t.btnSecondary} ${t.btnMd} shrink-0 print:hidden`} title="Kahve Operasyonu'na bu konuyu sor">
+    <Icon name="message" size={15} /> {label}
   </button>
 );
 
@@ -176,21 +178,57 @@ export const BoardOverviewPage: React.FC = () => {
   }, [ctx, tracks, badgeConfig]);
   const totalLevels = levels.reduce((x, l) => x + l.n, 0);
 
-  const sentence = [
-    `${s.exams} sınav${s.passRate !== null ? ` (%${s.passRate} geçti)` : ''}`,
-    `${s.requestsSolved} talep çözüldü${s.medianResolve !== null ? ` (ortanca ${fmtDur(s.medianResolve)})` : ''}`,
-    s.joined || s.left ? `${s.joined} barista katıldı, ${s.left} ayrıldı` : null,
-    s.published ? `${s.published} içerik / bülten yayınlandı` : null
-  ].filter(Boolean).join(' · ');
+  const me = useStaffSession();
+  const card = useMemo(() => scorecard(ctx, period), [ctx, period]);
+  const best = useMemo(() => bestStore(card), [card]);
+  const star = useMemo(() => bestBarista(ctx, period), [ctx, period]);
+  const ranking = useMemo(() => card.filter((r) => r.avgScore !== null).sort((a, b) => (b.avgScore as number) - (a.avgScore as number)), [card]);
+  const storeName = (id: string) => ctx.stores.find((x) => x.id === id)?.name || '';
+  const scoreDelta = s.avgScore !== null && prev.avgScore !== null ? s.avgScore - prev.avgScore : null;
+
+  // Dönem özeti: kısa, okunur cümleler; sayılar kalın.
+  const B: React.FC<{ children: React.ReactNode }> = ({ children }) => <b className="font-semibold text-crema">{children}</b>;
+  const story: React.ReactNode[] = [];
+  if (s.exams) story.push(<>Baristalar <B>{s.exams} sınava</B> girdi; başarı oranı <B>%{s.passRate}</B>{scoreDelta ? <>, ortalama puan önceki döneme göre <B>{scoreDelta > 0 ? `${scoreDelta} puan arttı` : `${-scoreDelta} puan düştü`}</B></> : null}.</>);
+  else story.push(<>Bu dönemde sınav yapılmadı.</>);
+  if (best) story.push(<>Dönemin öne çıkan mağazası <B>{best.store.name}</B>: ortalama sınav puanı %{best.avgScore}.</>);
+  story.push(s.requestsSolved
+    ? <>Mağazalardan gelen <B>{s.requestsSolved} talep</B> ortalama <B>{fmtDur(s.avgResolve)}</B> içinde çözüldü; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>
+    : <>Bu dönemde çözülen talep yok; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>);
+  if (s.joined || s.left) story.push(<>Ekibe <B>{s.joined} yeni barista</B> katıldı{s.left ? <>, {s.left} barista ayrıldı</> : null}.</>);
 
   return (
     <Page wide>
-      <PageTitle title="Gidişat" subtitle="Zincirin eğitim, sınav ve operasyon durumu. Kartlar önceki eşit dönemle karşılaştırılır." />
-      <PeriodPicker value={period} onChange={setPeriod} />
+      <div className={`${t.card} p-5 sm:p-6 flex flex-col gap-4`}>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-[26px] sm:text-[30px] font-bold text-crema leading-tight">{greeting(me.name)}</h1>
+          <span className="text-[14px] text-fg-3">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-fg-3">{period.label} · kısa özet</span>
+          <ul className="flex flex-col gap-1.5">
+            {story.map((x, i) => <li key={i} className="text-[16px] sm:text-[17px] leading-relaxed text-fg-2 flex gap-2.5"><span className="text-crema/60 mt-[0.6em] w-1.5 h-1.5 rounded-full bg-current shrink-0" /><span>{x}</span></li>)}
+          </ul>
+        </div>
+        <PeriodPicker value={period} onChange={setPeriod} />
+      </div>
 
-      <div className={`${t.card} p-4 flex flex-col gap-1`}>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">{period.label}</span>
-        <p className="text-[15px] leading-relaxed">{sentence || 'Bu dönemde kayıt yok.'}</p>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div className={`${t.card} p-5 flex flex-col gap-1`}>
+          <span className="text-[13px] text-fg-3 font-medium">Zincir ortalama sınav puanı</span>
+          <span className="text-[34px] font-bold tnum leading-none mt-1">{pctText(s.avgScore)}</span>
+          <span className="text-[13px] text-fg-3">{scoreDelta ? `${scoreDelta > 0 ? '▲' : '▼'} ${Math.abs(scoreDelta)} puan, önceki döneme göre` : `${s.exams} sınav · ${s.examTakers} barista`}</span>
+        </div>
+        <Link to={best ? `/magazalar?magaza=${best.store.id}` : '/magazalar'} className={`${t.cardInteractive} p-5 flex flex-col gap-1`}>
+          <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="award" size={14} /> Dönemin mağazası</span>
+          <span className="text-[24px] font-bold leading-tight mt-1">{best?.store.name || '—'}</span>
+          <span className="text-[13px] text-fg-3">{best ? `Ortalama %${best.avgScore} · ${best.exams} sınav · %${best.passRate} geçti` : 'Henüz yeterli sınav yok'}</span>
+        </Link>
+        <div className={`${t.card} p-5 flex flex-col gap-1`}>
+          <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="medal" size={14} /> Dönemin baristası</span>
+          <span className="text-[24px] font-bold leading-tight mt-1">{star?.name || '—'}</span>
+          <span className="text-[13px] text-fg-3">{star ? `${storeName(star.storeId)} · ortalama %${star.avgScore} · ${star.exams} sınav` : 'En az iki sınava giren yok'}</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -199,13 +237,29 @@ export const BoardOverviewPage: React.FC = () => {
         <Stat label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} icon="target" tone="positive" to="/magazalar" hint="Aktif baristaların ortalaması" />
         <Stat label="Sınav başarısı" value={pctText(s.passRate)} icon="clipboard" tone="accent"
           hint={delta(s.passRate, prev.passRate) || `${s.exams} sınav`} />
-        <Stat label="Talep çözüm süresi" value={fmtDur(s.medianResolve)} icon="wrench" tone={s.urgentNow ? 'negative' : 'neutral'} to="/isler"
-          hint={`${s.openNow} açık${s.urgentNow ? ` · ${s.urgentNow} acil` : ''} · ortanca`} />
-        <Stat label="Sınava giren" value={s.examTakers} icon="cap" hint={s.avgScore !== null ? `Ortalama puan %${s.avgScore}` : 'Henüz yok'} />
+        <Stat label="Ortalama çözüm süresi" value={fmtDur(s.avgResolve)} icon="wrench" tone={s.urgentNow ? 'negative' : 'neutral'} to="/isler"
+          hint={`${s.openNow} açık talep${s.urgentNow ? ` · ${s.urgentNow} acil` : ''}`} />
         <Stat label="Onay bekleyen içerik" value={s.pendingProposals} icon="stamp" tone={s.pendingProposals ? 'caution' : 'neutral'} to="/isler?sekme=onay" />
         <Stat label="Gecikmiş eğitim görevi" value={s.overdueTasks} icon="flag" tone={s.overdueTasks ? 'negative' : 'neutral'} to="/isler?sekme=gorev" />
+        <Stat label="Yayınlanan içerik" value={s.published} icon="layers" hint="Ders, ürün ve bülten" />
         <Stat label="Ayrılma oranı" value={pctText(s.turnover)} icon="logout" hint={`${s.left} ayrılan · dönem başı ekibe göre`} />
       </div>
+
+      <Section label="Mağaza sıralaması · ortalama sınav puanı">
+        {ranking.length === 0 ? <Empty icon="store" text="Bu dönemde sınav yok." /> : (
+          <div className={t.listGroup}>
+            {ranking.map((r, i) => (
+              <Link key={r.store.id} to={`/magazalar?magaza=${r.store.id}`} className={`${t.listRow} min-h-14`}>
+                <span className={`w-7 text-center text-[17px] font-bold tnum ${i === 0 ? 'text-crema' : 'text-fg-3'}`}>{i + 1}</span>
+                <span className="w-36 sm:w-44 text-[15px] font-medium truncate">{r.store.name}</span>
+                <ProgressBar value={r.avgScore || 0} className="flex-1" />
+                <span className="w-12 text-right text-[15px] font-semibold tnum">%{r.avgScore}</span>
+                <span className="hidden sm:block w-40 text-right text-[13px] text-fg-3 tnum whitespace-nowrap">{r.exams} sınav · %{r.passRate} geçti</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </Section>
 
       <Section label={`Dikkat gerektirenler${att.length ? ` · ${att.length}` : ''}`}>
         {att.length === 0 ? <Empty icon="check" text="Şu an aksayan bir iş görünmüyor." /> : (
@@ -214,8 +268,8 @@ export const BoardOverviewPage: React.FC = () => {
               <Link key={i} to={a.to} className={t.listRow}>
                 <span className={t.iconChip(a.tone)}><Icon name="alert" size={15} /></span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium leading-snug">{a.text}</div>
-                  <div className="text-[12px] text-fg-3">{a.detail}</div>
+                  <div className="text-[15px] font-medium leading-snug">{a.text}</div>
+                  <div className="text-[13px] text-fg-3 mt-0.5">{a.detail}</div>
                 </div>
                 <AskBtn onClick={() => ask(a.topic)} />
               </Link>
@@ -282,7 +336,7 @@ export const BoardOverviewPage: React.FC = () => {
 /* Mağazalar — karne                                                    */
 /* ------------------------------------------------------------------ */
 
-type SortKey = 'name' | 'progress' | 'passRate' | 'openRequests' | 'medianResolve' | 'overdueTasks';
+type SortKey = 'name' | 'progress' | 'passRate' | 'openRequests' | 'avgResolve' | 'overdueTasks';
 
 export const BoardStoresPage: React.FC = () => {
   const ctx = useBoardCtx();
@@ -306,9 +360,9 @@ export const BoardStoresPage: React.FC = () => {
 
   const cols: { key: SortKey; label: string }[] = [
     { key: 'name', label: 'Mağaza' }, { key: 'progress', label: 'İlerleme' }, { key: 'passRate', label: 'Sınav başarısı' },
-    { key: 'openRequests', label: 'Açık talep' }, { key: 'medianResolve', label: 'Çözüm süresi' }, { key: 'overdueTasks', label: 'Gecikmiş görev' }
+    { key: 'openRequests', label: 'Açık talep' }, { key: 'avgResolve', label: 'Çözüm süresi' }, { key: 'overdueTasks', label: 'Gecikmiş görev' }
   ];
-  const grid = 'grid grid-cols-[1.5fr_1.3fr_1fr_0.8fr_0.9fr_0.8fr] gap-3';
+  const grid = 'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,0.8fr)] gap-3';
 
   return (
     <Page wide>
@@ -316,7 +370,7 @@ export const BoardStoresPage: React.FC = () => {
       <PeriodPicker value={period} onChange={setPeriod} />
       <div className="overflow-x-auto">
         <div className={`${t.listGroup} min-w-[680px]`}>
-          <div className={`${grid} px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-fg-3`}>
+          <div className={`${grid} px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.05em] text-fg-3`}>
             {cols.map((c) => (
               <button key={c.key} className="text-left flex items-center gap-1 hover:text-crema"
                 onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : c.key === 'name' ? 1 : -1 }))}>
@@ -325,18 +379,18 @@ export const BoardStoresPage: React.FC = () => {
             ))}
           </div>
           {sorted.map((r) => (
-            <button key={r.store.id} onClick={() => openStore(r.store.id)} className={`${grid} px-4 py-3 items-center text-left hover:bg-panel-2 transition-colors`}>
-              <span className="min-w-0"><span className="block text-[14px] font-medium truncate">{r.store.name}</span><span className="text-[12px] text-fg-3">{r.baristas} barista</span></span>
-              <span className="flex items-center gap-2"><ProgressBar value={r.progress || 0} className="flex-1" /><span className="text-[12px] tnum w-9 text-right">{pctText(r.progress)}</span></span>
-              <span className="text-[13px] tnum">{pctText(r.passRate)}<span className="text-fg-3"> · {r.exams}</span></span>
-              <span>{r.openRequests ? <Badge tone={r.urgentOpen ? 'negative' : 'caution'}>{r.openRequests}{r.urgentOpen ? ` · ${r.urgentOpen} acil` : ''}</Badge> : <span className="text-[13px] text-fg-3">—</span>}</span>
-              <span className="text-[13px] tnum text-fg-2">{fmtDur(r.medianResolve)}</span>
-              <span>{r.overdueTasks ? <Badge tone="negative">{r.overdueTasks}</Badge> : <span className="text-[13px] text-fg-3">—</span>}</span>
+            <button key={r.store.id} onClick={() => openStore(r.store.id)} className={`${grid} w-full px-4 py-3.5 items-center text-left hover:bg-panel-2 transition-colors`}>
+              <span className="min-w-0"><span className="block text-[15px] font-semibold truncate">{r.store.name}</span><span className="text-[13px] text-fg-3">{r.baristas} barista</span></span>
+              <span className="flex items-center gap-2 min-w-0"><ProgressBar value={r.progress || 0} className="flex-1" /><span className="text-[14px] tnum w-10 text-right">{pctText(r.progress)}</span></span>
+              <span className="text-[15px] tnum">{pctText(r.passRate)}<span className="text-[13px] text-fg-3"> · {r.exams} sınav</span></span>
+              <span>{r.openRequests ? <Badge tone={r.urgentOpen ? 'negative' : 'caution'}>{r.openRequests}{r.urgentOpen ? ` · ${r.urgentOpen} acil` : ''}</Badge> : <span className="text-[14px] text-fg-3">—</span>}</span>
+              <span className="text-[15px] tnum text-fg-2">{fmtDur(r.avgResolve)}</span>
+              <span>{r.overdueTasks ? <Badge tone="negative">{r.overdueTasks}</Badge> : <span className="text-[14px] text-fg-3">—</span>}</span>
             </button>
           ))}
         </div>
       </div>
-      <p className="text-[12px] text-fg-3">Sınav başarısı ve çözüm süresi seçili döneme göredir (yanındaki sayı sınav adedi); ilerleme ve açık talepler bugünün durumudur.</p>
+      <p className="text-[13px] text-fg-3">Sınav başarısı ve ortalama çözüm süresi seçili döneme göredir; ilerleme ve açık talepler bugünün durumudur.</p>
 
       <Sheet open={!!current} title={current?.store.name || ''} onClose={() => openStore(null)}>
         {current && <StoreDetail row={current} period={period} onAsk={() => ask({ kind: 'store', id: current.store.id, title: current.store.name })} />}
@@ -355,7 +409,7 @@ const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void }
   return (
     <>
       <div className="grid grid-cols-3 gap-2">
-        {[['İlerleme', pctText(row.progress)], ['Sınav başarısı', pctText(row.passRate)], ['Çözüm süresi', fmtDur(row.medianResolve)]].map(([l, v]) => (
+        {[['İlerleme', pctText(row.progress)], ['Sınav başarısı', pctText(row.passRate)], ['Çözüm süresi', fmtDur(row.avgResolve)]].map(([l, v]) => (
           <div key={l} className={`${t.panel} p-3 flex flex-col gap-0.5`}><span className="text-[11px] text-fg-3">{l}</span><span className="text-[17px] font-semibold tnum">{v}</span></div>
         ))}
       </div>
@@ -393,6 +447,64 @@ const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void }
 /* Süren işler                                                          */
 /* ------------------------------------------------------------------ */
 
+/** Talepte kim ilgileniyor, kim onayladı / onayı kim bekliyor. */
+function requestPeople(r: StoreRequest) {
+  const notes = [...r.notes].sort((a, b) => a.at - b.at);
+  const ops = notes.filter((n) => n.side === 'ops');
+  let status = 'open', approver: string | null = null;
+  for (const n of notes) {
+    if (n.status && status === 'approval' && n.status !== 'approval' && n.status !== 'rejected') approver = n.byName;
+    if (n.status) status = n.status;
+  }
+  // İlgilenen: operasyondan son yazan / durumu değiştiren; onaylayan dışındaki kişi öncelikli.
+  const handler = [...ops].reverse().find((n) => n.byName !== approver)?.byName || ops[ops.length - 1]?.byName || null;
+  return { handler, approver };
+}
+
+const BoardRequestCard: React.FC<{ r: StoreRequest; people: OpsPeople; onOpen: () => void; onAsk: () => void }> = ({ r, people, onOpen, onAsk }) => {
+  const cat = catOf(r.category);
+  const last = [...r.notes].reverse().find((n) => n.text);
+  const { handler, approver } = requestPeople(r);
+  const closed = isClosed(r.status);
+  const age = closed ? `${fmtDur((r.closedAt || r.updatedAt) - r.createdAt)} içinde kapandı` : `${Math.max(1, Math.round((Date.now() - r.createdAt) / 86400000))} gündür açık`;
+  const st = STATUS[r.status];
+  const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div className="flex flex-col gap-0.5 min-w-0"><span className="text-[12px] text-fg-3">{label}</span><span className="text-[14.5px] font-medium truncate">{children}</span></div>
+  );
+  return (
+    <div className={`${t.cardInteractive} p-5 flex flex-col sm:flex-row gap-4 items-start`} onClick={onOpen} role="button" tabIndex={0}>
+      <div className="flex-1 min-w-0 flex flex-col gap-3 w-full">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[14px] font-semibold ${r.priority === 'urgent' ? 'bg-negative-bg text-negative' : 'bg-panel-3 text-crema'}`}>
+            <Icon name={cat.icon} size={15} /> {cat.label}{r.equipment ? ` · ${r.equipment}` : ''}
+          </span>
+          {r.priority === 'urgent' && <Badge tone="negative">Acil</Badge>}
+          <Badge tone={st.tone === 'accent' ? 'neutral' : st.tone}>{st.label}</Badge>
+          <span className="text-[13px] text-fg-3 sm:ml-auto">{age}</span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[15px] font-semibold text-fg-2 flex items-center gap-1.5"><Icon name="store" size={15} /> {r.storeName}</span>
+          <span className="text-[19px] font-semibold leading-snug">{r.title}</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+          <Fact label="Açan">{r.createdByName}</Fact>
+          <Fact label="İlgilenen">{handler || <span className="text-caution">Henüz kimse</span>}</Fact>
+          {r.status === 'approval'
+            ? <Fact label="Onay bekliyor">{people.director || 'Kahve Operasyon Direktörü'}</Fact>
+            : approver ? <Fact label="Onaylayan">{approver}</Fact> : null}
+          {!closed && r.waitReason && <Fact label="Neyi bekliyor">{reasonLabel(r.waitReason)}</Fact>}
+        </div>
+        {last && (
+          <div className="border-l-2 border-line-2 pl-3 text-[14px] text-fg-2 leading-relaxed line-clamp-2">
+            <b className="font-medium text-crema">{last.byName}:</b> {last.text}
+          </div>
+        )}
+      </div>
+      <AskBtn onClick={onAsk} />
+    </div>
+  );
+};
+
 type WorkTab = 'talep' | 'onay' | 'gorev' | 'duyuru' | 'kapanan';
 const BULLETIN_KIND = { duyuru: 'Duyuru', kampanya: 'Kampanya', liderlik: 'Liderlik' } as const;
 const PROPOSAL_KIND = { lesson: 'Ders', module: 'Modül', track: 'Eğitim yolu', question: 'Soru', bulletin: 'Bülten', order: 'Sıralama', product: 'Yeni ürün' } as const;
@@ -404,6 +516,7 @@ export const BoardWorkPage: React.FC = () => {
   const tab = (params.get('sekme') || 'talep') as WorkTab;
   const setTab = (x: WorkTab) => setParams(x === 'talep' ? {} : { sekme: x }, { replace: true });
   const { ask, sheet } = useAsk();
+  const people = useOpsPeople();
   const { data: bulletins } = useQueryLive<Bulletin>(query(collection(db, 'bulletins'), orderBy('createdAt', 'desc'), limit(30)), 'board-bulletins');
   const now = Date.now();
 
@@ -439,23 +552,9 @@ export const BoardWorkPage: React.FC = () => {
     { id: 'kapanan', label: 'Son kapananlar', n: closed.length }
   ];
 
-  const ReqRow: React.FC<{ r: StoreRequest }> = ({ r }) => {
-    const last = [...r.notes].reverse().find((n) => n.text);
-    return (
-      <div className={`${t.cardInteractive} p-4 flex gap-3 items-start`} onClick={() => openReq(r)} role="button" tabIndex={0}>
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <RequestSummary r={r} showStore />
-          {last && <div className="text-[12.5px] text-fg-2 leading-relaxed line-clamp-2"><b className="font-medium">{last.byName}:</b> {last.text}</div>}
-          {!isClosed(r.status) && (
-            <div className="text-[11.5px] text-fg-3">
-              {Math.max(1, Math.round((now - r.createdAt) / 86400000))} gündür açık{r.waitReason ? ` · bekleyen: ${reasonLabel(r.waitReason)}` : ''}
-            </div>
-          )}
-        </div>
-        <AskBtn onClick={() => ask({ kind: 'request', id: r.id, title: `${r.storeName}: ${r.title}` })} />
-      </div>
-    );
-  };
+  const ReqRow: React.FC<{ r: StoreRequest }> = ({ r }) => (
+    <BoardRequestCard r={r} people={people} onOpen={() => openReq(r)} onAsk={() => ask({ kind: 'request', id: r.id, title: `${r.storeName}: ${r.title}` })} />
+  );
 
   return (
     <Page wide>
@@ -463,7 +562,7 @@ export const BoardWorkPage: React.FC = () => {
       <div className={`${t.scrollX} -mx-1 px-1`}>
         <div className="flex gap-2">
           {TABS.map((x) => (
-            <button key={x.id} onClick={() => setTab(x.id)} className={`${t.chip} whitespace-nowrap ${tab === x.id ? t.chipOn : t.chipOff}`}>{x.label} · {x.n}</button>
+            <button key={x.id} onClick={() => setTab(x.id)} className={`${t.chip} h-10 px-4 text-[14px] whitespace-nowrap ${tab === x.id ? t.chipOn : t.chipOff}`}>{x.label} · {x.n}</button>
           ))}
         </div>
       </div>
@@ -487,11 +586,13 @@ export const BoardWorkPage: React.FC = () => {
             {pending.length === 0 ? <Empty icon="stamp" text="Onay bekleyen içerik yok." /> : (
               <div className={t.listGroup}>
                 {pending.map((p) => (
-                  <div key={p.id} className={t.listRowStatic}>
-                    <span className={t.iconChip('caution')}><Icon name="stamp" size={15} /></span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[14px] font-medium leading-snug">{PROPOSAL_KIND[p.kind] || 'Öneri'}: {p.title}</div>
-                      <div className="text-[12px] text-fg-3">{p.createdByName} · {p.summary} · {Math.max(0, Math.round((now - p.createdAt) / 86400000))} gündür bekliyor</div>
+                  <div key={p.id} className={`${t.listRowStatic} py-4 items-start`}>
+                    <span className={t.iconChip('caution')}><Icon name="stamp" size={16} /></span>
+                    <div className="flex-1 min-w-0 flex flex-col gap-1">
+                      <div className="text-[12.5px] font-semibold uppercase tracking-[0.06em] text-caution">{PROPOSAL_KIND[p.kind] || 'Öneri'}</div>
+                      <div className="text-[17px] font-semibold leading-snug">{p.title}</div>
+                      <div className="text-[14px] text-fg-2">{p.summary}</div>
+                      <div className="text-[13px] text-fg-3">Öneren: <b className="font-medium text-fg-2">{p.createdByName}</b> · Onay bekliyor: <b className="font-medium text-fg-2">{people.director || 'Kahve Operasyon Direktörü'}</b> · {Math.round((now - p.createdAt) / 86400000) ? `${Math.round((now - p.createdAt) / 86400000)} gündür` : 'bugün geldi'}</div>
                     </div>
                     <AskBtn onClick={() => ask({ kind: 'proposal', id: p.id, title: `${PROPOSAL_KIND[p.kind] || 'Öneri'}: ${p.title}` })} />
                   </div>
@@ -505,11 +606,12 @@ export const BoardWorkPage: React.FC = () => {
       {tab === 'gorev' && (tasks.length === 0 ? <Empty icon="flag" text="Süren eğitim görevi yok." /> : (
         <div className={t.listGroup}>
           {tasks.map(({ a, team, done, overdue }) => (
-            <div key={a.id} className={t.listRowStatic}>
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium leading-snug">{a.title}</div>
-                <div className="text-[12px] text-fg-3">{storeName(a.storeId)} · {a.createdByName}{a.dueAt ? ` · son gün ${fmtDate(a.dueAt)}` : ''}</div>
-                <div className="flex items-center gap-2 mt-1.5"><ProgressBar value={(done / team) * 100} className="flex-1 max-w-48" /><span className="text-[12px] tnum text-fg-2">{done}/{team} tamamladı</span></div>
+            <div key={a.id} className={`${t.listRowStatic} py-4`}>
+              <div className="flex-1 min-w-0 flex flex-col gap-1">
+                <div className="text-[15px] font-semibold text-fg-2 flex items-center gap-1.5"><Icon name="store" size={14} /> {storeName(a.storeId)}</div>
+                <div className="text-[17px] font-semibold leading-snug">{a.title}</div>
+                <div className="text-[13px] text-fg-3">Atayan: <b className="font-medium text-fg-2">{a.createdByName}</b>{a.dueAt ? ` · son gün ${fmtDate(a.dueAt)}` : ''}</div>
+                <div className="flex items-center gap-2 mt-1"><ProgressBar value={(done / team) * 100} className="flex-1 max-w-56" /><span className="text-[14px] tnum text-fg-2">{done}/{team} barista tamamladı</span></div>
               </div>
               {overdue > 0 && <Badge tone="negative">{overdue} gecikmiş</Badge>}
               <AskBtn onClick={() => ask({ kind: 'assignment', id: a.id, title: `${storeName(a.storeId)}: ${a.title}` })} />
@@ -563,9 +665,9 @@ export const BoardReportsPage: React.FC = () => {
 
   const csv = {
     karne: () => downloadCsv(`magaza-karnesi-${slug}`, [
-      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan %', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortanca çözüm (saat)', 'Gecikmiş görev', 'Katılan', 'Ayrılan'],
+      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan %', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Katılan', 'Ayrılan'],
       ...scorecard(ctx, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
-        r.medianResolve !== null ? Math.round(r.medianResolve / 3600000) : null, r.overdueTasks, r.joined, r.left])
+        r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.joined, r.left])
     ]),
     barista: () => downloadCsv(`barista-egitim-${slug}`, [
       ['Barista', 'Mağaza', 'Rol', 'Durum', 'İlerleme %', 'Geçilen modül', 'Dönemde sınav', 'Dönemde geçti', 'İşe başlama (kayıt)'],
@@ -658,7 +760,7 @@ export const BoardPrintReport: React.FC = () => {
           <Kpi label="Aktif barista / mağaza" value={`${s.activeBaristas} / ${s.stores}`} note={`+${s.joined} katılan · −${s.left} ayrılan`} />
           <Kpi label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} note="aktif baristaların ortalaması" />
           <Kpi label="Sınav başarısı" value={pctText(s.passRate)} note={`${s.exams} sınav${prev.passRate !== null ? ` · önceki %${prev.passRate}` : ''}`} />
-          <Kpi label="Talep çözüm (ortanca)" value={fmtDur(s.medianResolve)} note={`${s.requestsSolved} çözüldü · ${s.openNow} açık`} />
+           <Kpi label="Ortalama talep çözüm süresi" value={fmtDur(s.avgResolve)} note={`${s.requestsSolved} çözüldü · ${s.openNow} açık`} />
         </div>
       </section>
 
@@ -668,7 +770,7 @@ export const BoardPrintReport: React.FC = () => {
           <thead><tr><th className={th}>Mağaza</th><th className={th}>Barista</th><th className={th}>İlerleme</th><th className={th}>Sınav</th><th className={th}>Geçme</th><th className={th}>Açık talep</th><th className={th}>Çözüm</th><th className={th}>Gecikmiş görev</th></tr></thead>
           <tbody>
             {card.map((r) => (
-              <tr key={r.store.id}><td className={`${td} font-medium`}>{r.store.name}</td><td className={td}>{r.baristas}</td><td className={td}>{pctText(r.progress)}</td><td className={td}>{r.exams}</td><td className={td}>{pctText(r.passRate)}</td><td className={td}>{r.openRequests}{r.urgentOpen ? ` (${r.urgentOpen} acil)` : ''}</td><td className={td}>{fmtDur(r.medianResolve)}</td><td className={td}>{r.overdueTasks || '—'}</td></tr>
+              <tr key={r.store.id}><td className={`${td} font-medium`}>{r.store.name}</td><td className={td}>{r.baristas}</td><td className={td}>{pctText(r.progress)}</td><td className={td}>{r.exams}</td><td className={td}>{pctText(r.passRate)}</td><td className={td}>{r.openRequests}{r.urgentOpen ? ` (${r.urgentOpen} acil)` : ''}</td><td className={td}>{fmtDur(r.avgResolve)}</td><td className={td}>{r.overdueTasks || '—'}</td></tr>
             ))}
           </tbody>
         </table>
@@ -678,7 +780,7 @@ export const BoardPrintReport: React.FC = () => {
         <h2 className="text-[15px] font-semibold">Talepler</h2>
         <p className="text-[13px] leading-relaxed">
           Dönemde {rq.total} talep açıldı: {rq.done} çözüldü, {rq.rejected} reddedildi, {rq.open} hâlâ açık ({rq.urgent} acil).
-          İlk yanıt ortancası {fmtDur(rq.medianFirst)}, çözüm ortancası {fmtDur(rq.medianResolve)}.
+          Talepler ortalama {fmtDur(rq.avgResolve)} içinde çözüldü; ilk yanıt çoğunlukla {fmtDur(rq.medianFirst)} içinde verildi.
           {rq.within72 !== null ? ` Çözülenlerin %${Math.round(rq.within72 * 100)}'i 3 gün içinde kapandı.` : ''}
         </p>
         {rq.waits.length > 0 && (

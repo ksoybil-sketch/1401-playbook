@@ -1,6 +1,6 @@
 import type { Assignment, Attempt, Barista, Lesson, Module, Progress, Proposal, Store, StoreRequest } from '../../shared/types';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from './progress';
-import { closedOf, median } from './requestStats';
+import { closedOf } from './requestStats';
 
 /**
  * Yönetim Kurulu göstergeleri. Hepsi panelin zaten okuduğu veriden
@@ -54,6 +54,8 @@ export interface BoardCtx {
 
 const inP = (t: number | undefined | null, p: Period) => !!t && t >= p.from && t <= p.to;
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : null);
+/** Kurul ekranında süreler ortalama olarak gösterilir (ortanca değil). */
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const exams = (c: BoardCtx, p: Period) => c.attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt, p));
 
 /** Barista o tarihte ekipte miydi (işe giriş ≤ t, ayrılış yok ya da > t). */
@@ -84,7 +86,7 @@ export function summary(c: BoardCtx, p: Period) {
     examTakers: new Set(ex.map((a) => a.baristaId)).size,
     requestsOpened: opened.length,
     requestsSolved: solved.length,
-    medianResolve: median(solved.map((r) => (r.closedAt || r.updatedAt) - r.createdAt)),
+    avgResolve: mean(solved.map((r) => (r.closedAt || r.updatedAt) - r.createdAt)),
     openNow: open.length,
     urgentNow: open.filter((r) => r.priority === 'urgent').length,
     approvalNow: open.filter((r) => r.status === 'approval').length,
@@ -120,7 +122,7 @@ export function scorecard(c: BoardCtx, p: Period) {
       requests: reqs.filter((r) => inP(r.createdAt, p)).length,
       openRequests: reqs.filter((r) => !closedOf(r)).length,
       urgentOpen: reqs.filter((r) => !closedOf(r) && r.priority === 'urgent').length,
-      medianResolve: median(solved.map((r) => (r.closedAt || r.updatedAt) - r.createdAt)),
+      avgResolve: mean(solved.map((r) => (r.closedAt || r.updatedAt) - r.createdAt)),
       overdueTasks: overdue,
       joined: c.baristas.filter((b) => b.storeId === s.id && inP(b.createdAt, p)).length,
       left: c.baristas.filter((b) => b.storeId === s.id && !b.active && inP(b.deactivatedAt, p)).length
@@ -128,6 +130,24 @@ export function scorecard(c: BoardCtx, p: Period) {
   });
 }
 export type ScoreRow = ReturnType<typeof scorecard>[number];
+
+/** Dönemin mağazası: en yüksek ortalama sınav puanı (en az 3 sınav; yoksa en az 1). */
+export function bestStore(rows: ScoreRow[]): ScoreRow | null {
+  const pick = (min: number) => rows.filter((r) => r.exams >= min && r.avgScore !== null)
+    .sort((a, b) => (b.avgScore as number) - (a.avgScore as number) || (b.passRate || 0) - (a.passRate || 0))[0] || null;
+  return pick(3) || pick(1);
+}
+
+/** Dönemin baristası: en yüksek ortalama puan (en az 2 sınav), eşitlikte daha çok sınav. */
+export function bestBarista(c: BoardCtx, p: Period) {
+  const m = new Map<string, Attempt[]>();
+  exams(c, p).forEach((a) => m.set(a.baristaId, [...(m.get(a.baristaId) || []), a]));
+  const rows = [...m.entries()].map(([id, list]) => ({
+    id, name: list[0].baristaName, storeId: list[0].storeId, exams: list.length,
+    avgScore: Math.round(list.reduce((x, a) => x + (a.score || 0), 0) / list.length)
+  })).filter((r) => c.baristas.some((b) => b.id === r.id && b.active));
+  return rows.filter((r) => r.exams >= 2).sort((a, b) => b.avgScore - a.avgScore || b.exams - a.exams)[0] || null;
+}
 
 /** Modül bazında sınav başarısı: hangi eğitimde zorlanılıyor. */
 export function modulePerformance(c: BoardCtx, p: Period) {
@@ -218,4 +238,18 @@ export function downloadCsv(name: string, rows: (string | number | null | undefi
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Kurulun göreceği talepler: personel talepleri (barista daveti, PIN,
+ * vardiya) günlük operasyon işidir, kurul ekranına girmez.
+ */
+export const forBoard = (r: StoreRequest) => r.category !== 'personel';
+
+/** Saate göre selam ve hitap: "İyi akşamlar, Ogün Bey". Baş harf (R.) atlanır. */
+export function greeting(name: string, now = new Date()): string {
+  const h = now.getHours();
+  const hello = h >= 5 && h < 11 ? 'Günaydın' : h >= 11 && h < 17 ? 'İyi günler' : h >= 17 && h < 22 ? 'İyi akşamlar' : 'İyi geceler';
+  const first = name.split(/\s+/).find((w) => w && !w.endsWith('.')) || name;
+  return `${hello}, ${first} Bey`;
 }
