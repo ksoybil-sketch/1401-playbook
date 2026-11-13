@@ -227,8 +227,8 @@ export const BADGES: BadgeDef[] = [
   // --- Ustalık -----------------------------------------------------------
   {
     id: 'usta-espresso', title: 'Espresso Ustası', group: 'ustalik', icon: 'coffee', params: [NOT(90)],
-    rule: (p) => `İtalyan Klasikler ve Sıcak Kahveler sınavlarının ikisini de en az ${p.min} puanla geç.`,
-    check: (d, p) => modulesAt(d, ['italyan-klasikler', 'sicak-kahveler'], p.min)
+    rule: (p) => `İtalyan Klasikler ve iki Sıcak Kahveler sınavını (Klasikler, Aromalı Latteler) en az ${p.min} puanla geç.`,
+    check: (d, p) => modulesAt(d, ['italyan-klasikler', 'sicak-kahveler', 'aromali-latteler'], p.min)
   },
   {
     id: 'usta-demleme', title: 'Demleme Ustası', group: 'ustalik', icon: 'clock', params: [NOT(90)],

@@ -355,9 +355,17 @@ const orientation = {
  * alfabetik değil: menü, Ristretto → Espresso → Macchiato gibi
  * öğrenme sırasını zaten doğru kuruyor.
  */
+const SICAK_KLASIK = ['Caffè Americano', 'Caffè Latte', 'Cappuccino', 'Flat White', 'Caffè Mocha', 'White Chocolate Mocha', 'Spanish Latte', 'Protein Latte'];
 const CATEGORY_MODULES = [
-  { id: 'italyan-klasikler', title: 'İtalyan Klasikler', cats: ['İtalyan Klasikler'], description: 'Her espresso bazlı içeceğin temeli: ristretto, espresso, macchiato, cortado.' },
-  { id: 'sicak-kahveler', title: 'Sıcak Kahveler', cats: ['Sıcak Kahveler'], description: 'Latte, cappuccino, mocha ve aromalı sıcak kahvelerin ölçü ve bardak standartları.' },
+  // Dört içecek: sınav 10 soru (15 soruda iki baristanın sınavı çok örtüşüyordu).
+  { id: 'italyan-klasikler', title: 'İtalyan Klasikler', cats: ['İtalyan Klasikler'], exam: 10, description: 'Her espresso bazlı içeceğin temeli: ristretto, espresso, macchiato, cortado.' },
+  // Sıcak Kahveler 19 içecekti; 15 soruluk bir sınav içeceklerin ancak bir kısmına
+  // dokunuyordu (şans faktörü). 14.11.2026: ikiye bölündü. Klasikler eski kimliği
+  // korur (geçilmiş sınavlar, rozetler ve görevler bozulmasın).
+  { id: 'sicak-kahveler', title: 'Sıcak Kahveler: Klasikler', cats: ['Sıcak Kahveler'], only: SICAK_KLASIK,
+    description: 'Americano, latte, cappuccino, flat white, mocha ve sütlü klasiklerin ölçü ve bardak standartları.' },
+  { id: 'aromali-latteler', title: 'Sıcak Kahveler: Aromalı Latteler', cats: ['Sıcak Kahveler'], except: SICAK_KLASIK,
+    description: 'Şurup ve soslu sıcak latteler: karamel, fındık, kestane, fıstık, lotus ve mevsim lezzetleri.' },
   { id: 'demleme-turk', title: 'Demleme ve Türk Kahveleri', cats: ['3. Nesil Demleme', 'Geleneksel Türk Kahveleri'], description: 'Batch brew, V60/Chemex, cold drip ve geleneksel Türk kahvelerimiz.' },
   { id: 'soguk-kahveler', title: 'Soğuk Kahveler, Frappe ve Matcha', cats: ['Soğuk Kahveler', 'Frappe & Matcha'], description: 'Buzlu kahveler, frappe ve matcha içeceklerinin porsiyonlama standartları.' },
   { id: 'sicak-icecekler', title: 'Sıcak İçecekler ve Kids Menu', cats: ['Sıcak İçecekler', 'Kids Menu'], description: 'Sıcak çikolata, chai, sahlep, matcha ve çocuk menüsü.' },
@@ -411,6 +419,23 @@ function recipeLesson(r, order) {
  */
 function recipeQuestions(lessons, allRecipes) {
   const out = [];
+  // "Reçetede olmayan" malzemeyi en benzer içeceklerden seç: Caramel Macchiato'da
+  // olmayan şey fındık şurubu (Toffee Nut'ta var) olmalı, "sade dondurma" değil.
+  // Bariz yabancı malzeme düşünmeden bulunuyordu (14.11.2026).
+  const lowr = (x) => x.toLocaleLowerCase('tr').trim();
+  // Her içecekte bulunan temel malzemeler (ayırt ettirmez).
+  const TEMEL_AD = new Set(['sıcak (ısıtılmış) süt', 'soğuk süt', 'sıcak süt', 'süt', 'öğütülmüş kahve', 'espresso shot', 'buz', 'su', 'soğuk su', 'sıcak su']);
+  const TEMEL = { test: (n) => TEMEL_AD.has(lowr(n)) };
+  const kardesYabanci = (recipe) => {
+    const mine = new Set(recipe.ing.map((x) => lowr(x.name)));
+    const sibs = lessons.map((x) => x._recipe).filter((x) => x !== recipe)
+      .map((x) => ({ x, n: x.ing.filter((y) => mine.has(lowr(y.name))).length })).sort((a, b) => b.n - a.n);
+    const out2 = [];
+    for (const { x } of sibs) for (const y of x.ing) {
+      if (!mine.has(lowr(y.name)) && !TEMEL.test(y.name) && !out2.some((z) => lowr(z) === lowr(y.name))) out2.push(y.name);
+    }
+    return out2;
+  };
   const cupCount = new Map();
   lessons.forEach((l) => l._cup && cupCount.set(l._cup, (cupCount.get(l._cup) || 0) + 1));
   const majorityCup = [...cupCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -502,12 +527,13 @@ function recipeQuestions(lessons, allRecipes) {
     }
 
     /* --- Reçetede olmayan malzeme ------------------------------------ */
-    const mine = new Set(r.ing.map((i) => i.name.toLocaleLowerCase('tr').trim()));
-    const yabanci = [...amountsByIngredient.keys()]
-      .filter((k) => !mine.has(k) && k.length > 3 && !/^su$|buz/.test(k));
-    if (r.ing.length >= 3 && yabanci.length) {
-      const disari = yabanci[(name.length * 7) % yabanci.length];
-      const icimdekiler = r.ing.slice(0, 3).map((i) => i.name);
+    const yabanci = kardesYabanci(r).slice(0, 2);
+    // İçindekiler şıkları: önce içeceğin kendine özgü malzemeleri, sonra temel olanlar.
+    const ozgun = r.ing.filter((i) => !TEMEL.test(i.name)).map((i) => i.name);
+    const icimdekiler = [...ozgun, ...r.ing.filter((i) => TEMEL.test(i.name)).map((i) => i.name)].slice(0, 3);
+    // Sade içeceklerde (yalnız kahve + süt/su) "hangisi yok" sorusu bariz olur: sorulmaz.
+    if (ozgun.length >= 1 && yabanci.length && icimdekiler.length === 3) {
+      const disari = yabanci[name.length % yabanci.length];
       out.push(Q(
         `${name} reçetesinde aşağıdakilerden hangisi YOKTUR?`,
         disari.replace(/^./, (c) => c.toLocaleUpperCase('tr')),
@@ -585,10 +611,12 @@ function recipeQuestions(lessons, allRecipes) {
       .forEach((sib) => { if (sib.n >= 2) { const d = differenceQuestion(l._recipe, sib.r, nameOf); if (d) out.push(d); } });
     const fl = firstLayerQuestion(l._title, cup); if (fl) out.push(fl);
     for (const nth of [0, 1]) { const sc = scaleQuestion(l._title, cup, nth); if (sc) out.push(sc); }
-    const foreign = allIngredients.filter((n) => !mine.has(n.toLocaleLowerCase('tr')) && !/espresso|süt|^su$|buz|shot/i.test(n));
-    // Malzeme doğru/yanlış: biri gerçekten içinde olan, biri olmayan.
+    // Malzeme doğru/yanlış: "olmayan" malzeme yalnızca en benzer içeceklerden seçilir
+    // (bariz yabancı malzeme sorusu düşünmeden bilinir); benzer içecekte farklı malzeme yoksa sorulmaz.
+    const foreign = kardesYabanci(l._recipe);
     for (const flip of [false, true]) {
-      const tf = ingredientTF(l._recipe, l._title, foreign[(i * 13 + (flip ? 5 : 11)) % Math.max(foreign.length, 1)], flip); if (tf) out.push(tf);
+      if (flip && !foreign.length) continue;
+      const tf = ingredientTF(l._recipe, l._title, foreign[i % Math.max(foreign.length, 1)] || null, flip); if (tf) out.push(tf);
     }
     for (const nth of [0, 1]) { const am = amountToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf, nth); if (am) out.push(am); }
     out.push(...recipeNextStep(l._title, steps));
@@ -605,10 +633,11 @@ const drinks = {
   id: 'icecek-standartlari', title: 'İçecek Standartları', icon: 'coffee',
   description: '2026 menüsündeki her içeceğin ölçüsü, porsiyonu ve hazırlanışı. Misafire giden her bardak aynı olmalı.',
   modules: CATEGORY_MODULES.map((cm) => {
-    const recipes = RECIPES.filter((r) => cm.cats.includes(r.cat));
+    const inList = (list, r) => list.some((n) => r.name.startsWith(n));
+    const recipes = RECIPES.filter((r) => cm.cats.includes(r.cat) && (!cm.only || inList(cm.only, r)) && (!cm.except || !inList(cm.except, r)));
     const lessons = recipes.map((r, i) => recipeLesson(r, i + 1));
     return {
-      id: cm.id, title: cm.title, description: cm.description, passScore: 80, examSize: 15,
+      id: cm.id, title: cm.title, description: cm.description, passScore: 80, examSize: cm.exam || 15,
       lessons,
       questions: recipeQuestions(lessons, RECIPES)
     };
