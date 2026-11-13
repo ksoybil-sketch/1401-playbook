@@ -111,6 +111,158 @@
   --color-accent-bg: rgba(143, 176, 160, 0.12);
   --color-accent-line: rgba(143, 176, 160, 0.26);
 }
+
+/* --- Barista temaları (eğitimle açılır, bkz. src/lib/baristaThemes.ts) --- */
+/* Hibiskus: kırmızı ve mürdüm */
+:root[data-theme="hibiskus"] {
+  --color-espresso: #170C12;
+  --color-bean: #1E1018;
+  --color-roast: #26141E;
+  --color-panel: rgba(255, 200, 225, 0.045);
+  --color-panel-2: rgba(255, 200, 225, 0.075);
+  --color-panel-3: rgba(255, 200, 225, 0.11);
+  --color-line: rgba(255, 200, 225, 0.09);
+  --color-line-2: rgba(255, 200, 225, 0.15);
+  --color-crema: #F7E8EE;
+  --color-crema-dim: #EBD6DF;
+  --color-fg-2: #C29FAE;
+  --color-fg-3: #8A6676;
+  --color-fg-4: #5C4350;
+  --color-positive: #8FBF9A;
+  --color-positive-bg: rgba(143, 191, 154, 0.13);
+  --color-positive-line: rgba(143, 191, 154, 0.28);
+  --color-accent: #D07A9B;
+  --color-accent-bg: rgba(208, 122, 155, 0.13);
+  --color-accent-line: rgba(208, 122, 155, 0.28);
+  --color-negative: #E0707A;
+  --color-negative-bg: rgba(224, 112, 122, 0.13);
+  --color-negative-line: rgba(224, 112, 122, 0.28);
+}
+/* Matcha: taze yeşil */
+:root[data-theme="matcha"] {
+  --color-espresso: #0E140C;
+  --color-bean: #141C11;
+  --color-roast: #1B2617;
+  --color-panel: rgba(210, 255, 190, 0.045);
+  --color-panel-2: rgba(210, 255, 190, 0.075);
+  --color-panel-3: rgba(210, 255, 190, 0.11);
+  --color-line: rgba(210, 255, 190, 0.09);
+  --color-line-2: rgba(210, 255, 190, 0.15);
+  --color-crema: #EEF4E6;
+  --color-crema-dim: #DCE7D2;
+  --color-fg-2: #A3B394;
+  --color-fg-3: #6E7D61;
+  --color-fg-4: #4A5641;
+  --color-positive: #9CCB7A;
+  --color-positive-bg: rgba(156, 203, 122, 0.13);
+  --color-positive-line: rgba(156, 203, 122, 0.28);
+  --color-accent: #A8C66C;
+  --color-accent-bg: rgba(168, 198, 108, 0.13);
+  --color-accent-line: rgba(168, 198, 108, 0.28);
+}
+/* Köz: bakır, közde kahve */
+:root[data-theme="kor"] {
+  --color-espresso: #140E0A;
+  --color-bean: #1C130D;
+  --color-roast: #251911;
+  --color-panel: rgba(255, 210, 170, 0.045);
+  --color-panel-2: rgba(255, 210, 170, 0.075);
+  --color-panel-3: rgba(255, 210, 170, 0.11);
+  --color-line: rgba(255, 210, 170, 0.09);
+  --color-line-2: rgba(255, 210, 170, 0.15);
+  --color-crema: #F5E9DD;
+  --color-crema-dim: #E8D8C8;
+  --color-fg-2: #BFA48C;
+  --color-fg-3: #86705E;
+  --color-fg-4: #5A4A3E;
+  --color-positive: #8DB88F;
+  --color-positive-bg: rgba(141, 184, 143, 0.13);
+  --color-positive-line: rgba(141, 184, 143, 0.28);
+  --color-accent: #D08A4E;
+  --color-accent-bg: rgba(208, 138, 78, 0.13);
+  --color-accent-line: rgba(208, 138, 78, 0.28);
+  --color-caution: #D4A15F;
+  --color-caution-bg: rgba(212, 161, 95, 0.13);
+  --color-caution-line: rgba(212, 161, 95, 0.28);
+}
+/* Gece Mavisi: sakin lacivert */
+:root[data-theme="gece"] {
+  --color-espresso: #0B0F18;
+  --color-bean: #101622;
+  --color-roast: #161E2D;
+  --color-panel: rgba(190, 210, 255, 0.045);
+  --color-panel-2: rgba(190, 210, 255, 0.075);
+  --color-panel-3: rgba(190, 210, 255, 0.11);
+  --color-line: rgba(190, 210, 255, 0.09);
+  --color-line-2: rgba(190, 210, 255, 0.15);
+  --color-crema: #E8EEF8;
+  --color-crema-dim: #D5DDEB;
+  --color-fg-2: #9FAEC6;
+  --color-fg-3: #66738A;
+  --color-fg-4: #434D5E;
+  --color-positive: #7DB39A;
+  --color-positive-bg: rgba(125, 179, 154, 0.13);
+  --color-positive-line: rgba(125, 179, 154, 0.28);
+  --color-accent: #7FA3E0;
+  --color-accent-bg: rgba(127, 163, 224, 0.13);
+  --color-accent-line: rgba(127, 163, 224, 0.28);
+}
+/* Altın: Pro baristalar */
+:root[data-theme="altin"] {
+  --color-espresso: #0F0D08;
+  --color-bean: #16130B;
+  --color-roast: #1E1A0F;
+  --color-panel: rgba(255, 230, 160, 0.045);
+  --color-panel-2: rgba(255, 230, 160, 0.075);
+  --color-panel-3: rgba(255, 230, 160, 0.11);
+  --color-line: rgba(255, 230, 160, 0.09);
+  --color-line-2: rgba(255, 230, 160, 0.15);
+  --color-crema: #F8F0DA;
+  --color-crema-dim: #EBE0C4;
+  --color-fg-2: #C4B48B;
+  --color-fg-3: #8A7C58;
+  --color-fg-4: #5B5139;
+  --color-positive: #8DBF8A;
+  --color-positive-bg: rgba(141, 191, 138, 0.13);
+  --color-positive-line: rgba(141, 191, 138, 0.28);
+  --color-accent: #E2B84A;
+  --color-accent-bg: rgba(226, 184, 74, 0.13);
+  --color-accent-line: rgba(226, 184, 74, 0.28);
+  --color-caution: #E2B84A;
+  --color-caution-bg: rgba(226, 184, 74, 0.13);
+  --color-caution-line: rgba(226, 184, 74, 0.28);
+}
+/* Gün Işığı: sıcak, açık tema */
+:root[data-theme="gunisigi"] {
+  --color-espresso: #FFF8EC;
+  --color-bean: #FBEFD9;
+  --color-roast: #F5E4C6;
+  --color-panel: rgba(120, 70, 10, 0.045);
+  --color-panel-2: rgba(120, 70, 10, 0.075);
+  --color-panel-3: rgba(120, 70, 10, 0.11);
+  --color-line: rgba(120, 70, 10, 0.13);
+  --color-line-2: rgba(120, 70, 10, 0.21);
+  --color-crema: #2E2112;
+  --color-crema-dim: #47351F;
+  --color-fg-2: #6B5638;
+  --color-fg-3: #937B57;
+  --color-fg-4: #BBA47F;
+  --color-positive: #3F7A51;
+  --color-positive-bg: rgba(63, 122, 81, 0.11);
+  --color-positive-line: rgba(63, 122, 81, 0.3);
+  --color-caution: #A7631A;
+  --color-caution-bg: rgba(167, 99, 26, 0.11);
+  --color-caution-line: rgba(167, 99, 26, 0.3);
+  --color-negative: #A5433A;
+  --color-negative-bg: rgba(165, 67, 58, 0.1);
+  --color-negative-line: rgba(165, 67, 58, 0.3);
+  --color-accent: #C27A14;
+  --color-accent-bg: rgba(194, 122, 20, 0.11);
+  --color-accent-line: rgba(194, 122, 20, 0.3);
+  color-scheme: light;
+}
+:root[data-theme="gunisigi"] .logo-mark { filter: invert(1) sepia(0.5); }
+
 /* Logo beyaz çizilmiş; açık temada koyulaşsın. */
 :root[data-theme="latte"] .logo-mark { filter: invert(1) sepia(0.4); }
 

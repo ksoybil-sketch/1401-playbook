@@ -11,8 +11,8 @@ import * as t from '../../ui/tokens';
 import type { Feedback, FeedbackStatus } from '../../../shared/types';
 
 /**
- * Geri bildirimler. Herkes buradan gönderir; geliştirici ve Kahve Operasyon
- * Direktörü gelenleri görür ve durumunu işaretler (bkz. firestore.rules).
+ * Geri bildirimler. Herkes buradan gönderir; geliştirici, Kahve Operasyon
+ * Direktörü ve Bölge Müdürü gelenleri görür ve durumunu işaretler (bkz. firestore.rules).
  */
 const STATUS: Record<FeedbackStatus, { label: string; tone: 'caution' | 'neutral' | 'positive' }> = {
   yeni: { label: 'Yeni', tone: 'caution' },
@@ -22,7 +22,8 @@ const STATUS: Record<FeedbackStatus, { label: string; tone: 'caution' | 'neutral
 
 export const FeedbackPage: React.FC = () => {
   const me = useStaffSession();
-  const canRead = can(me.role, 'approve') || me.role === 'developer' || me.role === 'admin';
+  // Geliştirici, Kahve Operasyon Direktörü ve Bölge Müdürü gelenleri görür.
+  const canRead = can(me.role, 'approve') || me.role === 'developer' || me.role === 'admin' || me.role === 'regional';
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<FeedbackStatus | 'hepsi'>('yeni');
   const { data, loading } = useQueryLive<Feedback>(canRead ? query(collection(db, 'feedback'), orderBy('createdAt', 'desc')) : null, 'feedback');

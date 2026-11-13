@@ -1,3 +1,4 @@
+import type { ThemeRules } from './baristaThemes';
 import type { Assignment, Attempt, Lesson, Module, Progress, Track } from '../../shared/types';
 import type { IconName } from '../ui/Icon';
 import { assignmentDone, assignmentDoneAt, isOverdue } from './progress';
@@ -59,6 +60,8 @@ export interface TitleSettings {
 export interface BadgeConfig {
   badges?: Record<string, Partial<BadgeSettings>>;
   titles?: Partial<Record<TitleId, Partial<TitleSettings>>>;
+  /** Barista temalarının açılma kuralları (src/lib/baristaThemes.ts). */
+  themes?: ThemeRules;
   updatedAt?: number;
   updatedByName?: string;
 }

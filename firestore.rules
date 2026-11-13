@@ -119,14 +119,14 @@ service cloud.firestore {
     }
 
     // Uygulama içi geri bildirim: her oturum (barista, mağaza telefonu,
-    // operasyon) kendi adına gönderir; geliştirici ve direktör okur, durumunu
-    // değiştirir. Silinmez: neyin bildirildiği kayıttır.
+    // operasyon) kendi adına gönderir; geliştirici, direktör ve bölge müdürü
+    // okur, durumunu değiştirir. Silinmez: neyin bildirildiği kayıttır.
     match /feedback/{id} {
       allow create: if signedIn() && request.resource.data.by == request.auth.uid
         && request.resource.data.status == 'yeni'
         && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
-      allow read: if isDirector();
-      allow update: if isDirector()
+      allow read: if isDirector() || myRole() == 'regional';
+      allow update: if (isDirector() || myRole() == 'regional')
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'updatedAt']);
       allow delete: if false;
     }
@@ -229,7 +229,7 @@ service cloud.firestore {
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
       allow update: if canManageBaristas() || isDirector()
         || (isBarista() && myBaristaId() == baristaId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'quizzes', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'quizzes', 'theme', 'updatedAt']));
       allow delete: if false;
     }
 

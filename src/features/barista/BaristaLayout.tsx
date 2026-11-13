@@ -1,3 +1,4 @@
+import { useBaristaTheme } from './Themes';
 import React, { useEffect, useRef } from 'react';
 import { HUE, type Hue } from '../../ui/palette';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
@@ -33,6 +34,8 @@ function useIdleLogout() {
 
 export const BaristaLayout: React.FC = () => {
   const s = useBaristaSession();
+  // Baristanın eğitimle açtığı tema (Ben → Temalar).
+  useBaristaTheme();
   const logout = useSession((x) => x.logout);
   const { pathname } = useLocation();
   const { unread } = useMyBulletins();

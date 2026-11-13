@@ -1,4 +1,5 @@
 import { FeedbackRow } from '../shared/Feedback';
+import { NewThemeBanner, ThemesSection } from './Themes';
 import React, { useMemo, useState } from 'react';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { badgeReport, fromBarista } from '../../lib/badges';
@@ -84,7 +85,7 @@ export const HomePage: React.FC = () => {
   return (
     <Page>
       {/* Kahraman kart: kim olduğun, unvanın, nereye gittiğin. */}
-      <Link to="/sonuclarim" className="rounded-3xl p-4 border border-[#D9A066]/25 bg-linear-to-br from-[#3A2618] via-[#22180F] to-[#16110D] flex flex-col gap-3.5 active:scale-[0.99] transition-transform">
+      <Link to="/sonuclarim" className="rounded-3xl p-4 border border-[#D9A066]/25 bg-linear-to-br from-[#D9A066]/20 via-roast to-bean flex flex-col gap-3.5 active:scale-[0.99] transition-transform">
         <div className="flex items-center gap-4">
           <div className="flex-1 min-w-0">
             <div className="text-[13px] text-fg-2">{greeting()},</div>
@@ -102,12 +103,15 @@ export const HomePage: React.FC = () => {
               <span className="text-fg-2">Sıradaki rozet: <strong className="text-crema">{report.next.title.label}</strong></span>
               <span className="text-fg-3">{toNext > 0 ? `${toNext} başarım kaldı` : 'Başarım sayısı tamam'}</span>
             </div>
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-2 rounded-full bg-panel-3 overflow-hidden">
               <div className="h-full rounded-full bg-linear-to-r from-[#D9A066] to-[#E07A6E] transition-[width] duration-700" style={{ width: `${nextPct}%` }} />
             </div>
           </div>
         )}
       </Link>
+
+      {/* Eğitimle yeni bir tema açıldıysa haber ver (Ben → Temalar). */}
+      <NewThemeBanner />
 
       {/* Servis sırasında en çok ihtiyaç duyulan şey. */}
       <Link to="/receteler?focus=1" className="h-12 rounded-2xl border border-line-2 bg-panel-2 flex items-center gap-3 px-4 text-fg-3 active:bg-panel-3">
@@ -282,6 +286,8 @@ export const ResultsPage: React.FC = () => {
           </div>
         )}
       </Section>
+
+      <ThemesSection />
 
       <FeedbackRow />
     </Page>

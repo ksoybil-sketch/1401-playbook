@@ -6,6 +6,8 @@ import { errorText } from '../../api/backend';
 import { useStaffSession } from './StaffLayout';
 import { ApronBadgesSection } from './StaffPages';
 import { Icon } from '../../ui/Icon';
+import { useContent } from '../../store/content';
+import { BARISTA_THEMES, resolveThemeRules, type BaristaThemeId, type ThemeRule } from '../../lib/baristaThemes';
 import { Page, PageTitle, Section, Spinner, toast, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
@@ -23,9 +25,14 @@ export const BadgeSettingsPage: React.FC = () => {
   const editable = can(me.role, 'approve');
   const stored = useBadgeConfig((x) => x.config);
   const [draft, setDraft] = useState<ResolvedConfig>(() => resolveConfig(stored));
+  const [themes, setThemes] = useState(() => resolveThemeRules(stored?.themes));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!dirty) setDraft(resolveConfig(stored)); }, [stored, dirty]);
+  useEffect(() => { if (!dirty) { setDraft(resolveConfig(stored)); setThemes(resolveThemeRules(stored?.themes)); } }, [stored, dirty]);
+  const setTheme = (id: BaristaThemeId, patch: Partial<ThemeRule>) => {
+    setThemes({ ...themes, [id]: { ...themes[id]!, ...patch } });
+    setDirty(true);
+  };
 
   const badgeTitles = useMemo(() => Object.fromEntries(BADGES.map((b) => [b.id, draft.badges[b.id].title])), [draft]);
   const enabledIds = BADGES.filter((b) => draft.badges[b.id].enabled).map((b) => b.id);
@@ -42,7 +49,7 @@ export const BadgeSettingsPage: React.FC = () => {
   const save = async () => {
     setBusy(true);
     try {
-      const out: BadgeConfig = { badges: draft.badges, titles: draft.titles };
+      const out: BadgeConfig = { badges: draft.badges, titles: draft.titles, themes: Object.fromEntries(Object.entries(themes).filter(([, v]) => v)) as BadgeConfig['themes'] };
       await saveBadgeConfig(out, me.name);
       setDirty(false);
       toast('Rozet ve başarım ayarları kaydedildi; herkes için yeniden hesaplandı', 'positive');
@@ -55,6 +62,7 @@ export const BadgeSettingsPage: React.FC = () => {
   const reset = () => {
     if (!confirm('Tüm rozet ve başarım ayarları varsayılana dönsün mü? (Kaydet’e basana kadar uygulanmaz.)')) return;
     setDraft(resolveConfig(null));
+    setThemes(resolveThemeRules(null));
     setDirty(true);
   };
 
@@ -164,6 +172,75 @@ export const BadgeSettingsPage: React.FC = () => {
           </div>
         </Section>
       ))}
+
+      <ThemesSettings themes={themes} setTheme={setTheme} editable={editable} />
     </Page>
+  );
+};
+
+/**
+ * Barista temaları: hangi tema hangi başarıyla açılır. Barista "Ben"
+ * sekmesinde açtığı temaları seçer (src/lib/baristaThemes.ts).
+ */
+const ThemesSettings: React.FC<{
+  themes: ReturnType<typeof resolveThemeRules>;
+  setTheme: (id: BaristaThemeId, patch: Partial<ThemeRule>) => void;
+  editable: boolean;
+}> = ({ themes, setTheme, editable }) => {
+  const { modules } = useContent();
+  const sorted = [...modules].sort((a, b) => a.order - b.order);
+  return (
+    <Section label="Barista temaları — nasıl açılır">
+      <p className="text-[13px] text-fg-3 -mt-1 mb-1">Espresso herkese açık. Diğer temalar aşağıdaki başarıyla açılır; barista Ben sekmesinden seçer.</p>
+      <div className="grid lg:grid-cols-2 gap-3">
+        {BARISTA_THEMES.filter((th) => th.rule).map((th) => {
+          const r = themes[th.id]!;
+          return (
+            <div key={th.id} className={`${t.card} ${t.cardPad} flex flex-col gap-3 ${r.enabled ? '' : 'opacity-60'}`}>
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl border border-line shrink-0" style={{ background: `linear-gradient(135deg, ${th.swatch[0]} 45%, ${th.swatch[2]} 45%)` }} />
+                <div className="flex-1 min-w-0">
+                  <div className={t.cardTitle}>{th.label}</div>
+                  <div className="text-[12px] text-fg-3">{th.hint}</div>
+                </div>
+                <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                  <input type="checkbox" checked={r.enabled} disabled={!editable} onChange={(e) => setTheme(th.id, { enabled: e.target.checked })} /> Açık
+                </label>
+              </div>
+              <div className="flex flex-col gap-2 text-[13px]">
+                <span className="text-fg-3">Şu modül sınav{r.modules.length > 1 ? 'larının hepsini' : 'ını'}:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {r.modules.map((m) => (
+                    <span key={m} className={`${t.chip} ${t.chipOff} gap-1`}>
+                      {modules.find((x) => x.id === m)?.title || m}
+                      {editable && <button onClick={() => setTheme(th.id, { modules: r.modules.filter((x) => x !== m) })} aria-label="Çıkar"><Icon name="close" size={11} /></button>}
+                    </span>
+                  ))}
+                  {editable && (
+                    <select className={`${t.input} h-8 w-auto text-[12.5px]`} value="" onChange={(e) => e.target.value && setTheme(th.id, { modules: [...r.modules, e.target.value] })}>
+                      <option value="">+ Modül ekle</option>
+                      {sorted.filter((m) => !r.modules.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+                    </select>
+                  )}
+                </div>
+                <label className="flex items-center gap-2">
+                  <span className="text-fg-3">en az</span>
+                  <input type="number" className={`${t.input} h-9 w-20 text-[14px] tnum`} min={0} max={100} value={r.minScore} disabled={!editable}
+                    onChange={(e) => setTheme(th.id, { minScore: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })} />
+                  <span className="text-fg-3">puanla geçen açar</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <span className="text-fg-3">ya da önlük rozeti</span>
+                  <select className={`${t.input} h-9 w-auto text-[13px]`} value={r.apron || ''} disabled={!editable}
+                    onChange={(e) => setTheme(th.id, { apron: (e.target.value || null) as ThemeRule['apron'] })}>
+                    <option value="">—</option><option value="specialist">Specialist ve üstü</option><option value="senior">Senior ve üstü</option><option value="pro">Pro</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
   );
 };

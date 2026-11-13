@@ -50,6 +50,9 @@ export interface Profile {
   lastSeenAt?: number | null;
 }
 
+/** Önlüğe takılan fiziksel rozet. */
+export type ApronBadge = 'rookie' | 'specialist' | 'senior' | 'pro';
+
 export interface Store {
   id: string;
   name: string;
@@ -79,7 +82,7 @@ export interface Barista {
   /** Kodu kim verdi (Bölge Müdürü). */
   codeIssuedByName?: string;
   /** Teslim edilen son önlük rozeti (rookie/specialist/senior/pro). */
-  apronBadge?: 'rookie' | 'specialist' | 'senior' | 'pro' | null;
+  apronBadge?: ApronBadge | null;
   apronBadgeAt?: number | null;
   apronBadgeByName?: string | null;
   /** Rozet/başarım istisnaları (geri alma, elle verme) — bkz. src/lib/badges.ts BadgeOverrides. */
@@ -280,6 +283,8 @@ export interface Progress {
   bulletins?: Record<string, number>;
   /** lessonId → mini sınavın en iyi geçme sonucu (Yeni ürün akışı). */
   quizzes?: Record<string, { score: number; passedAt: number }>;
+  /** Baristanın seçtiği tema (src/lib/baristaThemes.ts). */
+  theme?: string;
   updatedAt: number;
 }
 

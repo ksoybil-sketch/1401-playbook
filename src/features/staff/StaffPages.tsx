@@ -57,6 +57,65 @@ const inviteHint = (name: string) =>
 /* Genel bakış                                                         */
 /* ------------------------------------------------------------------ */
 
+interface MissedQuestion {
+  questionId: string; prompt: string; options: string[]; answerIndex: number; answer: string;
+  module: string; moduleId: string; n: number;
+  who: { baristaId: string; name: string; storeId: string; at: number; given: number | null }[];
+}
+
+/** Yanlış yapılan bir soru: hangi şık kaç kez seçildi, kim seçti. */
+const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; storeName: (id: string) => string }> = ({ q, onClose, storeName }) => {
+  const counts = new Map<number | null, number>();
+  q?.who.forEach((w) => counts.set(w.given, (counts.get(w.given) || 0) + 1));
+  const max = Math.max(1, ...counts.values());
+  const label = (i: number | null) => (i === null || i === undefined ? 'Boş bıraktı' : q!.options[i] ?? '—');
+  return (
+    <Sheet open={!!q} title="Yanlış yapılan soru" onClose={onClose}>
+      {q && (
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="text-[12px] text-fg-3">{q.module} · son 30 gün · {q.n} yanlış</div>
+            <p className="text-[15px] font-semibold leading-snug mt-1">{q.prompt}</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {q.options.map((o, i) => {
+              const n = counts.get(i) || 0;
+              const right = i === q.answerIndex;
+              return (
+                <div key={i} className={`rounded-lg border px-3 py-2 ${right ? 'border-positive-line bg-positive-bg' : n ? 'border-negative-line bg-negative-bg' : 'border-line'}`}>
+                  <div className="flex items-center gap-2 text-[13px]">
+                    <span className="flex-1">{o}</span>
+                    {right ? <Badge tone="positive">Doğru</Badge> : n ? <span className="tnum font-semibold text-negative">{n} kişi</span> : null}
+                  </div>
+                  {!right && n > 0 && <div className="h-1.5 rounded-full bg-negative/60 mt-1.5" style={{ width: `${(n / max) * 100}%` }} />}
+                </div>
+              );
+            })}
+            {counts.get(null) ? <div className="text-[12.5px] text-fg-3 px-1">{counts.get(null)} kişi boş bıraktı</div> : null}
+          </div>
+          <div>
+            <div className={t.sectionLabel}>Kim yanlış yaptı</div>
+            <div className={`${t.listGroup} mt-1.5`}>
+              {[...q.who].sort((a, b) => b.at - a.at).map((w, i) => (
+                <Link key={i} to={`/baristalar/${w.baristaId}`} className={`${t.listRow} text-[13px]`}>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium truncate">{w.name}</span>
+                    <span className="block text-[12px] text-fg-3 truncate">{storeName(w.storeId)} · {fmtDateTime(w.at)}</span>
+                  </span>
+                  <span className="text-[12px] text-negative text-right max-w-[50%] truncate">{label(w.given)}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+          <Link to={`/icerik/modul/${q.moduleId}?sekme=sorular`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
+            <Icon name="edit" size={14} /> Soruyu ya da dersi düzenle
+          </Link>
+        </div>
+      )}
+    </Sheet>
+  );
+};
+
 export const OverviewPage: React.FC = () => {
   const { stores, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments } = useStaffData();
@@ -76,15 +135,17 @@ export const OverviewPage: React.FC = () => {
 
   // En çok yanlış yapılan sorular — eğitim içeriğinde neyin anlaşılmadığını gösterir.
   const missed = useMemo(() => {
-    const map = new Map<string, { prompt: string; module: string; moduleId: string; n: number; answer: string }>();
+    const map = new Map<string, MissedQuestion>();
     attempts.filter((a) => a.startedAt > Date.now() - 30 * 86400000).forEach((a) =>
       (a.mistakes || []).forEach((m) => {
-        const cur = map.get(m.questionId) || { prompt: m.prompt, module: a.moduleTitle, moduleId: a.moduleId, n: 0, answer: m.options[m.answer] };
+        const cur = map.get(m.questionId) || { questionId: m.questionId, prompt: m.prompt, options: m.options, answerIndex: m.answer, module: a.moduleTitle, moduleId: a.moduleId, n: 0, answer: m.options[m.answer], who: [] };
         cur.n++;
+        cur.who.push({ baristaId: a.baristaId, name: a.baristaName, storeId: a.storeId, at: a.submittedAt || a.startedAt, given: m.given });
         map.set(m.questionId, cur);
       }));
     return [...map.values()].sort((a, b) => b.n - a.n).slice(0, 6);
   }, [attempts]);
+  const [openQ, setOpenQ] = useState<MissedQuestion | null>(null);
 
   return (
     <Page wide>
@@ -130,20 +191,21 @@ export const OverviewPage: React.FC = () => {
           {missed.length === 0 ? <Empty icon="target" text="Henüz yeterli sınav verisi yok." /> : (
             <div className={t.listGroup}>
               {missed.map((m, i) => (
-                // Sorunun modülüne (soru bankası sekmesi) gider: yanlış anlaşılan
-                // soruyu ya da dersi oradan düzeltmek mümkün.
-                <Link key={i} to={`/icerik/modul/${m.moduleId}?sekme=sorular`} className={`${t.listRow} items-start`}>
+                // Kim yanlış yaptı, hangi şıkkı işaretledi: pencerede açılır.
+                // Soruyu düzeltmek için modülün soru bankasına oradan gidilir.
+                <button key={i} onClick={() => setOpenQ(m)} className={`${t.listRow} items-start text-left`}>
                   <Badge tone="negative">{m.n}×</Badge>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium leading-snug">{m.prompt}</div>
                     <div className="text-[12px] text-fg-3 mt-1">{m.module} · Doğru: <span className="text-positive">{m.answer}</span></div>
                   </div>
                   <Icon name="chevronRight" size={16} className={t.rowChevron} />
-                </Link>
+                </button>
               ))}
             </div>
           )}
         </Section>
+        <MissedSheet q={openQ} onClose={() => setOpenQ(null)} storeName={(id) => stores.find((s) => s.id === id)?.name || ''} />
 
         <div id="son-sinavlar" className="scroll-mt-20 flex flex-col">
         <Section label="Son sınavlar">
