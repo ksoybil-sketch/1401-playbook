@@ -1,5 +1,6 @@
 import { FeedbackRow } from '../shared/Feedback';
 import { NewThemeBanner, ThemesSection } from './Themes';
+import { ChangePinRow } from './ChangePin';
 import React, { useMemo, useState } from 'react';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { badgeReport, fromBarista } from '../../lib/badges';
@@ -288,6 +289,8 @@ export const ResultsPage: React.FC = () => {
       </Section>
 
       <ThemesSection />
+
+      <ChangePinRow />
 
       <FeedbackRow />
     </Page>

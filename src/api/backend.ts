@@ -15,7 +15,8 @@
  * yalnızca bu dosya ve kurallar değişir.
  */
 import {
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, sendPasswordResetEmail
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, sendPasswordResetEmail,
+  EmailAuthProvider, reauthenticateWithCredential
 } from 'firebase/auth';
 import {
   collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch
@@ -211,9 +212,12 @@ async function baristaSignIn(b: Barista, pin: string): Promise<void> {
   }
 }
 
+/** 1111, 1234 gibi kolay tahmin edilen PIN'ler. */
+export const weakPin = (pin: string) => /^(\d)\1{3}$/.test(pin) || ['1234', '4321', '0123', '9876'].includes(pin);
+
 /** [Telefon] Davet kodu + yeni PIN. Oturum barista olarak açık kalır. */
 async function redeemInvite(code: string, pin: string, storeId: string): Promise<void> {
-  if (/^(\d)\1{3}$/.test(pin) || ['1234', '4321', '0123', '9876'].includes(pin)) {
+  if (weakPin(pin)) {
     throw new AppError('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'weak-pin');
   }
   const snap = await getDoc(doc(db, 'invites', code)).catch(() => null);
@@ -224,6 +228,26 @@ async function redeemInvite(code: string, pin: string, storeId: string): Promise
   await updatePassword(auth.currentUser!, pinPassword(inv.baristaId, pin));
   await updateDoc(doc(db, 'baristas', inv.baristaId), { pinPending: false });
   await deleteDoc(doc(db, 'invites', code));
+}
+
+/**
+ * [Telefon] Barista kendi PIN'ini değiştirir: önce eski PIN'le kimliğini
+ * doğrular (başkası telefonda açık kalan oturumdan PIN'i değiştiremesin).
+ */
+async function changeOwnPin(baristaId: string, oldPin: string, newPin: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user?.email) throw new AppError('Oturum bulunamadı. Çıkış yapıp yeniden gir.');
+  if (oldPin === newPin) throw new AppError('Yeni PIN eskisiyle aynı olamaz.', 'weak-pin');
+  if (weakPin(newPin)) throw new AppError('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'weak-pin');
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, pinPassword(baristaId, oldPin)));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === 'auth/too-many-requests') throw new AppError('Çok fazla hatalı deneme. Birkaç dakika sonra tekrar dene.', 'old-pin');
+    if (code === 'auth/network-request-failed') throw new AppError('İnternet bağlantısı yok.', 'old-pin');
+    throw new AppError('Eski PIN hatalı.', 'old-pin');
+  }
+  await updatePassword(user, pinPassword(baristaId, newPin));
 }
 
 /* ------------------------------------------------------------------ */
@@ -257,7 +281,7 @@ async function createStaff(name: string, email: string, role: StaffRole = 'ops')
 
 export const backend = {
   createPairingCode, pairDevice, deviceSignIn, revokeDevice,
-  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, redeemInvite,
+  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, redeemInvite, changeOwnPin,
   bootstrapAdmin, needsBootstrap, createStaff
 };
 
