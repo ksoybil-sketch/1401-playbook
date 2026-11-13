@@ -7,7 +7,9 @@
  * üretilmez (Gemini kotası için önemli).
  *
  * Her videonun kendi sesi var (PROFIL):
- *   rehber — edge-tts, tr-TR-EmelNeural (Microsoft Edge sesli okuma; ücretsiz, kotasız)
+ *   rehber — ElevenLabs, Daniel (çok dilli model; ücretsiz planda ayda ~10.000 kredi).
+ *            Ayar "dengelilik/benzerlik/üslup/hız": 0.5/0.8/0.15/0.95 — sakin, net,
+ *            yönlendiren anlatım. Eskisi: edge-tts tr-TR-EmelNeural (MOTOR=edge ile hâlâ kullanılabilir).
  *   kurul  — Gemini TTS, Charon, "sakin, sıcak, güven veren, acelesiz" ton
  *            (anahtar .env.local'de; ücretsiz kota günde 10 istek)
  *
@@ -38,14 +40,17 @@ const ALL = process.argv.includes('--hepsi');
 const ONLY = process.env.SADECE;
 
 const PROFILLER = {
-  rehber: { motor: 'edge', ses: 'tr-TR-EmelNeural', ayar: '-4%', cumleler: () => REHBERLER.flatMap(cumleler) },
+  rehber: { motor: 'eleven', ses: 'onwK4e9ZLuTAKqWW03F9', ayar: '0.5/0.8/0.15/0.95', model: 'eleven_multilingual_v2', cumleler: () => REHBERLER.flatMap(cumleler) },
   kurul: { motor: 'gemini', ses: 'Charon', ayar: 'Calm, warm and confident; a clear, natural Turkish presentation voice. Unhurried pace.', cumleler: kurulCumleleri }
 };
 
 const jsonPath = join(OUT, 'sesler.json');
 const out = existsSync(jsonPath) ? JSON.parse(readFileSync(jsonPath, 'utf8')) : {};
 // Tırnak ve kesme işaretleri okunmasın; "PIN" harf harf değil "pin" okunsun.
-const spokenOf = (text) => text.replace(/[“”"«»]/g, '').replace(/PIN/g, 'pin');
+// Türkçe okunuş: rakamla yazılan marka adı ve İngilizce kelime Türkçe okunsun
+// (ElevenLabs'in sesi İngilizce kökenli; "1401"i İngilizce sayı gibi okumasın).
+const spokenOf = (text) => text.replace(/[“”"«»]/g, '').replace(/PIN/g, 'pin')
+  .replace(/1401/g, 'Bin dört yüz bir').replace(/\bCampus\b/g, 'Kampüs');
 
 for (const [ad, p] of Object.entries(PROFILLER)) {
   if (ONLY && ONLY !== ad) continue;
@@ -67,7 +72,8 @@ for (const [ad, p] of Object.entries(PROFILLER)) {
   }
   for (const j of jobs) {
     if (ENGINE === 'eleven') {
-      await elevenTTS(j.spoken, j.abs, { voice: VOICE, model: GMODEL });
+      const [stability, similarity, style, speed] = String(RATE).split('/').map(Number);
+      await elevenTTS(j.spoken, j.abs, { voice: VOICE, model: GMODEL, ...(speed ? { stability, similarity, style, speed } : {}) });
       console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
     } else if (ENGINE === 'gemini') {
       await geminiTTS(j.spoken, j.abs, { voice: VOICE, style: RATE, model: GMODEL || undefined });

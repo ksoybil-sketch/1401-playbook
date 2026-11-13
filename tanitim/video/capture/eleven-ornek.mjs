@@ -14,7 +14,8 @@ import { elevenCredits, elevenTTS, turkishVoices } from './eleven-tts.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'public', 'ses-ornek');
 const ids = process.argv.slice(2);
-const SAMPLE = '1401 Campus ile her barista aynı reçeteyi, aynı standardı öğreniyor. Sahadaki sorunlar artık kayıt altında.';
+// Rehber videolarından tipik bir cümle: anlaşılır, sakin, yönlendiren ton.
+const SAMPLE = process.env.CUMLE || 'Bir reçeteyi açmak için Reçeteler sekmesine dokun. Bardak boyunu seç; ölçüler ve hazırlanış sırası ekrana gelir.';
 
 const c = await elevenCredits();
 console.log(`Kredi: ${c.used}/${c.limit} kullanıldı (${c.tier})`);
