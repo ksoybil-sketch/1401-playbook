@@ -1,3 +1,4 @@
+import { useKeepAwake } from '../../lib/keepAwake';
 import { ReportContentLink } from '../shared/Feedback';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -178,6 +179,8 @@ export const RecipeDetailPage: React.FC = () => {
   const recipe = lessons.find((l) => l.id === lessonId);
   const [zoom, setZoom] = useState(false);
   const signedInBarista = useSession((x) => x.session.kind === 'barista');
+  // Ölçüye bakarken ekran kararmasın.
+  useKeepAwake(!!recipe);
   if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
   const mod = modules.find((m) => m.id === recipe.moduleId);
   // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,

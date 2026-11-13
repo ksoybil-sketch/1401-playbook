@@ -160,30 +160,30 @@
   --color-accent-bg: rgba(168, 198, 108, 0.13);
   --color-accent-line: rgba(168, 198, 108, 0.28);
 }
-/* Köz: bakır, közde kahve */
+/* Köz: Türk kahvesi — koyu kavrulmuş kahve, gül altını, şeftali (köklü kahvecilerin paketlerinden esin) */
 :root[data-theme="kor"] {
-  --color-espresso: #140E0A;
-  --color-bean: #1C130D;
-  --color-roast: #251911;
-  --color-panel: rgba(255, 210, 170, 0.045);
-  --color-panel-2: rgba(255, 210, 170, 0.075);
-  --color-panel-3: rgba(255, 210, 170, 0.11);
-  --color-line: rgba(255, 210, 170, 0.09);
-  --color-line-2: rgba(255, 210, 170, 0.15);
-  --color-crema: #F5E9DD;
-  --color-crema-dim: #E8D8C8;
-  --color-fg-2: #BFA48C;
-  --color-fg-3: #86705E;
-  --color-fg-4: #5A4A3E;
-  --color-positive: #8DB88F;
-  --color-positive-bg: rgba(141, 184, 143, 0.13);
-  --color-positive-line: rgba(141, 184, 143, 0.28);
-  --color-accent: #D08A4E;
-  --color-accent-bg: rgba(208, 138, 78, 0.13);
-  --color-accent-line: rgba(208, 138, 78, 0.28);
-  --color-caution: #D4A15F;
-  --color-caution-bg: rgba(212, 161, 95, 0.13);
-  --color-caution-line: rgba(212, 161, 95, 0.28);
+  --color-espresso: #1A0D07;
+  --color-bean: #22120A;
+  --color-roast: #2D180D;
+  --color-panel: rgba(254, 198, 121, 0.05);
+  --color-panel-2: rgba(254, 198, 121, 0.085);
+  --color-panel-3: rgba(254, 198, 121, 0.12);
+  --color-line: rgba(217, 164, 124, 0.16);
+  --color-line-2: rgba(217, 164, 124, 0.26);
+  --color-crema: #F7E8D4;
+  --color-crema-dim: #EAD6BD;
+  --color-fg-2: #D2B293;
+  --color-fg-3: #9C7A5F;
+  --color-fg-4: #6A4F3C;
+  --color-positive: #A9C08A;
+  --color-positive-bg: rgba(169, 192, 138, 0.13);
+  --color-positive-line: rgba(169, 192, 138, 0.28);
+  --color-caution: #FEC679;
+  --color-caution-bg: rgba(254, 198, 121, 0.13);
+  --color-caution-line: rgba(254, 198, 121, 0.3);
+  --color-accent: #D9A47C;
+  --color-accent-bg: rgba(217, 164, 124, 0.14);
+  --color-accent-line: rgba(217, 164, 124, 0.3);
 }
 /* Gece Mavisi: sakin lacivert */
 :root[data-theme="gece"] {
@@ -207,30 +207,78 @@
   --color-accent-bg: rgba(127, 163, 224, 0.13);
   --color-accent-line: rgba(127, 163, 224, 0.28);
 }
-/* Altın: Pro baristalar */
+/* Altın: Pro baristalara özel — şampanya altını, cam (liquid glass) yüzeyler */
 :root[data-theme="altin"] {
-  --color-espresso: #0F0D08;
-  --color-bean: #16130B;
-  --color-roast: #1E1A0F;
-  --color-panel: rgba(255, 230, 160, 0.045);
-  --color-panel-2: rgba(255, 230, 160, 0.075);
-  --color-panel-3: rgba(255, 230, 160, 0.11);
-  --color-line: rgba(255, 230, 160, 0.09);
-  --color-line-2: rgba(255, 230, 160, 0.15);
-  --color-crema: #F8F0DA;
-  --color-crema-dim: #EBE0C4;
-  --color-fg-2: #C4B48B;
-  --color-fg-3: #8A7C58;
-  --color-fg-4: #5B5139;
-  --color-positive: #8DBF8A;
-  --color-positive-bg: rgba(141, 191, 138, 0.13);
-  --color-positive-line: rgba(141, 191, 138, 0.28);
-  --color-accent: #E2B84A;
-  --color-accent-bg: rgba(226, 184, 74, 0.13);
-  --color-accent-line: rgba(226, 184, 74, 0.28);
-  --color-caution: #E2B84A;
-  --color-caution-bg: rgba(226, 184, 74, 0.13);
-  --color-caution-line: rgba(226, 184, 74, 0.28);
+  --color-espresso: #080705;
+  --color-bean: #0E0C08;
+  --color-roast: #16120B;
+  --color-panel: rgba(255, 236, 190, 0.06);
+  --color-panel-2: rgba(255, 236, 190, 0.1);
+  --color-panel-3: rgba(255, 236, 190, 0.15);
+  --color-line: rgba(240, 210, 140, 0.18);
+  --color-line-2: rgba(240, 210, 140, 0.3);
+  --color-crema: #FBF4E2;
+  --color-crema-dim: #EFE3C6;
+  --color-fg-2: #D6C49A;
+  --color-fg-3: #9C8B63;
+  --color-fg-4: #66593D;
+  --color-positive: #B9D59A;
+  --color-positive-bg: rgba(185, 213, 154, 0.13);
+  --color-positive-line: rgba(185, 213, 154, 0.3);
+  --color-caution: #F0CF7A;
+  --color-caution-bg: rgba(240, 207, 122, 0.14);
+  --color-caution-line: rgba(240, 207, 122, 0.32);
+  --color-accent: #E9C46A;
+  --color-accent-bg: rgba(233, 196, 106, 0.15);
+  --color-accent-line: rgba(233, 196, 106, 0.34);
+}
+/* Arka plan: camın arkasında yumuşak altın ışıklar. */
+:root[data-theme="altin"] body {
+  background:
+    radial-gradient(60vw 45vh at 85% -5%, rgba(233, 196, 106, 0.22), transparent 70%),
+    radial-gradient(55vw 40vh at -10% 35%, rgba(196, 140, 60, 0.16), transparent 70%),
+    radial-gradient(70vw 50vh at 60% 110%, rgba(233, 196, 106, 0.12), transparent 70%),
+    #080705;
+  background-attachment: fixed;
+}
+/* Cam yüzeyler: yarı saydam, bulanık arka plan, üst kenarda ışık. */
+:root[data-theme="altin"] .bg-panel,
+:root[data-theme="altin"] .bg-panel-2,
+:root[data-theme="altin"] .tile,
+:root[data-theme="altin"] .hero {
+  background: linear-gradient(155deg, rgba(255, 240, 205, 0.13), rgba(255, 240, 205, 0.035) 55%, rgba(233, 196, 106, 0.07)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border-color: rgba(240, 210, 140, 0.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 220, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="altin"] .hero {
+  background: linear-gradient(150deg, rgba(240, 207, 122, 0.28), rgba(255, 240, 205, 0.06) 50%, rgba(196, 140, 60, 0.14)) !important;
+  border-color: rgba(240, 210, 140, 0.4) !important;
+}
+/* İkonlar: altın kabartma. */
+:root[data-theme="altin"] .tile > span:first-child {
+  color: #1A1408 !important;
+  background: linear-gradient(145deg, #FBE7A9, #E2B84A 45%, #A97A26) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 4px 14px rgba(226, 184, 74, 0.35);
+}
+/* Başarım madalyaları: kazanılanlar altın. */
+:root[data-theme="altin"] .medal.earned {
+  background: radial-gradient(circle at 30% 25%, #FFF1C4, #E9C46A 45%, #9C7022) !important;
+  color: #1A1408 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 3px 12px rgba(233, 196, 106, 0.35);
+}
+/* Kartlardaki renkli yazılar altına döner (tek renk, premium). */
+:root[data-theme="altin"] .tile [class*="text-[#"] { color: #E9C46A !important; }
+:root[data-theme="altin"] header,
+:root[data-theme="altin"] nav {
+  background: rgba(14, 12, 8, 0.55) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  backdrop-filter: blur(22px) saturate(1.6);
+  border-color: rgba(240, 210, 140, 0.18) !important;
+}
+:root[data-theme="altin"] nav a[class*="text-"]:not(.text-fg-3) svg {
+  filter: drop-shadow(0 0 6px rgba(233, 196, 106, 0.55));
 }
 /* Gün Işığı: sıcak, açık tema */
 :root[data-theme="gunisigi"] {

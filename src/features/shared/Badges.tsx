@@ -107,7 +107,7 @@ export const BadgeGrid: React.FC<{ report: BadgeReport }> = ({ report }) => {
             {report.badges.filter((x) => x.group === g).map((x) => (
               <button key={x.id} onClick={() => setFocus(x.id)}
                 className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-center transition-colors ${x.earned ? 'bg-positive-bg border-positive-line' : 'bg-panel border-line hover:bg-panel-2'}`}>
-                <span className={`w-10 h-10 rounded-full flex items-center justify-center ${x.earned ? 'bg-positive text-espresso' : 'bg-panel-3 text-fg-4'}`}>
+                <span className={`medal w-10 h-10 rounded-full flex items-center justify-center ${x.earned ? 'earned bg-positive text-espresso' : 'bg-panel-3 text-fg-4'}`}>
                   <Icon name={x.earned ? x.icon : 'lock'} size={18} strokeWidth={x.earned ? 1.9 : 1.5} />
                 </span>
                 <span className={`text-[11.5px] font-semibold leading-tight ${x.earned ? '' : 'text-fg-3'}`}>{x.title}</span>
@@ -121,7 +121,7 @@ export const BadgeGrid: React.FC<{ report: BadgeReport }> = ({ report }) => {
         {b && (
           <>
             <div className="flex items-center gap-3">
-              <span className={`w-12 h-12 rounded-full flex items-center justify-center ${b.earned ? 'bg-positive text-espresso' : 'bg-panel-3 text-fg-3'}`}><Icon name={b.icon} size={22} /></span>
+              <span className={`medal w-12 h-12 rounded-full flex items-center justify-center ${b.earned ? 'earned bg-positive text-espresso' : 'bg-panel-3 text-fg-3'}`}><Icon name={b.icon} size={22} /></span>
               <div>
                 <div className="text-[12px] text-fg-3">{GROUP_LABEL[b.group]}</div>
                 <div className={`text-[14px] font-semibold ${b.earned ? 'text-positive' : b.revoked ? 'text-negative' : ''}`}>

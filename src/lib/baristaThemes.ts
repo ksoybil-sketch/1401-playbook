@@ -41,11 +41,11 @@ export const BARISTA_THEMES: ThemeDef[] = [
     rule: { enabled: true, modules: ['acilis-kapanis'], minScore: 90 } },
   { id: 'matcha', label: 'Matcha', hint: 'Taze yeşil tonları', swatch: ['#0E140C', '#1B2617', '#A8C66C'],
     rule: { enabled: true, modules: ['soguk-kahveler'], minScore: 90 } },
-  { id: 'kor', label: 'Köz', hint: 'Bakır ve közde kahve tonları', swatch: ['#140E0A', '#251911', '#D08A4E'],
+  { id: 'kor', label: 'Köz', hint: 'Türk kahvesi: koyu kahve ve gül altını', swatch: ['#1A0D07', '#3A2014', '#D9A47C'],
     rule: { enabled: true, modules: ['demleme-turk'], minScore: 90 } },
   { id: 'gece', label: 'Gece Mavisi', hint: 'Sakin lacivert', swatch: ['#0B0F18', '#161E2D', '#7FA3E0'],
     rule: { enabled: true, modules: ['misafir-karsilama', 'siparis-ve-satis', 'memnuniyet-sikayet'], minScore: 90 } },
-  { id: 'altin', label: 'Altın', hint: 'Pro baristalara özel', swatch: ['#0F0D08', '#1E1A0F', '#E2B84A'],
+  { id: 'altin', label: 'Altın', hint: 'Pro baristalara özel: şampanya altını, cam yüzeyler', swatch: ['#080705', '#2A2210', '#E9C46A'],
     rule: { enabled: true, modules: [], minScore: 0, apron: 'pro' } }
 ];
 

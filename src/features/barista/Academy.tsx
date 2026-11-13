@@ -33,7 +33,7 @@ export const TracksPage: React.FC = () => {
             const mods = publishedOnly(modules).filter((m) => m.trackId === tr.id);
             const hue = HUE[trackHue(tr.id, i)];
             return (
-              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`rounded-2xl border p-4 flex items-center gap-4 active:scale-[0.99] transition-transform ${hue.tile}`}>
+              <Link key={tr.id} to={`/akademi/${tr.id}`} className={`tile rounded-2xl border p-4 flex items-center gap-4 active:scale-[0.99] transition-transform ${hue.tile}`}>
                 <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${hue.chip}`}><Icon name={(tr.icon as IconName) || 'book'} size={20} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-semibold">{tr.title}</div>

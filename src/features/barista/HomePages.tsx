@@ -35,7 +35,7 @@ function greeting() {
 
 /** Ana sayfadaki renkli hızlı erişim kutusu. */
 const Tile: React.FC<{ to: string; hue: Hue; icon: IconName; label: string; title: string; hint?: string; badge?: number }> = ({ to, hue, icon, label, title, hint, badge }) => (
-  <Link to={to} className={`relative rounded-2xl border p-3.5 flex flex-col gap-2.5 min-h-[124px] active:scale-[0.98] transition-transform ${HUE[hue].tile}`}>
+  <Link to={to} className={`tile relative rounded-2xl border p-3.5 flex flex-col gap-2.5 min-h-[124px] active:scale-[0.98] transition-transform ${HUE[hue].tile}`}>
     <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${HUE[hue].chip}`}><Icon name={icon} size={18} strokeWidth={1.9} /></span>
     {!!badge && badge > 0 && (
       <span className="absolute top-3 right-3 min-w-5 h-5 px-1.5 rounded-full bg-crema text-espresso text-[11px] font-bold flex items-center justify-center tnum">{badge > 9 ? '9+' : badge}</span>
@@ -86,7 +86,7 @@ export const HomePage: React.FC = () => {
   return (
     <Page>
       {/* Kahraman kart: kim olduğun, unvanın, nereye gittiğin. */}
-      <Link to="/sonuclarim" className="rounded-3xl p-4 border border-[#D9A066]/25 bg-linear-to-br from-[#D9A066]/20 via-roast to-bean flex flex-col gap-3.5 active:scale-[0.99] transition-transform">
+      <Link to="/sonuclarim" className="hero rounded-3xl p-4 border border-[#D9A066]/25 bg-linear-to-br from-[#D9A066]/20 via-roast to-bean flex flex-col gap-3.5 active:scale-[0.99] transition-transform">
         <div className="flex items-center gap-4">
           <div className="flex-1 min-w-0">
             <div className="text-[13px] text-fg-2">{greeting()},</div>
@@ -154,7 +154,7 @@ export const HomePage: React.FC = () => {
             <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
               {earned.map((b) => (
                 <span key={b.id} className="flex flex-col items-center gap-1 w-16 shrink-0">
-                  <span className="w-11 h-11 rounded-full flex items-center justify-center bg-linear-to-br from-[#E8B47E] to-[#C0794A] text-[#1A120C]"><Icon name={b.icon} size={19} strokeWidth={1.9} /></span>
+                  <span className="medal earned w-11 h-11 rounded-full flex items-center justify-center bg-linear-to-br from-[#E8B47E] to-[#C0794A] text-[#1A120C]"><Icon name={b.icon} size={19} strokeWidth={1.9} /></span>
                   <span className="text-[10.5px] text-center leading-tight text-fg-2 line-clamp-2">{b.title}</span>
                 </span>
               ))}
