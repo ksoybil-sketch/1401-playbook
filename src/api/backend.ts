@@ -140,7 +140,10 @@ async function deleteInvites(baristaId: string, batch: ReturnType<typeof writeBa
   old.forEach((d) => batch.delete(d.ref));
 }
 
-async function createBarista(input: { name: string; storeId: string; role: BaristaRole; phone?: string; createdByName?: string }) {
+/** İşe başlama tarihi (YYYY-AA-GG): kıdem rozetleri buna bakar. Yoksa bugün. */
+const validDay = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= new Date().toISOString().slice(0, 10) ? d : null);
+
+async function createBarista(input: { name: string; storeId: string; role: BaristaRole; phone?: string; startedAt?: string; createdByName?: string }) {
   const name = input.name.trim();
   if (name.length < 2) throw new AppError('Ad soyad gir.');
   if (!input.storeId) throw new AppError('Mağaza seç.');
@@ -151,7 +154,7 @@ async function createBarista(input: { name: string; storeId: string; role: Baris
   batch.set(ref, {
     name, storeId: input.storeId, role: input.role, phone: input.phone?.trim() || '',
     active: true, pinPending: true, uid: acc.uid, authEmail: acc.email, accountSeq: 1,
-    startedAt: new Date().toISOString().slice(0, 10), createdAt: now,
+    startedAt: validDay(input.startedAt) || new Date().toISOString().slice(0, 10), createdAt: now,
     inviteExpiresAt: acc.expiresAt, codeIssuedByName: input.createdByName || ''
   });
   batch.set(doc(db, 'users', acc.uid), { role: input.role, baristaId: ref.id, storeId: input.storeId, active: true, createdAt: now });
@@ -185,13 +188,18 @@ async function setBaristaActive(b: Barista, active: boolean, issuedBy?: string):
   return {};
 }
 
-async function updateBarista(b: Barista, patch: { name?: string; storeId?: string; role?: BaristaRole; phone?: string }) {
+async function updateBarista(b: Barista, patch: { name?: string; storeId?: string; role?: BaristaRole; phone?: string; startedAt?: string }) {
   const batch = writeBatch(db);
   const p: Record<string, unknown> = {};
   if (patch.name !== undefined) p.name = patch.name.trim();
   if (patch.phone !== undefined) p.phone = patch.phone.trim();
   if (patch.role !== undefined) p.role = patch.role;
   if (patch.storeId !== undefined) p.storeId = patch.storeId;
+  if (patch.startedAt !== undefined) {
+    const d = validDay(patch.startedAt);
+    if (!d) throw new AppError('İşe başlama tarihi geçerli değil (bugünden ileri olamaz).');
+    p.startedAt = d;
+  }
   batch.update(doc(db, 'baristas', b.id), p);
   if (b.uid && (patch.role || patch.storeId)) {
     batch.update(doc(db, 'users', b.uid), { ...(patch.role ? { role: patch.role } : {}), ...(patch.storeId ? { storeId: patch.storeId } : {}) });

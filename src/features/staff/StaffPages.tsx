@@ -638,6 +638,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
   const { stores } = useContent();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
   const [storeId, setStoreId] = useState(fixed || '');
   const [role, setRole] = useState<BaristaRole>('barista');
   const [busy, setBusy] = useState(false);
@@ -647,10 +648,10 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
     setError(null);
     setBusy(true);
     try {
-      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone, createdByName: me.name });
+      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone, startedAt, createdByName: me.name });
       onClose();
       onCreated({ code: r.code, expiresAt: r.expiresAt, title: `${name.trim()} için davet kodu`, hint: inviteHint(name.trim().split(' ')[0]) });
-      setName(''); setPhone(''); setRole('barista');
+      setName(''); setPhone(''); setRole('barista'); setStartedAt(new Date().toISOString().slice(0, 10));
     } catch (e) { setError(errorText(e)); }
     setBusy(false);
   };
@@ -667,6 +668,10 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
           </select>
         </label>
       )}
+      <label className={t.field}><span className={t.label}>İşe başlama tarihi</span>
+        <input className={t.input} type="date" value={startedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartedAt(e.target.value)} />
+        <span className="text-[11px] text-fg-3">1401'de çalışmaya başladığı gün. Kıdem rozetleri (6 ay, 1 yıl) ve Pro önlük rozeti buna göre hesaplanır.</span>
+      </label>
       <label className={t.field}><span className={t.label}>Telefon (isteğe bağlı — kodu iletmek için)</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="05xx xxx xx xx" /></label>
       <div className={t.field}>
         <span className={t.label}>Rol</span>
@@ -807,7 +812,7 @@ export const BaristaDetailPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title={b.name} subtitle={`${stores.find((x) => x.id === b.storeId)?.name || ''} · ${BARISTA_ROLE_LABEL[b.role]} · Başlangıç ${b.startedAt || fmtDate(b.createdAt)}`} back />
+      <PageTitle title={b.name} subtitle={`${stores.find((x) => x.id === b.storeId)?.name || ''} · ${BARISTA_ROLE_LABEL[b.role]} · İşe başlama ${b.startedAt ? fmtDate(new Date(b.startedAt).getTime()) : fmtDate(b.createdAt)}`} back />
 
       <div className="flex flex-wrap gap-2">
         {b.active && <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAssignOpen(true)}><Icon name="flag" size={15} /> Görev ata</button>}
@@ -928,12 +933,13 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
   const [storeId, setStoreId] = useState(b.storeId);
   const [role, setRole] = useState<BaristaRole>(b.role);
   const [phone, setPhone] = useState(b.phone || '');
+  const [startedAt, setStartedAt] = useState(b.startedAt || new Date(b.createdAt).toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      await backend.updateBarista(b, { name, storeId, role, phone });
+      await backend.updateBarista(b, { name, storeId, role, phone, ...(startedAt !== b.startedAt ? { startedAt } : {}) });
       toast('Kaydedildi', 'positive');
       onClose();
     } catch (e) { setError(errorText(e)); }
@@ -950,6 +956,10 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
         {storeId !== b.storeId && <span className="text-[11px] text-caution">Mağaza değişince barista yeni mağazanın telefonunda görünür.</span>}
       </label>
       <label className={t.field}><span className={t.label}>Telefon</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+      <label className={t.field}><span className={t.label}>İşe başlama tarihi</span>
+        <input className={t.input} type="date" value={startedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartedAt(e.target.value)} />
+        <span className="text-[11px] text-fg-3">Kıdem rozetleri buna göre hesaplanır.</span>
+      </label>
       <div className={t.segment}>
         {BARISTA_ROLES.map((r) => (
           <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{BARISTA_ROLE_LABEL[r]}</button>

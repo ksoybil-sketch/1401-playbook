@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
@@ -69,6 +69,44 @@ function useAsk() {
   const [topic, setTopic] = useState<BoardTopic | null>(null);
   const sheet = <AskSheet topic={topic} me={{ uid: me.uid, name: me.name }} onClose={() => setTopic(null)} />;
   return { ask: setTopic, sheet };
+}
+
+/**
+ * Mağaza ve talep ayrıntısı, açıldığı sayfanın üstünde pencere olarak
+ * açılır (?magaza= / ?talep=); kapatınca aynı sayfada kalınır. Mağaza
+ * penceresinden bir talep açılırsa talep üstte açılır, kapanınca mağazaya dönülür.
+ */
+function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
+  const me = useStaffSession();
+  const ctx = useBoardCtx();
+  const [params, setParams] = useSearchParams();
+  const set = (key: 'magaza' | 'talep', id: string | null) => {
+    const p = new URLSearchParams(params);
+    if (id) p.set(key, id); else p.delete(key);
+    setParams(p, { replace: true });
+  };
+  const store = useMemo(() => scorecard(ctx, period).find((r) => r.store.id === params.get('magaza')) || null, [ctx, period, params]);
+  const req = ctx.requests.find((r) => r.id === params.get('talep')) || null;
+  const sheets = (
+    <>
+      <Sheet open={!!store} title={store?.store.name || ''} onClose={() => set('magaza', null)}>
+        {store && <StoreDetail row={store} period={period} onOpenReq={(id) => set('talep', id)} onAsk={() => ask({ kind: 'store', id: store.store.id, title: store.store.name })} />}
+      </Sheet>
+      <Sheet open={!!req} title={req ? `${req.storeName} · ${STATUS[req.status].label}` : ''} onClose={() => set('talep', null)}>
+        {req && (
+          <>
+            <RequestSummary r={req} showStore />
+            <RequestThread r={req} side="ops" me={{ uid: me.uid, name: me.name }} readOnly />
+            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd} self-start`}
+              onClick={() => ask({ kind: 'request', id: req.id, title: `${req.storeName}: ${req.title}` })}>
+              <Icon name="message" size={14} /> Bu talebi sor
+            </button>
+          </>
+        )}
+      </Sheet>
+    </>
+  );
+  return { openStore: (id: string) => set('magaza', id), openReq: (id: string) => set('talep', id), sheets };
 }
 
 const pctText = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `%${v}`);
@@ -155,6 +193,7 @@ export const BoardOverviewPage: React.FC = () => {
   const badgeConfig = useBadgeConfig((x) => x.config);
   const [period, setPeriod] = usePeriod();
   const { ask, sheet } = useAsk();
+  const navigate = useNavigate();
   const s = useMemo(() => summary(ctx, period), [ctx, period]);
   const prev = useMemo(() => summary(ctx, previousOf(period)), [ctx, period]);
   const att = useMemo(() => attention(ctx), [ctx]);
@@ -179,6 +218,7 @@ export const BoardOverviewPage: React.FC = () => {
   const totalLevels = levels.reduce((x, l) => x + l.n, 0);
 
   const me = useStaffSession();
+  const { openStore, openReq, sheets } = useDetailSheets(period, ask);
   const card = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const best = useMemo(() => bestStore(card), [card]);
   const star = useMemo(() => bestBarista(ctx, period), [ctx, period]);
@@ -195,7 +235,8 @@ export const BoardOverviewPage: React.FC = () => {
   story.push(s.requestsSolved
     ? <>Mağazalardan gelen <B>{s.requestsSolved} talep</B> ortalama <B>{fmtDur(s.avgResolve)}</B> içinde çözüldü; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>
     : <>Bu dönemde çözülen talep yok; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>);
-  if (s.joined || s.left) story.push(<>Ekibe <B>{s.joined} yeni barista</B> katıldı{s.left ? <>, {s.left} barista ayrıldı</> : null}.</>);
+  // Katılan sayılmaz: sistem ilk kurulunca bütün baristalar "yeni" görünür. Yalnızca ayrılan.
+  if (s.left) story.push(<>Bu dönemde <B>{s.left} barista</B> ayrıldı (ayrılma oranı %{s.turnover}).</>);
 
   return (
     <Page wide>
@@ -219,11 +260,11 @@ export const BoardOverviewPage: React.FC = () => {
           <span className="text-[34px] font-bold tnum leading-none mt-1">{pctText(s.avgScore)}</span>
           <span className="text-[13px] text-fg-3">{scoreDelta ? `${scoreDelta > 0 ? '▲' : '▼'} ${Math.abs(scoreDelta)} puan, önceki döneme göre` : `${s.exams} sınav · ${s.examTakers} barista`}</span>
         </div>
-        <Link to={best ? `/magazalar?magaza=${best.store.id}` : '/magazalar'} className={`${t.cardInteractive} p-5 flex flex-col gap-1`}>
+        <button type="button" onClick={() => best && openStore(best.store.id)} disabled={!best} className={`${t.cardInteractive} p-5 flex flex-col gap-1 text-left`}>
           <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="award" size={14} /> Dönemin mağazası</span>
           <span className="text-[24px] font-bold leading-tight mt-1">{best?.store.name || '—'}</span>
           <span className="text-[13px] text-fg-3">{best ? `Ortalama %${best.avgScore} · ${best.exams} sınav · %${best.passRate} geçti` : 'Henüz yeterli sınav yok'}</span>
-        </Link>
+        </button>
         <div className={`${t.card} p-5 flex flex-col gap-1`}>
           <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="medal" size={14} /> Dönemin baristası</span>
           <span className="text-[24px] font-bold leading-tight mt-1">{star?.name || '—'}</span>
@@ -233,7 +274,7 @@ export const BoardOverviewPage: React.FC = () => {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Aktif barista" value={s.activeBaristas} icon="users" to="/magazalar"
-          hint={`${s.stores} mağaza${s.joined || s.left ? ` · +${s.joined} / −${s.left}` : ''}`} />
+          hint={`${s.stores} mağaza${s.left ? ` · ${s.left} ayrılan` : ''}`} />
         <Stat label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} icon="target" tone="positive" to="/magazalar" hint="Aktif baristaların ortalaması" />
         <Stat label="Sınav başarısı" value={pctText(s.passRate)} icon="clipboard" tone="accent"
           hint={delta(s.passRate, prev.passRate) || `${s.exams} sınav`} />
@@ -249,13 +290,13 @@ export const BoardOverviewPage: React.FC = () => {
         {ranking.length === 0 ? <Empty icon="store" text="Bu dönemde sınav yok." /> : (
           <div className={t.listGroup}>
             {ranking.map((r, i) => (
-              <Link key={r.store.id} to={`/magazalar?magaza=${r.store.id}`} className={`${t.listRow} min-h-14`}>
+              <button key={r.store.id} type="button" onClick={() => openStore(r.store.id)} className={`${t.listRow} min-h-14`}>
                 <span className={`w-7 text-center text-[17px] font-bold tnum ${i === 0 ? 'text-crema' : 'text-fg-3'}`}>{i + 1}</span>
                 <span className="w-36 sm:w-44 text-[15px] font-medium truncate">{r.store.name}</span>
                 <ProgressBar value={r.avgScore || 0} className="flex-1" />
                 <span className="w-12 text-right text-[15px] font-semibold tnum">%{r.avgScore}</span>
                 <span className="hidden sm:block w-40 text-right text-[13px] text-fg-3 tnum whitespace-nowrap">{r.exams} sınav · %{r.passRate} geçti</span>
-              </Link>
+              </button>
             ))}
           </div>
         )}
@@ -265,14 +306,15 @@ export const BoardOverviewPage: React.FC = () => {
         {att.length === 0 ? <Empty icon="check" text="Şu an aksayan bir iş görünmüyor." /> : (
           <div className={t.listGroup}>
             {att.slice(0, 10).map((a, i) => (
-              <Link key={i} to={a.to} className={t.listRow}>
+              <div key={i} role="button" tabIndex={0} className={t.listRow}
+                onClick={() => (a.topic.kind === 'request' && a.topic.id ? openReq(a.topic.id) : a.topic.kind === 'store' && a.topic.id ? openStore(a.topic.id) : navigate(a.to))}>
                 <span className={t.iconChip(a.tone)}><Icon name="alert" size={15} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-medium leading-snug">{a.text}</div>
                   <div className="text-[13px] text-fg-3 mt-0.5">{a.detail}</div>
                 </div>
                 <AskBtn onClick={() => ask(a.topic)} />
-              </Link>
+              </div>
             ))}
           </div>
         )}
@@ -327,6 +369,7 @@ export const BoardOverviewPage: React.FC = () => {
           )}
         </Section>
       </div>
+      {sheets}
       {sheet}
     </Page>
   );
@@ -341,7 +384,6 @@ type SortKey = 'name' | 'progress' | 'passRate' | 'openRequests' | 'avgResolve' 
 export const BoardStoresPage: React.FC = () => {
   const ctx = useBoardCtx();
   const [period, setPeriod] = usePeriod();
-  const [params, setParams] = useSearchParams();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'progress', dir: -1 });
   const { ask, sheet } = useAsk();
   const rows = useMemo(() => scorecard(ctx, period), [ctx, period]);
@@ -350,13 +392,7 @@ export const BoardStoresPage: React.FC = () => {
     const va = a[sort.key] ?? -1, vb = b[sort.key] ?? -1;
     return ((va as number) - (vb as number)) * sort.dir;
   }), [rows, sort]);
-  const openId = params.get('magaza');
-  const current = rows.find((r) => r.store.id === openId) || null;
-  const openStore = (id: string | null) => {
-    const p = new URLSearchParams(params);
-    if (id) p.set('magaza', id); else p.delete('magaza');
-    setParams(p, { replace: true });
-  };
+  const { openStore, sheets } = useDetailSheets(period, ask);
 
   const cols: { key: SortKey; label: string }[] = [
     { key: 'name', label: 'Mağaza' }, { key: 'progress', label: 'İlerleme' }, { key: 'passRate', label: 'Sınav başarısı' },
@@ -392,15 +428,13 @@ export const BoardStoresPage: React.FC = () => {
       </div>
       <p className="text-[13px] text-fg-3">Sınav başarısı ve ortalama çözüm süresi seçili döneme göredir; ilerleme ve açık talepler bugünün durumudur.</p>
 
-      <Sheet open={!!current} title={current?.store.name || ''} onClose={() => openStore(null)}>
-        {current && <StoreDetail row={current} period={period} onAsk={() => ask({ kind: 'store', id: current.store.id, title: current.store.name })} />}
-      </Sheet>
+      {sheets}
       {sheet}
     </Page>
   );
 };
 
-const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void }> = ({ row, period, onAsk }) => {
+const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void; onOpenReq: (id: string) => void }> = ({ row, period, onAsk, onOpenReq }) => {
   const ctx = useBoardCtx();
   const team = ctx.baristas.filter((b) => b.active && b.storeId === row.store.id)
     .map((b) => ({ b, pct: overallPercent(ctx.modules, ctx.lessons, ctx.progress[b.id] || EMPTY_PROGRESS) }))
@@ -413,7 +447,7 @@ const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void }
           <div key={l} className={`${t.panel} p-3 flex flex-col gap-0.5`}><span className="text-[11px] text-fg-3">{l}</span><span className="text-[17px] font-semibold tnum">{v}</span></div>
         ))}
       </div>
-      <p className="text-[12px] text-fg-3 -mt-1">{period.label} · {row.exams} sınav · {row.requests} talep açıldı{row.joined || row.left ? ` · +${row.joined} / −${row.left} barista` : ''}</p>
+      <p className="text-[12px] text-fg-3 -mt-1">{period.label} · {row.exams} sınav · {row.requests} talep açıldı{row.left ? ` · ${row.left} barista ayrıldı` : ''}</p>
       <Section label={`Ekip · ${team.length}`}>
         <div className={t.listGroup}>
           {team.map(({ b, pct }) => (
@@ -429,11 +463,11 @@ const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void }
         {open.length === 0 ? <Empty icon="check" text="Açık talep yok." /> : (
           <div className={t.listGroup}>
             {open.map((r) => (
-              <Link key={r.id} to={`/isler?talep=${r.id}`} className={t.listRow}>
+              <button key={r.id} type="button" onClick={() => onOpenReq(r.id)} className={t.listRow}>
                 <Badge tone={r.priority === 'urgent' ? 'negative' : 'caution'}>{STATUS[r.status].label}</Badge>
-                <span className="flex-1 min-w-0 text-[13.5px] truncate">{r.title}</span>
-                <span className="text-[11px] text-fg-3">{fmtDate(r.createdAt)}</span>
-              </Link>
+                <span className="flex-1 min-w-0 text-[14.5px] text-left truncate">{r.title}</span>
+                <span className="text-[12px] text-fg-3">{fmtDate(r.createdAt)}</span>
+              </button>
             ))}
           </div>
         )}
@@ -510,7 +544,6 @@ const BULLETIN_KIND = { duyuru: 'Duyuru', kampanya: 'Kampanya', liderlik: 'Lider
 const PROPOSAL_KIND = { lesson: 'Ders', module: 'Modül', track: 'Eğitim yolu', question: 'Soru', bulletin: 'Bülten', order: 'Sıralama', product: 'Yeni ürün' } as const;
 
 export const BoardWorkPage: React.FC = () => {
-  const me = useStaffSession();
   const ctx = useBoardCtx();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('sekme') || 'talep') as WorkTab;
@@ -535,13 +568,7 @@ export const BoardWorkPage: React.FC = () => {
     .sort((x, y) => y.overdue - x.overdue || (x.a.dueAt || Infinity) - (y.a.dueAt || Infinity)), [ctx]);
   const live = bulletins.filter((b) => b.published && (!b.expiresAt || b.expiresAt > now));
 
-  const talepId = params.get('talep');
-  const current = ctx.requests.find((r) => r.id === talepId) || null;
-  const openReq = (r: StoreRequest | null) => {
-    const p = new URLSearchParams(params);
-    if (r) p.set('talep', r.id); else p.delete('talep');
-    setParams(p, { replace: true });
-  };
+  const { openReq, sheets } = useDetailSheets(periodOf('30'), ask);
   const storeName = (id: string) => ctx.stores.find((s) => s.id === id)?.name || '';
 
   const TABS: { id: WorkTab; label: string; n: number }[] = [
@@ -553,7 +580,7 @@ export const BoardWorkPage: React.FC = () => {
   ];
 
   const ReqRow: React.FC<{ r: StoreRequest }> = ({ r }) => (
-    <BoardRequestCard r={r} people={people} onOpen={() => openReq(r)} onAsk={() => ask({ kind: 'request', id: r.id, title: `${r.storeName}: ${r.title}` })} />
+    <BoardRequestCard r={r} people={people} onOpen={() => openReq(r.id)} onAsk={() => ask({ kind: 'request', id: r.id, title: `${r.storeName}: ${r.title}` })} />
   );
 
   return (
@@ -633,18 +660,7 @@ export const BoardWorkPage: React.FC = () => {
         </div>
       ))}
 
-      <Sheet open={!!current} title={current ? `${current.storeName} · ${STATUS[current.status].label}` : ''} onClose={() => openReq(null)}>
-        {current && (
-          <>
-            <RequestSummary r={current} showStore />
-            <RequestThread r={current} side="ops" me={{ uid: me.uid, name: me.name }} readOnly />
-            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd} self-start`}
-              onClick={() => ask({ kind: 'request', id: current.id, title: `${current.storeName}: ${current.title}` })}>
-              <Icon name="message" size={14} /> Bu talebi sor
-            </button>
-          </>
-        )}
-      </Sheet>
+      {sheets}
       {sheet}
     </Page>
   );
@@ -665,17 +681,17 @@ export const BoardReportsPage: React.FC = () => {
 
   const csv = {
     karne: () => downloadCsv(`magaza-karnesi-${slug}`, [
-      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan %', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Katılan', 'Ayrılan'],
+      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan %', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Ayrılan'],
       ...scorecard(ctx, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
-        r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.joined, r.left])
+        r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.left])
     ]),
     barista: () => downloadCsv(`barista-egitim-${slug}`, [
-      ['Barista', 'Mağaza', 'Rol', 'Durum', 'İlerleme %', 'Geçilen modül', 'Dönemde sınav', 'Dönemde geçti', 'İşe başlama (kayıt)'],
+      ['Barista', 'Mağaza', 'Rol', 'Durum', 'İlerleme %', 'Geçilen modül', 'Dönemde sınav', 'Dönemde geçti', 'İşe başlama'],
       ...ctx.baristas.map((b) => {
         const p = ctx.progress[b.id] || EMPTY_PROGRESS;
         const ex = ctx.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided && inP(a.submittedAt));
         return [b.name, storeName(b.storeId), BARISTA_ROLE_LABEL[b.role], b.active ? 'Aktif' : 'Ayrıldı', overallPercent(ctx.modules, ctx.lessons, p),
-          Object.keys(p.modules || {}).length, ex.length, ex.filter((a) => a.passed).length, fmtDate(b.createdAt)];
+          Object.keys(p.modules || {}).length, ex.length, ex.filter((a) => a.passed).length, b.startedAt ? fmtDate(new Date(b.startedAt).getTime()) : fmtDate(b.createdAt)];
       })
     ]),
     talep: () => downloadCsv(`talepler-${slug}`, [
@@ -757,7 +773,7 @@ export const BoardPrintReport: React.FC = () => {
       <section className="flex flex-col gap-2">
         <h2 className="text-[15px] font-semibold">Özet</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Kpi label="Aktif barista / mağaza" value={`${s.activeBaristas} / ${s.stores}`} note={`+${s.joined} katılan · −${s.left} ayrılan`} />
+          <Kpi label="Aktif barista / mağaza" value={`${s.activeBaristas} / ${s.stores}`} note={s.left ? `${s.left} ayrılan` : 'dönemde ayrılan yok'} />
           <Kpi label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} note="aktif baristaların ortalaması" />
           <Kpi label="Sınav başarısı" value={pctText(s.passRate)} note={`${s.exams} sınav${prev.passRate !== null ? ` · önceki %${prev.passRate}` : ''}`} />
            <Kpi label="Ortalama talep çözüm süresi" value={fmtDur(s.avgResolve)} note={`${s.requestsSolved} çözüldü · ${s.openNow} açık`} />
@@ -805,7 +821,7 @@ export const BoardPrintReport: React.FC = () => {
       <section className="flex flex-col gap-2">
         <h2 className="text-[15px] font-semibold">Ekip ve içerik</h2>
         <p className="text-[13px] leading-relaxed">
-          {s.joined} yeni barista katıldı, {s.left} barista ayrıldı{s.turnover !== null ? ` (ayrılma oranı %${s.turnover})` : ''}.
+          {s.left ? `${s.left} barista ayrıldı${s.turnover !== null ? ` (ayrılma oranı %${s.turnover})` : ''}.` : 'Dönemde ayrılan barista yok.'}
           Dönemde {s.published} içerik / bülten yayınlandı; {s.pendingProposals} öneri onay bekliyor. Gecikmiş eğitim görevi: {s.overdueTasks}.
         </p>
       </section>
