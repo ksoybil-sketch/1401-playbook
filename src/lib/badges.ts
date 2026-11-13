@@ -198,51 +198,51 @@ const lessonsDone = (d: Derived, moduleId: string) => {
 };
 
 const P = (key: string, label: string, unit: string, def: number, min: number, max: number): ParamDef => ({ key, label, unit, def, min, max });
-const NOT = (def: number) => P('min', 'En düşük not', '%', def, 50, 100);
-const ORT = (def: number) => P('avg', 'Yol ortalaması', '%', def, 50, 100);
+const NOT = (def: number) => P('min', 'En düşük not', 'puan', def, 50, 100);
+const ORT = (def: number) => P('avg', 'Yol ortalaması', 'puan', def, 50, 100);
 
 export const BADGES: BadgeDef[] = [
   // --- Seviye bitirme ---------------------------------------------------
   {
     id: 'seviye-oryantasyon', title: 'Oryantasyon', group: 'seviye', icon: 'flag', params: [NOT(80)],
-    rule: (p) => `Oryantasyonun tüm derslerini bitir ve sınavını en az %${p.min} ile geç.`,
+    rule: (p) => `Oryantasyonun tüm derslerini bitir ve sınavını en az ${p.min} puanla geç.`,
     check: (d, p) => all(lessonsDone(d, 'hos-geldin'), modulesAt(d, ['hos-geldin'], p.min))
   },
   {
     id: 'seviye-misafir', title: 'Misafir Deneyimi', group: 'seviye', icon: 'users', params: [ORT(85)],
-    rule: (p) => `Misafir Deneyimi yolundaki tüm sınavları geç; yol ortalaman en az %${p.avg} olsun.`,
+    rule: (p) => `Misafir Deneyimi yolundaki tüm sınavları geç; yol ortalaman en az ${p.avg} puan olsun.`,
     check: (d, p) => trackDone(d, 'misafir-deneyimi', p.avg)
   },
   {
     id: 'seviye-icecek', title: 'İçecek Standartları', group: 'seviye', icon: 'coffee', params: [ORT(85)],
-    rule: (p) => `İçecek Standartları yolundaki tüm sınavları geç; yol ortalaman en az %${p.avg} olsun.`,
+    rule: (p) => `İçecek Standartları yolundaki tüm sınavları geç; yol ortalaman en az ${p.avg} puan olsun.`,
     check: (d, p) => trackDone(d, 'icecek-standartlari', p.avg)
   },
   {
     id: 'seviye-isletme', title: 'İşletme Standartları', group: 'seviye', icon: 'store', params: [ORT(85)],
-    rule: (p) => `İşletme Standartları yolundaki tüm sınavları geç; yol ortalaman en az %${p.avg} olsun.`,
+    rule: (p) => `İşletme Standartları yolundaki tüm sınavları geç; yol ortalaman en az ${p.avg} puan olsun.`,
     check: (d, p) => trackDone(d, 'isletme-standartlari', p.avg)
   },
 
   // --- Ustalık -----------------------------------------------------------
   {
     id: 'usta-espresso', title: 'Espresso Ustası', group: 'ustalik', icon: 'coffee', params: [NOT(90)],
-    rule: (p) => `İtalyan Klasikler ve Sıcak Kahveler sınavlarının ikisini de en az %${p.min} ile geç.`,
+    rule: (p) => `İtalyan Klasikler ve Sıcak Kahveler sınavlarının ikisini de en az ${p.min} puanla geç.`,
     check: (d, p) => modulesAt(d, ['italyan-klasikler', 'sicak-kahveler'], p.min)
   },
   {
     id: 'usta-demleme', title: 'Demleme Ustası', group: 'ustalik', icon: 'clock', params: [NOT(90)],
-    rule: (p) => `Demleme ve Türk Kahveleri'nin tüm derslerini bitir, sınavını en az %${p.min} ile geç.`,
+    rule: (p) => `Demleme ve Türk Kahveleri'nin tüm derslerini bitir, sınavını en az ${p.min} puanla geç.`,
     check: (d, p) => all(lessonsDone(d, 'demleme-turk'), modulesAt(d, ['demleme-turk'], p.min))
   },
   {
     id: 'usta-soguk', title: 'Soğuk Bar', group: 'ustalik', icon: 'snowflake', params: [NOT(85)],
-    rule: (p) => `Soğuk Kahveler ve Soğuk İçecekler sınavlarını en az %${p.min} ile geç.`,
+    rule: (p) => `Soğuk Kahveler ve Soğuk İçecekler sınavlarını en az ${p.min} puanla geç.`,
     check: (d, p) => modulesAt(d, ['soguk-kahveler', 'soguk-icecekler'], p.min)
   },
   {
     id: 'usta-misafir', title: 'Misafir Sever', group: 'ustalik', icon: 'award', params: [NOT(90)],
-    rule: (p) => `Karşılama ve Memnuniyet-Şikayet sınavlarının ikisini de en az %${p.min} ile geç.`,
+    rule: (p) => `Karşılama ve Memnuniyet-Şikayet sınavlarının ikisini de en az ${p.min} puanla geç.`,
     check: (d, p) => modulesAt(d, ['misafir-karsilama', 'memnuniyet-sikayet'], p.min)
   },
 
@@ -263,7 +263,7 @@ export const BADGES: BadgeDef[] = [
   },
   {
     id: 'azim', title: 'Azim', group: 'basari', icon: 'refresh', params: [P('fails', 'Kalış sayısı', 'kez', 2, 1, 5), NOT(85)],
-    rule: (p) => `Bir sınavdan en az ${p.fails} kez kalıp sonra en az %${p.min} ile geç.`,
+    rule: (p) => `Bir sınavdan en az ${p.fails} kez kalıp sonra en az ${p.min} puanla geç.`,
     check: (d, p) => {
       let step = 0;
       const byMod = new Map<string, Attempt[]>();
@@ -282,13 +282,13 @@ export const BADGES: BadgeDef[] = [
   {
     id: 'hizli-dogru', title: 'Hızlı ve Doğru', group: 'basari', icon: 'clock',
     params: [P('questions', 'En az soru', 'soru', 10, 5, 30), NOT(95), P('timePct', 'Süre payı', '%', 50, 20, 90)],
-    rule: (p) => `En az ${p.questions} soruluk bir sınavı %${p.min} ve üstü puanla, sürenin %${p.timePct}'inden kısa sürede bitir.`,
+    rule: (p) => `En az ${p.questions} soruluk bir sınavı ${p.min} ve üstü puanla, sürenin %${p.timePct}'inden kısa sürede bitir.`,
     check: (d, p) => status(d.done.some((a) => a.total >= p.questions && (a.score || 0) >= p.min
       && a.submittedAt! - a.startedAt <= a.total * 90000 * (p.timePct / 100)) ? 1 : 0, 1)
   },
   {
     id: 'seri', title: 'Seri', group: 'basari', icon: 'medal', params: [P('count', 'Arka arkaya sınav', 'sınav', 4, 2, 10), NOT(90)],
-    rule: (p) => `Arka arkaya ${p.count} sınavı kalmadan, her birinde en az %${p.min} alarak geç.`,
+    rule: (p) => `Arka arkaya ${p.count} sınavı kalmadan, her birinde en az ${p.min} puan alarak geç.`,
     check: (d, p) => {
       let run = 0, max = 0;
       for (const a of d.done) { run = a.passed && (a.score || 0) >= p.min ? run + 1 : 0; max = Math.max(max, run); }
@@ -439,7 +439,7 @@ function requirements(t: TitleDef, have: Set<string>, names: Record<string, stri
   return [
     { label: `${t.badges} başarım`, met: earned >= t.badges, detail: `${earned}/${t.badges}` },
     ...t.required.map((id) => ({ label: `${names[id] || id} başarımı`, met: have.has(id) })),
-    ...(t.avg ? [{ label: `Not ortalaması %${t.avg}`, met: avg >= t.avg, detail: `%${avg}` }] : []),
+    ...(t.avg ? [{ label: `Not ortalaması ${t.avg} puan`, met: avg >= t.avg, detail: `${avg} puan` }] : []),
     ...(t.days ? [{ label: `${t.days >= 365 ? `${Math.round(t.days / 365)} yıl` : `${t.days} gün`} kıdem`, met: days >= t.days, detail: `${days} gün` }] : [])
   ];
 }

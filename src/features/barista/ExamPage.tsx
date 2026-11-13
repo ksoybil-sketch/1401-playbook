@@ -133,7 +133,7 @@ export const ExamPage: React.FC = () => {
             {[
               ['Soru sayısı', `${size}`],
               ['Süre', `${minutes} dakika`],
-              ['Geçme notu', `%${lesson ? QUIZ_PASS : mod.passScore}`]
+              ['Geçme notu', `${lesson ? QUIZ_PASS : mod.passScore} puan`]
             ].map(([a, b]) => (
               <div key={a} className={`${t.listRowStatic} justify-between`}>
                 <span className="text-[14px] text-fg-2">{a}</span>
@@ -163,10 +163,10 @@ export const ExamPage: React.FC = () => {
     return (
       <Page>
         <div className="flex flex-col items-center text-center gap-3 pt-6">
-          <Ring value={phase.score} size={110} label={`%${phase.score}`} />
+          <Ring value={phase.score} size={110} label={`${phase.score}`} />
           <h1 className="text-[22px] font-bold mt-2">{phase.passed ? 'Tebrikler, geçtin!' : 'Bu sefer olmadı'}</h1>
           <p className="text-[13px] text-fg-3">
-            {phase.correct}/{phase.total} doğru · Geçme notu %{phase.passScore}
+            {phase.score} puan · {phase.correct}/{phase.total} doğru · Geçme notu {phase.passScore}
           </p>
           {phase.timedOut && (
             <p className="text-[12px] text-caution">Süre doldu; sınav o ana kadarki cevaplarınla puanlandı.</p>

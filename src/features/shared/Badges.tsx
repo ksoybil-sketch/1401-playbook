@@ -39,7 +39,7 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
         <div className="flex-1 min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">Önlük rozeti</div>
           <div className="text-[18px] font-bold leading-tight">{title ? title.label : 'Henüz rozet yok'}</div>
-          <div className="text-[12px] text-fg-3">{report.earned} başarım · not ortalaması %{report.avg} · {report.days} gün</div>
+          <div className="text-[12px] text-fg-3">{report.earned} başarım · not ortalaması {report.avg} puan · {report.days} gün</div>
         </div>
         <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={() => setOpen(true)}><Icon name="info" size={14} /> Kurallar</button>
       </div>
@@ -84,7 +84,7 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
             <span className={`self-start inline-flex items-center gap-1 rounded-full border h-6 px-2.5 text-[12px] font-semibold ${TITLE_TONE[x.id]}`}><Icon name="medal" size={13} /> {x.label}</span>
             <span className="text-[13px] text-fg-2">
               {x.badges} başarım · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).filter(Boolean).join(', ') || '—'}
-              {x.avg ? ` · ortalama %${x.avg}` : ''}{x.days ? ` · ${x.days >= 365 ? '1 yıl' : `${x.days} gün`} kıdem` : ''}
+              {x.avg ? ` · ortalama ${x.avg} puan` : ''}{x.days ? ` · ${x.days >= 365 ? '1 yıl' : `${x.days} gün`} kıdem` : ''}
               {x.validDays ? ` · ${x.validDays} gün geçerli` : ''}{x.mode === 'approval' ? ' · Kahve Operasyonu onayıyla' : ''}
             </span>
           </div>

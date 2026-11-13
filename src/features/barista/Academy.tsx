@@ -81,7 +81,7 @@ export const TrackPage: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className={`text-[14px] font-semibold ${st.locked ? 'text-fg-3' : ''}`}>{m.title}</div>
                 <div className="text-[12px] text-fg-3 mt-0.5">
-                  {st.locked ? 'Önceki modülü geçince açılır' : `${st.lessonsDone}/${st.lessons.length} ders${st.passed ? ` · Sınav %${st.score}` : ''}`}
+                  {st.locked ? 'Önceki modülü geçince açılır' : `${st.lessonsDone}/${st.lessons.length} ders${st.passed ? ` · Sınav ${st.score} puan` : ''}`}
                 </div>
               </div>
               {!st.locked && <Icon name="chevronRight" size={16} className={t.rowChevron} />}
@@ -149,9 +149,9 @@ export const ModulePage: React.FC = () => {
           <div className="flex items-start gap-3">
             <span className={t.iconChip(st.passed ? 'positive' : 'accent')}><Icon name={st.passed ? 'award' : 'clipboard'} size={16} /></span>
             <div className="flex-1">
-              <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · %${st.score}` : 'Sınava hazır mısın?'}</div>
+              <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
-                {mod.examSize} soru · Geçme notu %{mod.passScore} · Bu hafta {left}/{EXAMS_PER_WEEK} deneme hakkın kaldı
+                {mod.examSize} soru · Geçme notu {mod.passScore} · Bu hafta {left}/{EXAMS_PER_WEEK} deneme hakkın kaldı
               </div>
             </div>
           </div>
@@ -165,7 +165,7 @@ export const ModulePage: React.FC = () => {
           {myModuleAttempts.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {myModuleAttempts.slice(0, 6).map((a) => (
-                <Badge key={a.id} tone={a.passed ? 'positive' : 'negative'}>%{a.score}</Badge>
+                <Badge key={a.id} tone={a.passed ? 'positive' : 'negative'}>{a.score} puan</Badge>
               ))}
             </div>
           )}

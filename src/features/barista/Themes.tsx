@@ -91,8 +91,8 @@ export const ThemesSection: React.FC = () => {
     if (r.apron && !r.modules.length) return `${r.apron === 'pro' ? 'Pro' : r.apron.charAt(0).toUpperCase() + r.apron.slice(1)} önlük rozeti`;
     const names = r.modules.map((m) => modules.find((x) => x.id === m)?.title || m);
     return names.length > 1
-      ? `Şu sınavların hepsini %${r.minScore} ve üstüyle geç: ${names.join(', ')}`
-      : `${names[0]} sınavını %${r.minScore} ve üstüyle geç`;
+      ? `Şu sınavların hepsini ${r.minScore} ve üstü puanla geç: ${names.join(', ')}`
+      : `${names[0]} sınavını ${r.minScore} ve üstü puanla geç`;
   };
 
   const opened = statuses.filter((x) => x.unlocked).length;

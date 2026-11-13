@@ -238,7 +238,7 @@ export const BoardOverviewPage: React.FC = () => {
   const story: React.ReactNode[] = [];
   if (s.exams) story.push(<>Baristalar <B>{s.exams} sınava</B> girdi; başarı oranı <B>%{s.passRate}</B>{scoreDelta ? <>, ortalama puan önceki döneme göre <B>{scoreDelta > 0 ? `${scoreDelta} puan arttı` : `${-scoreDelta} puan düştü`}</B></> : null}.</>);
   else story.push(<>Bu dönemde sınav yapılmadı.</>);
-  if (best) story.push(<>Dönemin öne çıkan mağazası <B>{best.store.name}</B>: ortalama sınav puanı %{best.avgScore}.</>);
+  if (best) story.push(<>Dönemin öne çıkan mağazası <B>{best.store.name}</B>: ortalama sınav puanı {best.avgScore}.</>);
   story.push(s.requestsSolved
     ? <>Mağazalardan gelen <B>{s.requestsSolved} talep</B> ortalama <B>{fmtDur(s.avgResolve)}</B> içinde çözüldü; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>
     : <>Bu dönemde çözülen talep yok; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>);
@@ -264,18 +264,18 @@ export const BoardOverviewPage: React.FC = () => {
       <div className="grid sm:grid-cols-3 gap-3">
         <div className={`${t.card} p-5 flex flex-col gap-1`}>
           <span className="text-[13px] text-fg-3 font-medium">Zincir ortalama sınav puanı</span>
-          <span className="text-[34px] font-bold tnum leading-none mt-1">{pctText(s.avgScore)}</span>
+          <span className="text-[34px] font-bold tnum leading-none mt-1">{s.avgScore ?? '—'}{s.avgScore !== null && <span className="text-[16px] font-semibold text-fg-3 ml-1.5">puan</span>}</span>
           <span className="text-[13px] text-fg-3">{scoreDelta ? `${scoreDelta > 0 ? '▲' : '▼'} ${Math.abs(scoreDelta)} puan, önceki döneme göre` : `${s.exams} sınav · ${s.examTakers} barista`}</span>
         </div>
         <button type="button" onClick={() => best && openStore(best.store.id)} disabled={!best} className={`${t.cardInteractive} p-5 flex flex-col gap-1 text-left`}>
           <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="award" size={14} /> Dönemin mağazası</span>
           <span className="text-[24px] font-bold leading-tight mt-1">{best?.store.name || '—'}</span>
-          <span className="text-[13px] text-fg-3">{best ? `Ortalama %${best.avgScore} · ${best.exams} sınav · %${best.passRate} geçti` : 'Henüz yeterli sınav yok'}</span>
+          <span className="text-[13px] text-fg-3">{best ? `Ortalama ${best.avgScore} puan · ${best.exams} sınav · %${best.passRate} geçti` : 'Henüz yeterli sınav yok'}</span>
         </button>
         <div className={`${t.card} p-5 flex flex-col gap-1`}>
           <span className="text-[13px] text-fg-3 font-medium flex items-center gap-1.5"><Icon name="medal" size={14} /> Dönemin baristası</span>
           <span className="text-[24px] font-bold leading-tight mt-1">{star?.name || '—'}</span>
-          <span className="text-[13px] text-fg-3">{star ? `${storeName(star.storeId)} · ortalama %${star.avgScore} · ${star.exams} sınav` : 'En az iki sınava giren yok'}</span>
+          <span className="text-[13px] text-fg-3">{star ? `${storeName(star.storeId)} · ortalama ${star.avgScore} puan · ${star.exams} sınav` : 'En az iki sınava giren yok'}</span>
         </div>
       </div>
 
@@ -301,7 +301,7 @@ export const BoardOverviewPage: React.FC = () => {
                 <span className={`w-7 text-center text-[17px] font-bold tnum ${i === 0 ? 'text-crema' : 'text-fg-3'}`}>{i + 1}</span>
                 <span className="w-36 sm:w-44 text-[15px] font-medium truncate">{r.store.name}</span>
                 <ProgressBar value={r.avgScore || 0} className="flex-1" />
-                <span className="w-12 text-right text-[15px] font-semibold tnum">%{r.avgScore}</span>
+                <span className="w-12 text-right text-[15px] font-semibold tnum">{r.avgScore}</span>
                 <span className="hidden sm:block w-40 text-right text-[13px] text-fg-3 tnum whitespace-nowrap">{r.exams} sınav · %{r.passRate} geçti</span>
               </button>
             ))}
@@ -367,7 +367,7 @@ export const BoardOverviewPage: React.FC = () => {
                 <div key={m.id} className={t.listRowStatic}>
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-medium truncate">{m.title}</div>
-                    <div className="text-[12px] text-fg-3">{m.exams} sınav · ortalama %{m.avgScore}</div>
+                    <div className="text-[12px] text-fg-3">{m.exams} sınav · ortalama {m.avgScore} puan</div>
                   </div>
                   <Badge tone={m.passRate < 60 ? 'negative' : m.passRate < 80 ? 'caution' : 'positive'}>%{m.passRate} geçti</Badge>
                 </div>
@@ -688,7 +688,7 @@ export const BoardReportsPage: React.FC = () => {
 
   const csv = {
     karne: () => downloadCsv(`magaza-karnesi-${slug}`, [
-      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan %', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Ayrılan'],
+      ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Ayrılan'],
       ...scorecard(ctx, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
         r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.left])
     ]),
@@ -820,7 +820,7 @@ export const BoardPrintReport: React.FC = () => {
         {mods.length === 0 ? <p className="text-[13px] text-fg-3">Dönemde modül sınavı yok.</p> : (
           <table className="w-full border-collapse">
             <thead><tr><th className={th}>Modül</th><th className={th}>Sınav</th><th className={th}>Geçme</th><th className={th}>Ortalama puan</th></tr></thead>
-            <tbody>{mods.map((m) => <tr key={m.id}><td className={td}>{m.title}</td><td className={td}>{m.exams}</td><td className={td}>%{m.passRate}</td><td className={td}>%{m.avgScore}</td></tr>)}</tbody>
+            <tbody>{mods.map((m) => <tr key={m.id}><td className={td}>{m.title}</td><td className={td}>{m.exams}</td><td className={td}>%{m.passRate}</td><td className={td}>{m.avgScore}</td></tr>)}</tbody>
           </table>
         )}
       </section>

@@ -155,7 +155,7 @@ export const OverviewPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to="/baristalar" />
         <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to="/baristalar?gorunum=tablo" />
-        <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama %${avgScore}` : 'Henüz yok'} icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama ${avgScore} puan` : 'Henüz yok'} icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to="/gorevler?durum=geciken" />
       </div>
 
@@ -214,7 +214,7 @@ export const OverviewPage: React.FC = () => {
             <div className={t.listGroup}>
               {attempts.filter((a) => a.submittedAt && !a.voided).slice(0, 8).map((a) => (
                 <Link key={a.id} to={`/baristalar/${a.baristaId}`} className={t.listRow}>
-                  <Badge tone={a.passed ? 'positive' : 'negative'}>%{a.score}</Badge>
+                  <Badge tone={a.passed ? 'positive' : 'negative'}>{a.score} puan</Badge>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium truncate">{a.baristaName}</div>
                     <div className="text-[12px] text-fg-3 truncate">{a.moduleTitle} · {stores.find((s) => s.id === a.storeId)?.name}</div>
@@ -762,7 +762,7 @@ export const BaristasPage: React.FC = () => {
                       return (
                         <td key={m.id} className="px-2 py-2 text-center">
                           {st.passed ? (
-                            <span className="inline-flex items-center justify-center min-w-11 h-6 px-1.5 rounded-md bg-positive-bg text-positive border border-positive-line font-semibold tnum">%{st.score}</span>
+                            <span className="inline-flex items-center justify-center min-w-11 h-6 px-1.5 rounded-md bg-positive-bg text-positive border border-positive-line font-semibold tnum">{st.score}</span>
                           ) : st.lessonsDone > 0 ? (
                             <span className="text-fg-2 tnum">{st.lessonsDone}/{st.lessons.length}</span>
                           ) : <span className="text-fg-4">—</span>}
@@ -854,7 +854,7 @@ export const BaristaDetailPage: React.FC = () => {
         <Stat label="Genel ilerleme" value={`%${pct}`} icon="target" tone="positive" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <Stat label="Geçilen modül" value={`${Object.keys(p.modules || {}).length}/${modules.filter((m) => m.published).length}`} icon="award" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <Stat label="Tamamlanan ders" value={Object.keys(p.lessons || {}).length} icon="book" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <Stat label="Sınav denemesi" value={mine.length} hint={mine.length ? `Ortalama %${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)}` : undefined} icon="clipboard" onClick={() => document.getElementById('b-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Sınav denemesi" value={mine.length} hint={mine.length ? `Ortalama ${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)} puan` : undefined} icon="clipboard" onClick={() => document.getElementById('b-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 items-start">
@@ -870,7 +870,7 @@ export const BaristaDetailPage: React.FC = () => {
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium truncate">{m.title}</div>
-                    <div className="text-[11px] text-fg-3">{st.lessonsDone}/{st.lessons.length} ders{st.passed ? ` · Geçti %${st.score} (${fmtDate(p.modules[m.id].passedAt)})` : ''}</div>
+                    <div className="text-[11px] text-fg-3">{st.lessonsDone}/{st.lessons.length} ders{st.passed ? ` · Geçti, ${st.score} puan (${fmtDate(p.modules[m.id].passedAt)})` : ''}</div>
                   </div>
                 </div>
               );

@@ -300,7 +300,7 @@ export const ResultsPage: React.FC = () => {
 export const AttemptRow: React.FC<{ a: Attempt; open: boolean; onToggle: () => void; showName?: boolean }> = ({ a, open, onToggle, showName }) => (
   <div className={`${t.card} overflow-hidden`}>
     <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-panel-2 transition-colors">
-      <Badge tone={a.passed ? 'positive' : 'negative'}>%{a.score ?? '–'}</Badge>
+      <Badge tone={a.passed ? 'positive' : 'negative'}>{a.score ?? '–'} puan</Badge>
       <div className="flex-1 min-w-0">
         <div className="text-[14px] font-medium truncate">{showName ? `${a.baristaName} · ` : ''}{a.moduleTitle}</div>
         <div className="text-[12px] text-fg-3">{fmtDateTime(a.submittedAt)} · {a.correct}/{a.total} doğru{a.regradedAt ? ' · hatalı soru iptal edildi, yeniden puanlandı' : ''}</div>

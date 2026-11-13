@@ -105,7 +105,7 @@ export const ContentPage: React.FC = () => {
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium truncate">{m.title}</div>
                       <div className="text-[12px] text-fg-3">
-                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {m.questionCount ?? 0} soru · %{m.passScore} geçme
+                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {m.questionCount ?? 0} soru · geçme notu {m.passScore}
                         {m.prerequisiteId ? ' · Kilitli' : ''}
                       </div>
                     </div>
@@ -313,7 +313,7 @@ export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () 
         </select>
       </label>
       <div className="grid grid-cols-2 gap-3">
-        <label className={t.field}><span className={t.label}>Geçme notu (%)</span><input type="number" className={t.input} value={f.passScore ?? 80} onChange={(e) => setF({ ...f, passScore: Number(e.target.value) })} /></label>
+        <label className={t.field}><span className={t.label}>Geçme notu (100 üzerinden)</span><input type="number" className={t.input} value={f.passScore ?? 80} onChange={(e) => setF({ ...f, passScore: Number(e.target.value) })} /></label>
         <label className={t.field}><span className={t.label}>Sınavdaki soru sayısı</span><input type="number" className={t.input} value={f.examSize ?? 10} onChange={(e) => setF({ ...f, examSize: Number(e.target.value) })} /></label>
       </div>
       <label className={t.field}><span className={t.label}>Önce geçilmesi gereken modül</span>
@@ -357,7 +357,7 @@ export const ModuleEditorPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title={mod.title} subtitle={`${tracks.find((x) => x.id === mod.trackId)?.title || ''} · %${mod.passScore} geçme · sınavda ${mod.examSize} soru`} back="/icerik"
+      <PageTitle title={mod.title} subtitle={`${tracks.find((x) => x.id === mod.trackId)?.title || ''} · geçme notu ${mod.passScore} · sınavda ${mod.examSize} soru`} back="/icerik"
         action={<button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditModule(mod)}><Icon name="sliders" size={15} /> Ayarlar</button>} />
 
       <div className="flex items-center gap-2">
