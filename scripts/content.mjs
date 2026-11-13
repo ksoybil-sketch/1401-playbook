@@ -1231,7 +1231,15 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       // sonraki güncellemede başka bir sorunun yerine geçmez. Metni ve
       // doğru cevabı aynı olan kopya sorular bir kez yazılır.
       const ids = new Set();
+      // Aynı soru metni farklı cevaplarla birden çok kez çıkıyorsa (V60: "Kademe: ___'ye
+      // tamamlayın" → 230 ml mi 340 ml mi?) hangisinin sorulduğu belli olmaz: hepsi ayıklanır.
+      const cevaplar = new Map();
+      m.questions.forEach((q) => {
+        const k = q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+        cevaplar.set(k, new Set([...(cevaplar.get(k) || []), String(q.options[q.answer]).trim()]));
+      });
       m.questions.forEach((q, qi) => {
+        if (cevaplar.get(q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()).size > 1) { giveaways.push(q.prompt); return; }
         if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
         // Cevabı içeceğin adında yazan soru ölçme yapmaz ("Tahinli Latte'de hangisi var? → Tahin").
         if (isGiveaway(q)) { giveaways.push(q.prompt); return; }
@@ -1246,6 +1254,6 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       mm.questionCount = ids.size;
     });
   });
-  if (giveaways.length) console.log(`  ${giveaways.length} soru ayıklandı: cevabı içeceğin adında yazıyor`);
+  if (giveaways.length) console.log(`  ${giveaways.length} soru ayıklandı: cevabı adında yazan ya da aynı metinle farklı cevaplı`);
   return { tracks, modules, lessons, questions };
 }
