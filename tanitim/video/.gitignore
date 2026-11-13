@@ -5,3 +5,4 @@ public/rehber/
 public/rehber-ses/
 # Gizli anahtarlar (ör. GEMINI_API_KEY) — depoya girmez
 .env.local
+.toplu/

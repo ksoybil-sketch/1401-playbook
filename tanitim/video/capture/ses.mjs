@@ -6,12 +6,7 @@
  * Videolar adım sürelerini bu dosyadan alır. Var olan dosya yeniden
  * üretilmez (Gemini kotası için önemli).
  *
- * Her videonun kendi sesi var (PROFIL):
- *   rehber — ElevenLabs, Daniel (çok dilli model; ücretsiz planda ayda ~10.000 kredi).
- *            Ayar "dengelilik/benzerlik/üslup/hız": 0.5/0.8/0.15/0.95 — sakin, net,
- *            yönlendiren anlatım. Eskisi: edge-tts tr-TR-EmelNeural (MOTOR=edge ile hâlâ kullanılabilir).
- *   kurul  — Gemini TTS, Charon, "sakin, sıcak, güven veren, acelesiz" ton
- *            (anahtar .env.local'de; ücretsiz kota günde 10 istek)
+ * Her videonun kendi sesi var: capture/ses-profil.mjs (PROFILLER).
  *
  *   node capture/ses.mjs                     ikisi de, eksik olanlar üretilir
  *   SADECE=kurul node capture/ses.mjs        yalnız kurul
@@ -27,8 +22,7 @@ import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { REHBERLER, cumleler } from '../src/rehber/senaryo.ts';
-import { kurulCumleleri } from '../src/kurul/senaryo.ts';
+import { PROFILLER, spokenOf } from './ses-profil.mjs';
 import { geminiTTS } from './gemini-tts.mjs';
 import { elevenTTS, elevenCredits } from './eleven-tts.mjs';
 
@@ -39,18 +33,10 @@ const UVX = join(process.env.HOME, '.local', 'bin', 'uvx');
 const ALL = process.argv.includes('--hepsi');
 const ONLY = process.env.SADECE;
 
-const PROFILLER = {
-  rehber: { motor: 'eleven', ses: 'onwK4e9ZLuTAKqWW03F9', ayar: '0.5/0.8/0.15/0.95', model: 'eleven_multilingual_v2', cumleler: () => REHBERLER.flatMap(cumleler) },
-  kurul: { motor: 'gemini', ses: 'Charon', ayar: 'Calm, warm and confident; a clear, natural Turkish presentation voice. Unhurried pace.', cumleler: kurulCumleleri }
-};
 
 const jsonPath = join(OUT, 'sesler.json');
 const out = existsSync(jsonPath) ? JSON.parse(readFileSync(jsonPath, 'utf8')) : {};
-// Tırnak ve kesme işaretleri okunmasın; "PIN" harf harf değil "pin" okunsun.
-// Türkçe okunuş: rakamla yazılan marka adı ve İngilizce kelime Türkçe okunsun
-// (ElevenLabs'in sesi İngilizce kökenli; "1401"i İngilizce sayı gibi okumasın).
-const spokenOf = (text) => text.replace(/[“”"«»]/g, '').replace(/PIN/g, 'pin')
-  .replace(/1401/g, 'Bin dört yüz bir').replace(/\bCampus\b/g, 'Kampüs');
+
 
 for (const [ad, p] of Object.entries(PROFILLER)) {
   if (ONLY && ONLY !== ad) continue;
