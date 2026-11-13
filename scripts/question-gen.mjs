@@ -394,3 +394,51 @@ export function recipeNextStep(name, steps) {
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* Adından belli sorular                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cevabı içeceğin adında yazan soru ölçme yapmaz: "Tahinli Latte'de
+ * hangisi var? → Tahin", "Kestane şurubu hangi içecekte? → Chestnut Latte
+ * (Kestaneli)". Sahadan gelen geri bildirimle (13.11.2026) bunlar bankaya
+ * girmez. İngilizce adlar da sayılır (Chestnut = kestane, Pumpkin = balkabağı).
+ */
+const ESANLAM = {
+  kestane: ['chestnut'], antep: ['pistachio'], fıstı: ['pistachio'], balka: ['pumpkin'], karam: ['caramel'],
+  çikol: ['chocolate', 'mocha', 'choco'], vanil: ['vanilla'], çilek: ['strawberry'], fındı: ['hazelnut', 'nut'],
+  hindi: ['coconut'], limon: ['lemon', 'lime'], nane: ['mint', 'menta'], zence: ['ginger'], tarçı: ['cinnamon'],
+  turna: ['cranberry'], çarkı: ['passion'], yulaf: ['oat'], tuzlu: ['salted'], beyaz: ['white'], mor: ['ube']
+};
+const GENEL = new Set(['şurubu', 'şurup', 'sos', 'sosu', 'sauce', 'tozu', 'toz', 'sıcak', 'soğuk', 'ısıtılmış', 'kreması',
+  'krema', 'püresi', 'püre', 'easy', 'mix', 'base', 'sifon', 'çifte', 'kavrulmuş', 'whey', 'taze', 'kurutulmuş', 'dilimi',
+  'shot', 'süt', 'sütü', 'espresso', 'standart', 'ölçek', 'saşe', 'balparmak', 'alpro', 'premium', 'parça', 'drop']);
+const trl = (s) => String(s).toLocaleLowerCase('tr');
+
+/** Malzeme, içeceğin adından (Türkçe ya da İngilizce) okunabiliyor mu. */
+export function nameGivesAway(drink, ingredient) {
+  const name = trl(drink);
+  const tokens = trl(ingredient).replace(/[()&,./-]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !GENEL.has(w));
+  return tokens.some((w) => {
+    const stem = w.slice(0, 5);
+    if (name.includes(stem)) return true;
+    return Object.entries(ESANLAM).some(([k, en]) => stem.startsWith(k.slice(0, Math.min(k.length, stem.length))) && w.startsWith(k) && en.some((e) => name.includes(e)));
+  });
+}
+
+/** Sorunun cevabı içecek adından belli mi (kalıplara göre). */
+export function isGiveaway(q) {
+  const p = q.prompt, ans = q.options[q.answer];
+  let m = p.match(/^Aşağıdaki içeceklerden hangisinin reçetesinde (.+) vardır\?$/);
+  if (m) return nameGivesAway(ans, m[1]);
+  m = p.match(/^Hangi içeceğin reçetesinde [\d.,/ ]+(?:ml|gr|adet)? (.+?) vardır\?/);
+  if (m) return nameGivesAway(ans, m[1]);
+  m = p.match(/^(.+?) reçetesinde (.+) bulunur\.$/);
+  if (m && ans === 'Doğru') return nameGivesAway(m[1], m[2]);
+  m = p.match(/^(.+?) ve .+? karşılaştırması: yalnızca .+? reçetesinde bulunan malzeme hangisi\?$/);
+  if (m) return nameGivesAway(m[1], ans);
+  m = p.match(/^(.+?) reçetesinde aşağıdakilerden hangisi vardır\?$/);
+  if (m) return nameGivesAway(m[1], ans);
+  return false;
+}

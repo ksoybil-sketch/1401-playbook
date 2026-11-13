@@ -179,6 +179,7 @@ console.log('✓ Soru türü denetimi: her modülde en az üç tür var');
  * "40 ml" ile "40 ml (İsteğe Bağlı)" aynı anda şık; tarifteki not satırı
  * ("Önemli Kural: …") adım gibi şık; aynı şık iki kez. Hepsi burada yakalanır.
  */
+const { isGiveaway } = await import('./question-gen.mjs');
 const optProblems = [];
 const numsOf = (s) => (String(s).match(/\d+(?:[.,]\d+)?/g) || []).join('|');
 const NOTE = /^(önemli|not\b|kural|asla|tıpkı|dikkat|ipucu)|oranı\s*=|=\s*\d/i;
@@ -190,10 +191,11 @@ for (const q of data.questions) {
   if (q.kind === 'olcu' && numsOf(ans) && q.options.some((o, i) => i !== q.answer && numsOf(o) === numsOf(ans))) optProblems.push(`doğru cevapla aynı ölçüde yanlış şık: ${tag}`);
   if (q.kind === 'adim' && q.options.some((o) => NOTE.test(o.trim()))) optProblems.push(`not satırı adım şıkkı: ${tag}`);
   if (/ıcehot/.test(q.prompt + q.options.join(' '))) optProblems.push(`"Icehot" küçük harf hatası: ${tag}`);
+  if (isGiveaway(q)) optProblems.push(`cevabı içeceğin adında yazıyor: ${tag}`);
 }
 if (optProblems.length) {
   console.error(`\n✗ Şık denetimi: ${optProblems.length} sorun\n`);
   optProblems.slice(0, 40).forEach((p) => console.error('   ' + p));
   process.exit(1);
 }
-console.log('✓ Şık denetimi: kesik, tekrarlanan, belirsiz şık yok');
+console.log('✓ Şık denetimi: kesik, tekrarlanan, belirsiz ya da cevabı adından belli şık yok');

@@ -18,7 +18,7 @@ import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
 import { EXTRA_QUESTIONS } from './source/extra-questions.mjs';
 import { techniqueQuestions, serviceQuestion, serviceLabel, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions,
-  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep, isNote } from './question-gen.mjs';
+  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep, isNote, isGiveaway } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -1200,7 +1200,7 @@ export const CURRICULUM = [orientation, drinks, guest, operations];
  * eylemi aynı çıktıyı kullanır — tek doğruluk kaynağı.
  */
 export function flattenCurriculum(curriculum = CURRICULUM) {
-  const tracks = [], modules = [], lessons = [], questions = [];
+  const tracks = [], modules = [], lessons = [], questions = [], giveaways = [];
   curriculum.forEach((tr, ti) => {
     tracks.push({ id: tr.id, title: tr.title, description: tr.description, icon: tr.icon, order: ti + 1, published: true });
     tr.modules.forEach((m, mi) => {
@@ -1233,16 +1233,19 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       const ids = new Set();
       m.questions.forEach((q, qi) => {
         if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
+        // Cevabı içeceğin adında yazan soru ölçme yapmaz ("Tahinli Latte'de hangisi var? → Tahin").
+        if (isGiveaway(q)) { giveaways.push(q.prompt); return; }
         const key = `${q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()}|${String(q.options[q.answer]).trim()}`;
         const id = `${m.id}-${createHash('sha1').update(key).digest('hex').slice(0, 10)}`;
         if (ids.has(id)) return;
         ids.add(id);
         // Türkçe küçük harf "Icehot"u "ıcehot" yapıyor: marka adı düzeltilir.
-        const fix = (x) => (typeof x === 'string' ? x.replace(/ıcehot/g, 'Icehot') : x);
+        const fix = (x) => (typeof x === 'string' ? x.replace(/ıcehot/g, 'Icehot').replace(/°c\b/g, '°C') : x);
         questions.push({ id, moduleId: m.id, imageUrl: '', ...q, prompt: fix(q.prompt), options: q.options.map(fix), explanation: fix(q.explanation) });
       });
       mm.questionCount = ids.size;
     });
   });
+  if (giveaways.length) console.log(`  ${giveaways.length} soru ayıklandı: cevabı içeceğin adında yazıyor`);
   return { tracks, modules, lessons, questions };
 }
