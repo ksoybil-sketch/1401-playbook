@@ -456,7 +456,8 @@ export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose:
   };
   const remove = async () => {
     if (!f.id || !confirm('Soru silinsin mi?')) return;
-    const r = await commitChange([{ op: 'delete', col: 'questions', id: f.id }], { kind: 'question', title: (f.prompt || '').slice(0, 90), summary: 'Soru silme' }, proposalId);
+    // moduleId: silmenin yetki alanı denetimi için (silmede belgeye yazılmaz).
+    const r = await commitChange([{ op: 'delete', col: 'questions', id: f.id, data: { moduleId: f.moduleId } }], { kind: 'question', title: (f.prompt || '').slice(0, 90), summary: 'Soru silme' }, proposalId);
     toast(resultText(r, 'Silindi'));
     onClose();
   };
@@ -543,7 +544,7 @@ export const LessonEditorPage: React.FC = () => {
   if (proposalId && pLoading) return <Page wide><Spinner /></Page>;
   if (!lesson || !draft) return <Page wide><PageTitle title="Ders bulunamadı" back="/icerik" /></Page>;
   const mod = modules.find((m) => m.id === lesson.moduleId);
-  const publisher = canPublishNow();
+  const publisher = canPublishNow({ op: 'set', col: 'lessons', id: lesson.id, data: { moduleId: lesson.moduleId } });
   // Bekleyen öneri üzerinde: müdür onaylayarak, öneri sahibi güncelleyerek çalışır.
   const livePid = proposal && proposal.status === 'pending' && (publisher || proposal.createdBy === me.uid) ? proposal.id : null;
   const saveLabel = publisher ? (livePid ? 'Onayla ve yayınla' : 'Kaydet') : livePid ? 'Öneriyi güncelle' : 'Onaya gönder';

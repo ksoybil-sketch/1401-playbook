@@ -4,13 +4,14 @@ import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { answersBoard, can, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { can, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { useAllow, type Perm } from '../../lib/permissions';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
 
-interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean }
+interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean; perm?: Perm }
 
 type StaffSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'staff' }>;
 let lastStaff: StaffSession | null = null;
@@ -39,40 +40,42 @@ export const StaffLayout: React.FC = () => {
   useEffect(() => subscribe(), [subscribe]);
   useEffect(() => { setMore(false); window.scrollTo(0, 0); }, [pathname]);
 
-  const approver = can(s.role, 'approve');
+  const allow = useAllow();
+  const approver = allow(s.role, 'oneriOnay');
   const pendingCount = approver
     ? proposals.filter((p) => p.status === 'pending').length
     : proposals.filter((p) => p.createdBy === s.uid && p.status === 'rejected' && (p.reviewedAt || 0) > Date.now() - 7 * 86400000).length;
   // Yanıt bekleyen talepler: mağaza yazdı, operasyon henüz dönmedi.
   // Yönetim Kurulu'nun bana sorduğu, yanıt bekleyen sorular.
-  const board = useBoardQuestions(answersBoard(s.role));
+  const board = useBoardQuestions(allow(s.role, 'ekran.kurulSorulari'));
   const boardWaiting = board.data.filter((q) => q.status === 'open' && askedTo(q, s.role)).length;
   const openRequests = requests.filter((r) => r.status !== 'done' && r.status !== 'rejected' && r.lastSide === 'store').length;
 
-  const NAV: NavItem[] = [
+  // Her menü satırı Yetkiler ayarına bağlı (perm). Kapalı olan görünmez.
+  const NAV: NavItem[] = ([
     { to: '/', label: 'Genel bakış', short: 'Genel', icon: 'grid', primary: true },
-    { to: '/talepler', label: 'Talepler', icon: 'wrench', badge: openRequests, primary: true },
-    { to: '/onaylar', label: approver ? 'Bekleyen onaylar' : 'Önerilerim', short: approver ? 'Onaylar' : 'Öneriler', icon: 'stamp', badge: pendingCount, primary: true },
-    { to: '/baristalar', label: 'Baristalar', icon: 'users', primary: true },
-    // Yönetim Kurulu'nun soruları: direktör, bölge müdürü ve geliştirici yanıtlar.
-    ...(answersBoard(s.role) ? [{ to: '/kurul-sorulari', label: 'Kurul soruları', icon: 'award' as IconName, badge: boardWaiting }] : []),
-    { to: '/magazalar', label: 'Mağazalar', icon: 'store' },
-    { to: '/gorevler', label: 'Görevler', icon: 'flag' },
-    { to: '/bulten', label: 'Bülten', icon: 'bell' },
-    { to: '/rozetler', label: 'Rozetler', icon: 'medal' },
+    { to: '/talepler', label: 'Talepler', icon: 'wrench', badge: openRequests, primary: true, perm: 'ekran.talepler' },
+    { to: '/onaylar', label: approver ? 'Bekleyen onaylar' : 'Önerilerim', short: approver ? 'Onaylar' : 'Öneriler', icon: 'stamp', badge: pendingCount, primary: true, perm: 'ekran.onaylar' },
+    { to: '/baristalar', label: 'Baristalar', icon: 'users', primary: true, perm: 'ekran.baristalar' },
+    { to: '/kurul-sorulari', label: 'Kurul soruları', icon: 'award', badge: boardWaiting, perm: 'ekran.kurulSorulari' },
+    { to: '/magazalar', label: 'Mağazalar', icon: 'store', perm: 'ekran.magazalar' },
+    { to: '/gorevler', label: 'Görevler', icon: 'flag', perm: 'ekran.gorevler' },
+    { to: '/bulten', label: 'Bülten', icon: 'bell', perm: 'ekran.bulten' },
+    { to: '/rozetler', label: 'Rozetler', icon: 'medal', perm: 'ekran.rozetler' },
     // Yol adı /icerik kalıyor: değiştirmek panelde kayıtlı bağlantıları ve
     // ders editörüne dönüş adreslerini kırardı. Görünen ad "Akademi".
     // Yeni ürün: reçete + mini sınav + bülten + görev tek seferde.
-    { to: '/yeni-urun', label: 'Yeni ürün', icon: 'coffee' },
-    { to: '/icerik', label: 'Akademi', icon: 'layers' },
+    { to: '/yeni-urun', label: 'Yeni ürün', icon: 'coffee', perm: 'ekran.yeniUrun' },
+    { to: '/icerik', label: 'Akademi', icon: 'layers', perm: 'ekran.akademi' },
     // Bütün sınav soruları: düzelt, iptal et, sınavları yeniden puanla.
-    { to: '/soru-havuzu', label: 'Soru havuzu', icon: 'target' },
-    { to: '/geri-bildirim', label: 'Geri bildirim', icon: 'message' },
-    // E-posta bildirim ayarları: Kahve Operasyon Direktörü ve geliştirici.
-    ...(approver ? [{ to: '/bildirimler', label: 'Bildirimler', icon: 'bell' as IconName }] : []),
+    { to: '/soru-havuzu', label: 'Soru havuzu', icon: 'target', perm: 'ekran.soruHavuzu' },
+    { to: '/geri-bildirim', label: 'Geri bildirim', icon: 'message', perm: 'ekran.geriBildirim' },
+    { to: '/bildirimler', label: 'Bildirimler', icon: 'bell', perm: 'ekran.bildirimler' },
+    // Yetkiler: kim neyi görür/değiştirir. Kahve Operasyon Direktörü ve geliştirici (sabit).
+    ...(can(s.role, 'manageTeam') ? [{ to: '/yetkiler', label: 'Yetkiler', icon: 'key' as IconName }] : []),
     // Demo ve emülatör paketinde: demoyu deneyenlerin izi (yalnızca geliştirici).
     ...(ACTIVITY_LOG && can(s.role, 'manageAi') ? [{ to: '/demo-kaydi', label: 'Demo kaydı', icon: 'info' as IconName }] : [])
-  ];
+  ] as NavItem[]).filter((n) => !n.perm || allow(s.role, n.perm));
   const primary = NAV.filter((n) => n.primary);
   const rest = NAV.filter((n) => !n.primary);
   const restBadge = rest.reduce((x, n) => x + (n.badge || 0), 0);

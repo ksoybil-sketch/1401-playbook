@@ -2,7 +2,9 @@ import React, { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
-import { answersBoard, can, isBoard, isManager } from './lib/roles';
+import { can, isBoard, isManager } from './lib/roles';
+import { useAllow, usePermStore } from './lib/permissions';
+import { PermissionsPage } from './features/staff/PermissionsPage';
 import { useBadgeConfig } from './store/badgeConfig';
 import { FullLoader, ToastHost } from './ui/kit';
 import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
@@ -43,6 +45,9 @@ export const App: React.FC = () => {
   const signedIn = session.kind === 'store' || session.kind === 'barista' || session.kind === 'staff';
   const sessionKey = session.kind === 'barista' ? session.baristaId : session.kind === 'staff' ? session.uid : session.kind;
   useEffect(() => (signedIn ? subscribeContent() : undefined), [signedIn, sessionKey, subscribeContent]);
+  // Yetki ayarları (Yetkiler ekranı): panel ve kurul oturumlarında dinlenir.
+  const subscribePerms = usePermStore((s) => s.subscribe);
+  useEffect(() => (session.kind === 'staff' ? subscribePerms() : undefined), [session.kind, sessionKey, subscribePerms]);
   const subscribeBadges = useBadgeConfig((s) => s.subscribe);
   useEffect(() => (signedIn ? subscribeBadges() : undefined), [signedIn, sessionKey, subscribeBadges]);
 
@@ -56,6 +61,8 @@ export const App: React.FC = () => {
 };
 
 const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['session']; contentReady: boolean }> = ({ session, contentReady }) => {
+  const allow = useAllow();
+  const permReady = usePermStore((s) => s.ready);
   switch (session.kind) {
     case 'loading':
       return <FullLoader />;
@@ -105,17 +112,18 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
         </Routes>
       );
     case 'staff':
-      if (!contentReady) return <FullLoader />;
+      // Yetki ayarı gelmeden ekranlar çizilmez (açık bir ekran yanlışlıkla ana sayfaya yönlenmesin).
+      if (!contentReady || !permReady) return <FullLoader />;
       // Yönetim Kurulu: ayrı, salt okunur ekran (src/features/board).
       if (isBoard(session.role)) return (
         <Routes>
           <Route element={<BoardLayout />}>
             <Route index element={<BoardOverviewPage />} />
-            <Route path="magazalar" element={<BoardStoresPage />} />
-            <Route path="isler" element={<BoardWorkPage />} />
-            <Route path="sorular" element={<BoardQuestionsPage side="board" me={session} />} />
-            <Route path="raporlar" element={<BoardReportsPage />} />
-            <Route path="rapor" element={<BoardPrintReport />} />
+            {allow(session.role, 'kurul.magazalar') && <Route path="magazalar" element={<BoardStoresPage />} />}
+            {allow(session.role, 'kurul.isler') && <Route path="isler" element={<BoardWorkPage />} />}
+            {allow(session.role, 'kurul.sorular') && <Route path="sorular" element={<BoardQuestionsPage side="board" me={session} />} />}
+            {allow(session.role, 'kurul.raporlar') && <Route path="raporlar" element={<BoardReportsPage />} />}
+            {allow(session.role, 'kurul.raporlar') && <Route path="rapor" element={<BoardPrintReport />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
@@ -124,24 +132,26 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
         <Routes>
           <Route element={<StaffLayout />}>
             <Route index element={<OverviewPage />} />
-            <Route path="magazalar" element={<StoresPage />} />
-            <Route path="magazalar/:storeId" element={<StoreDetailPage />} />
-            <Route path="baristalar" element={<BaristasPage />} />
-            <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />
-            <Route path="gorevler" element={<TasksPage />} />
-            <Route path="talepler" element={<RequestsPage />} />
-            <Route path="talepler/istatistik" element={<RequestStatsPage />} />
-            <Route path="onaylar" element={<ApprovalsPage />} />
-            <Route path="rozetler" element={<BadgeSettingsPage />} />
-            <Route path="bulten" element={<BulletinPage />} />
-            <Route path="icerik" element={<ContentPage />} />
-            <Route path="yeni-urun" element={<NewProductPage />} />
-            <Route path="geri-bildirim" element={<FeedbackPage />} />
-            <Route path="soru-havuzu" element={<QuestionPoolPage />} />
-            {answersBoard(session.role) && <Route path="kurul-sorulari" element={<BoardQuestionsPage side="ops" me={session} />} />}
-            {can(session.role, 'approve') && <Route path="bildirimler" element={<NotificationsPage />} />}
-            <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
-            <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />
+            {/* Her ekran Yetkiler ayarına bağlı: kapalıysa menüde de yok, adresle de açılmaz. */}
+            {allow(session.role, 'ekran.magazalar') && <Route path="magazalar" element={<StoresPage />} />}
+            {allow(session.role, 'ekran.magazalar') && <Route path="magazalar/:storeId" element={<StoreDetailPage />} />}
+            {allow(session.role, 'ekran.baristalar') && <Route path="baristalar" element={<BaristasPage />} />}
+            {allow(session.role, 'ekran.baristalar') && <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />}
+            {allow(session.role, 'ekran.gorevler') && <Route path="gorevler" element={<TasksPage />} />}
+            {allow(session.role, 'ekran.talepler') && <Route path="talepler" element={<RequestsPage />} />}
+            {allow(session.role, 'ekran.talepler') && <Route path="talepler/istatistik" element={<RequestStatsPage />} />}
+            {allow(session.role, 'ekran.onaylar') && <Route path="onaylar" element={<ApprovalsPage />} />}
+            {allow(session.role, 'ekran.rozetler') && <Route path="rozetler" element={<BadgeSettingsPage />} />}
+            {allow(session.role, 'ekran.bulten') && <Route path="bulten" element={<BulletinPage />} />}
+            {allow(session.role, 'ekran.akademi') && <Route path="icerik" element={<ContentPage />} />}
+            {allow(session.role, 'ekran.yeniUrun') && <Route path="yeni-urun" element={<NewProductPage />} />}
+            {allow(session.role, 'ekran.geriBildirim') && <Route path="geri-bildirim" element={<FeedbackPage />} />}
+            {allow(session.role, 'ekran.soruHavuzu') && <Route path="soru-havuzu" element={<QuestionPoolPage />} />}
+            {allow(session.role, 'ekran.kurulSorulari') && <Route path="kurul-sorulari" element={<BoardQuestionsPage side="ops" me={session} />} />}
+            {allow(session.role, 'ekran.bildirimler') && <Route path="bildirimler" element={<NotificationsPage />} />}
+            {can(session.role, 'manageTeam') && <Route path="yetkiler" element={<PermissionsPage />} />}
+            {allow(session.role, 'ekran.akademi') && <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />}
+            {allow(session.role, 'ekran.akademi') && <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />}
             {ACTIVITY_LOG && can(session.role, 'manageAi') && <Route path="demo-kaydi" element={<DemoLogPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

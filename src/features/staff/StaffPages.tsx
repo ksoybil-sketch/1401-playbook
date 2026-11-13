@@ -18,6 +18,7 @@ import { AttemptRow } from '../barista/HomePages';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
 import type { Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
+import { allowed, domainOf } from '../../lib/permissions';
 import { can, assignableRoles, STAFF_ROLES, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
 const WEEK = 7 * 86400000;
@@ -250,7 +251,7 @@ const StaffTeamSection: React.FC = () => {
   const [role, setRole] = useState<StaffRole>('ops');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rank = (r: StaffRole) => ['board', 'developer', 'admin', 'director', 'regional', 'ops'].indexOf(r);
+  const rank = (r: StaffRole) => ['board', 'developer', 'admin', 'director', 'opsmanager', 'regional', 'ops'].indexOf(r);
 
   const add = async () => {
     setError(null);
@@ -325,6 +326,7 @@ const ROLE_HINT: Record<StaffRole, string> = {
   developer: 'her şeyi görür ve yapar',
   admin: 'her şeyi görür ve yapar',
   director: 'yayınlar, onaylar, ekibi yönetir',
+  opsmanager: 'kahve dışı eğitimleri yayınlar, talepleri yanıtlar ve servis onaylar, bülten yayınlar',
   regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
   ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer',
   board: 'gidişatı, raporları ve süren işleri okur; hiçbir şeyi değiştirmez, soru sorar'
@@ -342,7 +344,7 @@ export const ApronBadgesSection: React.FC = () => {
   const me = useStaffSession();
   const { stores, tracks, modules, lessons } = useContent();
   const { baristas, progress, attempts, assignments } = useStaffData();
-  const canMark = can(me.role, 'approve') || can(me.role, 'manageBaristas');
+  const canMark = allowed(me.role, 'rozetAyar') || can(me.role, 'manageBaristas');
   const badgeConfig = useBadgeConfig((x) => x.config);
   const rows = useMemo(() => baristas.filter((b) => b.active).map((b) => {
     const report = badgeReport({
@@ -815,7 +817,7 @@ export const BaristaDetailPage: React.FC = () => {
       <PageTitle title={b.name} subtitle={`${stores.find((x) => x.id === b.storeId)?.name || ''} · ${BARISTA_ROLE_LABEL[b.role]} · İşe başlama ${b.startedAt ? fmtDate(new Date(b.startedAt).getTime()) : fmtDate(b.createdAt)}`} back />
 
       <div className="flex flex-wrap gap-2">
-        {b.active && <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAssignOpen(true)}><Icon name="flag" size={15} /> Görev ata</button>}
+        {b.active && allowed(s.role, 'gorevAtama') && <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setAssignOpen(true)}><Icon name="flag" size={15} /> Görev ata</button>}
         {manage && <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditOpen(true)}><Icon name="edit" size={15} /> Düzenle</button>}
         {manage && b.active && (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
@@ -879,7 +881,7 @@ export const BaristaDetailPage: React.FC = () => {
 
         <div className="flex flex-col gap-5">
           <TitleCard report={report} />
-          {can(s.role, 'approve') && (
+          {allowed(s.role, 'rozetAyar') && (
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm} self-start`} onClick={() => setBadgeEdit(true)}>
               <Icon name="edit" size={13} /> Rozet ve başarımları düzenle
             </button>
@@ -921,7 +923,7 @@ export const BaristaDetailPage: React.FC = () => {
 
       <EditBaristaSheet open={editOpen} onClose={() => setEditOpen(false)} b={b} />
       <BadgeOverridesSheet open={badgeEdit} onClose={() => setBadgeEdit(false)} b={b} report={report} byName={s.name} />
-      <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} />
+      <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} />
       <CodeSheet code={code} onClose={() => { setCode(null); if (!b.active) navigate('/baristalar'); }} />
     </Page>
   );
@@ -996,7 +998,7 @@ export const TasksPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Görevler" subtitle="Atanan dersler ve sınavlar; tamamlanma otomatik izlenir."
-        action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Görev ata</button>} />
+        action={allowed(s.role, 'gorevAtama') ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Görev ata</button> : undefined} />
       <div className="flex flex-wrap gap-2">
         <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
           <option value="">Tüm mağazalar</option>
@@ -1033,7 +1035,7 @@ export const TasksPage: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="w-24"><ProgressBar value={targets.length ? (done.length / targets.length) * 100 : 0} /></div>
                   <span className="text-[12px] tnum w-10">{done.length}/{targets.length}</span>
-                  {(a.createdBy === s.uid || can(s.role, 'approve')) && (
+                  {(a.createdBy === s.uid || can(s.role, 'manageTeam')) && (
                     <button className={t.iconBtn} title="Sil" onClick={async () => { if (confirm('Görev silinsin mi?')) await deleteDoc(doc(db, 'assignments', a.id)); }}><Icon name="trash" size={14} /></button>
                   )}
                 </div>
@@ -1042,7 +1044,7 @@ export const TasksPage: React.FC = () => {
           })}
         </div>
       )}
-      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: s.name }} baristas={baristas} />
+      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} />
     </Page>
   );
 };

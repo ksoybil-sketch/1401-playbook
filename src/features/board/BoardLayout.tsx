@@ -9,6 +9,7 @@ import { useStaffData } from '../staff/staffData';
 import { useStaffSession } from '../staff/StaffLayout';
 import { ThemePicker, useStaffTheme } from '../staff/theme';
 import { useBoardQuestions } from './BoardQuestions';
+import { useAllow, type Perm } from '../../lib/permissions';
 
 /**
  * Yönetim Kurulu ekranı. Kahve Operasyonu girişinden girilir; panelin
@@ -34,13 +35,15 @@ export const BoardLayout: React.FC = () => {
   // Yanıtı gelmiş, kurulun henüz kapatmadığı sorular.
   const answered = questions.filter((q) => q.status === 'answered').length;
 
-  const NAV: NavItem[] = [
+  // Gidişat her zaman açık; diğerleri Kahve Operasyon Direktörü'nün Yetkiler ayarına bağlı.
+  const allow = useAllow();
+  const NAV = ([
     { to: '/', label: 'Gidişat', icon: 'chart' },
-    { to: '/magazalar', label: 'Mağazalar', icon: 'store' },
-    { to: '/isler', label: 'Süren işler', short: 'İşler', icon: 'list' },
-    { to: '/sorular', label: 'Sorularım', short: 'Sorular', icon: 'message', badge: answered },
-    { to: '/raporlar', label: 'Raporlar', icon: 'download' }
-  ];
+    { to: '/magazalar', label: 'Mağazalar', icon: 'store', perm: 'kurul.magazalar' },
+    { to: '/isler', label: 'Süren işler', short: 'İşler', icon: 'list', perm: 'kurul.isler' },
+    { to: '/sorular', label: 'Sorularım', short: 'Sorular', icon: 'message', badge: answered, perm: 'kurul.sorular' },
+    { to: '/raporlar', label: 'Raporlar', icon: 'download', perm: 'kurul.raporlar' }
+  ] as (NavItem & { perm?: Perm })[]).filter((n) => !n.perm || allow(s.role, n.perm));
 
   const Badge: React.FC<{ n?: number; dot?: boolean }> = ({ n, dot }) =>
     n ? (

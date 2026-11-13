@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BADGES, DEFAULT_TITLES, GROUP_LABEL, TITLE_IDS, resolveConfig, type BadgeConfig, type BadgeGroup, type ResolvedConfig, type TitleId } from '../../lib/badges';
 import { saveBadgeConfig, useBadgeConfig } from '../../store/badgeConfig';
-import { can } from '../../lib/roles';
 import { errorText } from '../../api/backend';
 import { useStaffSession } from './StaffLayout';
+import { allowed } from '../../lib/permissions';
 import { ApronBadgesSection } from './StaffPages';
 import { Icon } from '../../ui/Icon';
 import { useContent } from '../../store/content';
@@ -22,7 +22,7 @@ import * as t from '../../ui/tokens';
  */
 export const BadgeSettingsPage: React.FC = () => {
   const me = useStaffSession();
-  const editable = can(me.role, 'approve');
+  const editable = allowed(me.role, 'rozetAyar');
   const stored = useBadgeConfig((x) => x.config);
   const [draft, setDraft] = useState<ResolvedConfig>(() => resolveConfig(stored));
   const [themes, setThemes] = useState(() => resolveThemeRules(stored?.themes));

@@ -17,6 +17,7 @@ import {
 import { catOf, isClosed, reasonLabel, STATUS } from '../../api/requests';
 import { RequestSummary, RequestThread } from '../shared/Requests';
 import { AskSheet, useOpsPeople, type OpsPeople } from './BoardQuestions';
+import { useAllow } from '../../lib/permissions';
 import { Avatar, Badge, Empty, Page, PageTitle, ProgressBar, Section, Sheet, Stat, fmtDate, fmtDateTime } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
@@ -57,12 +58,18 @@ const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }
 );
 
 /** "Sor" düğmesi: konuyu Kahve Operasyonu'na soru olarak açar. */
-const AskBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Sor' }) => (
+const AskBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Sor' }) => {
+  // "Sorular" kurula kapatıldıysa (Yetkiler) soru düğmeleri de görünmez.
+  const me = useStaffSession();
+  const allow = useAllow();
+  if (!allow(me.role, 'kurul.sorular')) return null;
+  return (
   <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
     className={`${t.btn} ${t.btnSecondary} ${t.btnMd} shrink-0 print:hidden`} title="Kahve Operasyonu'na bu konuyu sor">
     <Icon name="message" size={15} /> {label}
   </button>
-);
+  );
+};
 
 function useAsk() {
   const me = useStaffSession();
@@ -524,7 +531,7 @@ const BoardRequestCard: React.FC<{ r: StoreRequest; people: OpsPeople; onOpen: (
           <Fact label="Açan">{r.createdByName}</Fact>
           <Fact label="İlgilenen">{handler || <span className="text-caution">Henüz kimse</span>}</Fact>
           {r.status === 'approval'
-            ? <Fact label="Onay bekliyor">{people.director || 'Kahve Operasyon Direktörü'}</Fact>
+            ? <Fact label="Onay bekliyor">{[people.director, people.opsmanager].filter(Boolean).join(' / ') || 'Yönetici onayı'}</Fact>
             : approver ? <Fact label="Onaylayan">{approver}</Fact> : null}
           {!closed && r.waitReason && <Fact label="Neyi bekliyor">{reasonLabel(r.waitReason)}</Fact>}
         </div>
@@ -604,7 +611,7 @@ export const BoardWorkPage: React.FC = () => {
 
       {tab === 'onay' && (
         <>
-          <Section label={`Direktör onayındaki servis talepleri · ${approvalReqs.length}`}>
+          <Section label={`Servis onayı bekleyen talepler · ${approvalReqs.length}`}>
             {approvalReqs.length === 0 ? <Empty icon="shield" text="Onay bekleyen servis talebi yok." /> : (
               <div className="flex flex-col gap-2">{approvalReqs.map((r) => <ReqRow key={r.id} r={r} />)}</div>
             )}
@@ -619,7 +626,7 @@ export const BoardWorkPage: React.FC = () => {
                       <div className="text-[12.5px] font-semibold uppercase tracking-[0.06em] text-caution">{PROPOSAL_KIND[p.kind] || 'Öneri'}</div>
                       <div className="text-[17px] font-semibold leading-snug">{p.title}</div>
                       <div className="text-[14px] text-fg-2">{p.summary}</div>
-                      <div className="text-[13px] text-fg-3">Öneren: <b className="font-medium text-fg-2">{p.createdByName}</b> · Onay bekliyor: <b className="font-medium text-fg-2">{people.director || 'Kahve Operasyon Direktörü'}</b> · {Math.round((now - p.createdAt) / 86400000) ? `${Math.round((now - p.createdAt) / 86400000)} gündür` : 'bugün geldi'}</div>
+                      <div className="text-[13px] text-fg-3">Öneren: <b className="font-medium text-fg-2">{p.createdByName}</b> · Onay bekliyor: <b className="font-medium text-fg-2">{[people.director, people.opsmanager].filter(Boolean).join(' / ') || 'yetkili yönetici'}</b> · {Math.round((now - p.createdAt) / 86400000) ? `${Math.round((now - p.createdAt) / 86400000)} gündür` : 'bugün geldi'}</div>
                     </div>
                     <AskBtn onClick={() => ask({ kind: 'proposal', id: p.id, title: `${PROPOSAL_KIND[p.kind] || 'Öneri'}: ${p.title}` })} />
                   </div>

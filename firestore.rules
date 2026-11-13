@@ -31,27 +31,66 @@ service cloud.firestore {
     //              (yalnızca kurul sorusu sorar). isStaff() kurulu KAPSAMAZ:
     //              yazma izinleri isStaff() üzerinden verildiği için kurul
     //              okuma kurallarına ayrıca (canRead) eklenir.
-    function isStaff() { return myRole() in ['developer', 'admin', 'director', 'regional', 'ops']; }
+    function isStaff() { return myRole() in ['developer', 'admin', 'director', 'opsmanager', 'regional', 'ops']; }
     function isBoard() { return myRole() == 'board'; }
     /** Okuma: Kahve Operasyonu ve Yönetim Kurulu. */
     function canRead() { return isStaff() || isBoard(); }
-    /** Kurul sorularını yanıtlayanlar: direktör ve bölge müdürü. */
-    function answersBoard() { return myRole() in ['developer', 'admin', 'director', 'regional']; }
+    // --- Ayarlanabilir yetkiler (src/lib/permissions.ts) ------------------
+    // config/permissions.roles[rol][yetki] = true/false. Belge ya da satır
+    // yoksa her yetkinin yanında yazan varsayılan rol listesi geçerlidir
+    // (permissions.ts DEFAULTS ile aynı — ikisi birlikte değişmeli).
+    // Geliştirici ayarlardan etkilenmez.
+    function permDoc() { return /databases/$(database)/documents/config/permissions; }
+    function perm(cap, defaults) {
+      let r = myRole();
+      let o = exists(permDoc()) ? get(permDoc()).data.get('roles', {}) : {};
+      return r in ['developer', 'admin']
+        || ((r in o && cap in o[r]) ? o[r][cap] == true : r in defaults);
+    }
+    /** Rolün içerik alanı: izinli eğitim yolları; null = her yer. */
+    function domainLimit() {
+      let r = myRole();
+      let d = exists(permDoc()) ? get(permDoc()).data.get('domains', {}) : {};
+      return r in ['developer', 'admin'] ? null
+        : (r in d ? d[r] : (r == 'opsmanager' ? ['oryantasyon', 'misafir-deneyimi', 'isletme-standartlari'] : null));
+    }
+    /** Modülün yolu: aynı toplu yazımda yeni açılan modül için yazım sonrası hâli. */
+    function trackOf(mid) {
+      let p = /databases/$(database)/documents/modules/$(mid);
+      return exists(p) ? get(p).data.trackId : getAfter(p).data.trackId;
+    }
+    function inTrack(trackId) { let lim = domainLimit(); return lim == null || trackId in lim; }
+    function inModule(mid) { let lim = domainLimit(); return lim == null || trackOf(mid) in lim; }
+    /** Yazılan belge: silmede eski hâli. */
+    function docData() { return request.resource != null ? request.resource.data : resource.data; }
+
+    // Varsayılan rol listeleri (yetki → kimde açık)
+    function canPublish() { return perm('icerikYayin', ['director', 'opsmanager']); }
+    function canFixQuestions() { return perm('soruDuzelt', ['director', 'opsmanager']); }
+    function canApproveProposals() { return perm('oneriOnay', ['director', 'opsmanager']); }
+    function canPublishBulletin() { return perm('bultenYayin', ['director', 'opsmanager']); }
+    function canAssign() { return perm('gorevAtama', ['director', 'opsmanager', 'regional', 'ops']); }
+    function canBadges() { return perm('rozetAyar', ['director']); }
+    function canNotifications() { return perm('ekran.bildirimler', ['director']); }
+    function canFeedback() { return perm('ekran.geriBildirim', ['director', 'opsmanager', 'regional']); }
+    /** Kurul sorularını görür / yanıtlar. */
+    function seesBoard() { return perm('ekran.kurulSorulari', ['director', 'opsmanager', 'regional']); }
+    function answersBoard() { return perm('kurulYanit', ['director', 'opsmanager', 'regional']); }
     /** Geri dönüşsüz işler (sınav kaydı silmek) ve rol üstü her şey. */
     function isAdmin() { return myRole() in ['developer', 'admin']; }
     /** İçeriği ve bülteni doğrudan yayınlar, önerileri onaylar. */
     function isDirector() { return myRole() in ['developer', 'admin', 'director']; }
     /** Barista, mağaza telefonu ve davet kodları. */
-    function canManageBaristas() { return myRole() in ['developer', 'admin', 'regional']; }
-    /** Mağaza taleplerini yanıtlar, durumunu değiştirir. */
-    function canHandleRequests() { return myRole() in ['developer', 'admin', 'director', 'regional']; }
+    function canManageBaristas() { return perm('baristaYonetim', ['regional']); }
+    /** Mağaza taleplerini yanıtlar, durumunu değiştirir ya da servis onayı verir. */
+    function canHandleRequests() { return perm('talepYanit', ['director', 'opsmanager', 'regional']) || perm('servisOnay', ['director', 'opsmanager']); }
     function isStoreSession() { return myRole() in ['store', 'barista', 'lead', 'shift']; }
     function isBarista() { return myRole() in ['barista', 'lead', 'shift']; }
     /** Mağaza müdürü ve vardiya müdürü. */
     function isLead() { return myRole() in ['lead', 'shift']; }
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
-    /** Kahve Operasyon Direktörü'nün ekibe verebileceği roller. */
-    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'regional', 'ops', 'admin', 'board'] : ['regional', 'ops']; }
+    /** Ekibe verilebilecek roller: Kahve Operasyon Direktörü kurul dahil ekibi kurar. */
+    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'opsmanager', 'regional', 'ops', 'admin', 'board'] : ['opsmanager', 'regional', 'ops', 'board']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
@@ -62,7 +101,7 @@ service cloud.firestore {
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
       allow list: if isStaff()
         // Kurul, soru sorarken kime soracağını seçmek için direktörü ve bölge müdürünü görür.
-        || (isBoard() && resource.data.role in ['director', 'regional']);
+        || (isBoard() && resource.data.role in ['director', 'opsmanager', 'regional']);
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
       // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
@@ -90,7 +129,7 @@ service cloud.firestore {
     // Yapay zekâ anahtarı (dosyadan ders üretimi, bkz. src/lib/aiLesson.ts).
     // Barista ve mağaza oturumları hiç okuyamaz.
     match /config/ai {
-      allow get: if isDirector() || myRole() == 'regional';
+      allow get: if isDirector() || myRole() in ['opsmanager', 'regional'];
       // Anahtarı yalnızca uygulama geliştiricisi yazar.
       allow write: if isAdmin();
     }
@@ -98,6 +137,13 @@ service cloud.firestore {
     // Rozet ve başarım ayarları: herkes okur, Kahve Operasyon Direktörü yazar.
     match /config/badges {
       allow get: if signedIn();
+      allow write: if canBadges();
+    }
+
+    // Yetki ayarları (Yetkiler ekranı): panel ve kurul okur; yalnızca Kahve
+    // Operasyon Direktörü (ve geliştirici) yazar — bu kural ayarlanamaz.
+    match /config/permissions {
+      allow get: if canRead();
       allow write: if isDirector();
     }
 
@@ -122,10 +168,10 @@ service cloud.firestore {
     // kaydı. Gönderimi sunucu (Cloud Functions, yönetici yetkisiyle) yapar.
     match /config/notifications {
       allow get: if isStaff();
-      allow write: if isDirector();
+      allow write: if canNotifications();
     }
     match /mailLog/{id} {
-      allow read: if isDirector();
+      allow read: if canNotifications();
       allow write: if false;
     }
 
@@ -136,8 +182,8 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.by == request.auth.uid
         && request.resource.data.status == 'yeni'
         && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
-      allow read: if isDirector() || myRole() == 'regional';
-      allow update: if (isDirector() || myRole() == 'regional')
+      allow read: if canFeedback();
+      allow update: if canFeedback()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'updatedAt']);
       allow delete: if false;
     }
@@ -154,7 +200,7 @@ service cloud.firestore {
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
       // Önlük rozeti teslimini Kahve Operasyon Direktörü de işaretler.
       allow update: if canManageBaristas()
-        || (isDirector() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName', 'badgeOverrides']))
+        || (canBadges() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apronBadge', 'apronBadgeAt', 'apronBadgeByName', 'badgeOverrides']))
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinPending']));
     }
@@ -162,23 +208,26 @@ service cloud.firestore {
     // --- İçerik: herkes okur, Kahve Operasyon Direktörü yayınlar ------------
     // Bölge müdürü ve ekip doğrudan yazamaz; değişiklikleri proposals'a
     // düşer (bkz. src/api/changes.ts).
+    // Alan sınırı: Operasyon Müdürü yalnızca kendi eğitim yollarına yazar
+    // (kahve dışı); diğer yollardaki değişikliği öneri olarak gönderir.
+    // Eğitim yolu (track) eklemek/silmek alan sınırı olmayanlara açıktır.
     match /tracks/{id} {
       allow read: if signedIn();
-      allow write: if isDirector();
+      allow write: if isAdmin() || (canPublish() && domainLimit() == null);
     }
     match /modules/{id} {
       allow read: if signedIn();
-      allow write: if isDirector();
+      allow write: if isAdmin() || (canPublish() && inTrack(docData().trackId));
     }
     match /lessons/{id} {
       allow read: if signedIn();
-      allow write: if isDirector();
+      allow write: if isAdmin() || (canPublish() && inModule(docData().moduleId));
     }
     // Soru bankası: sunucu olmadığı için sınav telefonda puanlanır, bu
     // yüzden mağaza oturumları da okuyabilmek zorunda (cevap anahtarı dahil).
     match /questions/{id} {
       allow read: if isStaff() || isStoreSession();
-      allow write: if isDirector();
+      allow write: if isAdmin() || ((canPublish() || canFixQuestions()) && inModule(docData().moduleId));
     }
 
     // --- Onay bekleyen değişiklikler ------------------------------------
@@ -188,7 +237,7 @@ service cloud.firestore {
         && request.resource.data.status == 'pending') || isAdmin();
       // Müdür onaylar/reddeder (ve düzeltip yayınlarken ops'u günceller).
       // Öneri sahibi, bekleyen önerisini düzenler ya da geri çeker.
-      allow update: if isDirector()
+      allow update: if canApproveProposals()
         || (isStaff() && resource.data.createdBy == request.auth.uid && resource.data.status == 'pending'
             && request.resource.data.status in ['pending', 'withdrawn']
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status']));
@@ -229,7 +278,7 @@ service cloud.firestore {
              .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided']);
       // Hatalı soru iptal edilince Kahve Operasyon Direktörü geçmiş sınavları
       // o soru olmadan yeniden puanlar (Soru havuzu); yalnızca puan alanları.
-      allow update: if isDirector() && resource.data.submittedAt != null
+      allow update: if canFixQuestions() && resource.data.submittedAt != null && (isAdmin() || inModule(resource.data.moduleId))
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['score', 'passed', 'correct', 'total', 'mistakes', 'regradedAt', 'regradeNote', 'voidedQuestions']);
       // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
@@ -243,7 +292,7 @@ service cloud.firestore {
       allow create: if canManageBaristas();
       // Barista hem ders tamamlamalarını hem (sunucu olmadığı için) kendi
       // sınav sonucunu yazar; sadece kendi belgesine, sadece bu alanlara.
-      allow update: if canManageBaristas() || isDirector()
+      allow update: if canManageBaristas() || canFixQuestions()
         || (isBarista() && myBaristaId() == baristaId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lessons', 'modules', 'bulletins', 'quizzes', 'theme', 'updatedAt']));
       allow delete: if false;
@@ -260,14 +309,14 @@ service cloud.firestore {
     // arayüzde uygulanıyor.
     match /bulletins/{id} {
       allow read: if canRead() || isStoreSession();
-      allow create, update: if isDirector() && request.resource.data.createdBy is string;
-      allow delete: if isDirector();
+      allow create, update: if canPublishBulletin() && request.resource.data.createdBy is string;
+      allow delete: if canPublishBulletin();
     }
 
     // --- Görevler ------------------------------------------------------
     match /assignments/{id} {
       allow read: if canRead() || inStore(resource.data.storeId);
-      allow create: if ((isStaff() || (isLead() && request.resource.data.storeId == myStoreId()))
+      allow create: if (((isStaff() && canAssign()) || (isLead() && request.resource.data.storeId == myStoreId()))
         && request.resource.data.createdBy == request.auth.uid) || isAdmin();
       // Görevi atayan değiştirir/siler; Kahve Operasyon Direktörü herkesinkini.
       allow update, delete: if isDirector()
@@ -301,10 +350,10 @@ service cloud.firestore {
     // Kurul üyesi sorar; direktör ve bölge müdürü yanıtlar. Kurulun bütün
     // üyeleri bütün soruları görür. Silinmez: sorulan ve verilen yanıt kayıttır.
     match /boardQuestions/{id} {
-      allow read: if isBoard() || answersBoard();
-      allow create: if isBoard() && request.resource.data.createdBy == request.auth.uid
+      allow read: if isBoard() || seesBoard();
+      allow create: if isBoard() && perm('kurul.sorular', ['board']) && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'open' && request.resource.data.lastSide == 'board'
-        && request.resource.data.to in ['director', 'regional', 'both']
+        && request.resource.data.to in ['director', 'opsmanager', 'regional', 'all']
         && request.resource.data.messages.size() == 1;
       // Kurul: ek soru yazar ya da "tamam" deyip kapatır.
       allow update: if (isBoard() && request.resource.data.lastSide == 'board'

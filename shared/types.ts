@@ -25,7 +25,8 @@
 
 /** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
 /** board: Yönetim Kurulu üyesi — her şeyi okur, hiçbir şeyi değiştirmez; Kahve Operasyonu'na soru sorar. */
-export type StaffRole = 'developer' | 'director' | 'regional' | 'ops' | 'admin' | 'board';
+/** opsmanager: Operasyon Müdürü — rütbece direktörle eş, alanı kahve dışı (bkz. src/lib/permissions.ts). */
+export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'ops' | 'admin' | 'board';
 /** lead: mağaza müdürü · shift: vardiya müdürü. */
 export type BaristaRole = 'barista' | 'lead' | 'shift';
 export type Role = StaffRole | BaristaRole | 'store';
@@ -516,8 +517,8 @@ export interface BoardMessage { at: number; by: string; byName: string; side: 'b
 export interface BoardQuestion {
   id: string;
   topic: BoardTopic;
-  /** Kime soruldu: director (Kahve Operasyon Direktörü), regional (Bölge Müdürü) ya da ikisi. */
-  to: 'director' | 'regional' | 'both';
+  /** Kime soruldu: tek bir yönetici ya da hepsi ('both' eski kayıtlarda "hepsi" demektir). */
+  to: 'director' | 'opsmanager' | 'regional' | 'all' | 'both';
   messages: BoardMessage[];
   status: 'open' | 'answered' | 'closed';
   lastSide: 'board' | 'ops';

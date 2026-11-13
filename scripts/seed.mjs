@@ -39,6 +39,7 @@ export const TEST = {
   /** Yetki sıralamasına göre diğer Kahve Operasyonu hesapları. */
   staffExtra: [
     { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol', role: 'director' },
+    { email: 'semihdizdar@1401coffee.com', password: '351925', name: 'Semih Dizdar', role: 'opsmanager' },
     { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğur Can Gürbüz', role: 'regional' },
     // Yönetim Kurulu: salt okunur ekran (src/features/board).
     { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı', role: 'board' },

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
-import { approveProposal, rejectProposal, withdrawProposal } from '../../api/changes';
+import { approveProposal, canPublishOps, rejectProposal, withdrawProposal } from '../../api/changes';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { can } from '../../lib/roles';
@@ -130,7 +130,10 @@ export const ApprovalsPage: React.FC = () => {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => setDetail(p)}><Icon name="search" size={13} /> Ne değişiyor</button>
-                    {p.status === 'pending' && approver && (
+                    {p.status === 'pending' && approver && !canPublishOps(p.ops) && p.createdBy !== me.uid && (
+                      <span className="text-[12.5px] text-fg-3 self-center">Yetki alanınızın dışında: Kahve Operasyon Direktörü onaylar.</span>
+                    )}
+                    {p.status === 'pending' && approver && canPublishOps(p.ops) && (
                       <>
                         {editable(p) && <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => edit(p)}><Icon name="edit" size={13} /> Düzelt ve yayınla</button>}
                         <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => setRejecting(p)}>Reddet</button>
@@ -139,7 +142,7 @@ export const ApprovalsPage: React.FC = () => {
                         </button>
                       </>
                     )}
-                    {p.status === 'pending' && !approver && p.createdBy === me.uid && (
+                    {p.status === 'pending' && !(approver && canPublishOps(p.ops)) && p.createdBy === me.uid && (
                       <>
                         {editable(p) && <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => edit(p)}><Icon name="edit" size={13} /> Düzenle</button>}
                         <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => { await withdrawProposal(p); toast('Öneri geri çekildi'); }}>Geri çek</button>
@@ -153,7 +156,7 @@ export const ApprovalsPage: React.FC = () => {
         )}
       </Section>
 
-      <DiffSheet p={detail} onClose={() => setDetail(null)} onPublish={approver ? publish : undefined} busy={!!detail && busy === detail.id} />
+      <DiffSheet p={detail} onClose={() => setDetail(null)} onPublish={approver && detail && canPublishOps(detail.ops) ? publish : undefined} busy={!!detail && busy === detail.id} />
       <RejectSheet p={rejecting} onClose={() => setRejecting(null)} />
 
       {/* Düzeltme: önerideki veri ilgili editörde açılır; kaydetmek onu yayınlar. */}

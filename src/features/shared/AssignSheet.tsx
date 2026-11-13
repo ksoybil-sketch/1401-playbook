@@ -18,7 +18,9 @@ export const AssignSheet: React.FC<{
   fixedStoreId?: string;
   baristas: Barista[];
   preset?: { baristaId?: string; storeId?: string };
-}> = ({ open, onClose, creator, fixedStoreId, baristas, preset }) => {
+  /** Atayanın içerik alanı (izinli eğitim yolları); yoksa hepsi. */
+  domain?: string[] | null;
+}> = ({ open, onClose, creator, fixedStoreId, baristas, preset, domain }) => {
   const { stores, tracks, modules, lessons } = useContent();
   const [kind, setKind] = useState<AssignmentKind>('module');
   const [targetId, setTargetId] = useState('');
@@ -34,7 +36,7 @@ export const AssignSheet: React.FC<{
 
   const options = useMemo(() => {
     const pubMods = publishedOnly(modules);
-    return publishedOnly(tracks).map((tr) => ({
+    return publishedOnly(tracks).filter((tr) => !domain || domain.includes(tr.id)).map((tr) => ({
       track: tr,
       items: kind === 'module'
         ? pubMods.filter((m) => m.trackId === tr.id).map((m) => ({ id: m.id, title: m.title }))
@@ -42,7 +44,7 @@ export const AssignSheet: React.FC<{
             publishedOnly(lessons).filter((l) => l.moduleId === m.id).map((l) => ({ id: l.id, title: `${m.title} › ${l.title}` }))
           )
     }));
-  }, [kind, tracks, modules, lessons]);
+  }, [kind, tracks, modules, lessons, domain]);
 
   const title = useMemo(() => {
     if (kind === 'module') {

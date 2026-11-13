@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { collection, doc, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { can } from '../../lib/roles';
 import { useStaffSession } from './StaffLayout';
+import { moduleInDomain, useAllow, useDomain } from '../../lib/permissions';
+import { useContent } from '../../store/content';
 import { FEEDBACK_KINDS, FeedbackSheet } from '../shared/Feedback';
 import { Page, PageTitle, Section, Empty, Badge, fmtDateTime, toast } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
@@ -23,12 +24,17 @@ const STATUS: Record<FeedbackStatus, { label: string; tone: 'caution' | 'neutral
 
 export const FeedbackPage: React.FC = () => {
   const me = useStaffSession();
-  // Geliştirici, Kahve Operasyon Direktörü ve Bölge Müdürü gelenleri görür.
-  const canRead = can(me.role, 'approve') || me.role === 'developer' || me.role === 'admin' || me.role === 'regional';
+  // Görenler Yetkiler ayarından ("Geri bildirim" ekranı). Alanı sınırlı rol
+  // (Operasyon Müdürü) alanı dışındaki derslerin içerik bildirimlerini görmez.
+  const allow = useAllow();
+  const canRead = allow(me.role, 'ekran.geriBildirim');
+  const domain = useDomain(me.role);
+  const { modules, lessons } = useContent();
+  const inDomain = (f: Feedback) => !domain || !f.lessonId || moduleInDomain(domain, modules.find((m) => m.id === lessons.find((l) => l.id === f.lessonId)?.moduleId));
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<FeedbackStatus | 'hepsi'>('yeni');
   const { data, loading } = useQueryLive<Feedback>(canRead ? query(collection(db, 'feedback'), orderBy('createdAt', 'desc')) : null, 'feedback');
-  const list = data.filter((f) => tab === 'hepsi' || f.status === tab);
+  const list = data.filter((f) => inDomain(f) && (tab === 'hepsi' || f.status === tab));
 
   const setStatus = async (f: Feedback, status: FeedbackStatus) => {
     try { await updateDoc(doc(db, 'feedback', f.id), { status, updatedAt: Date.now() }); }

@@ -4,11 +4,11 @@ import { collection, query } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { useContent } from '../../store/content';
-import { can } from '../../lib/roles';
 import { disableAndRegrade, enableQuestion } from '../../api/regrade';
 import { errorText } from '../../api/backend';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
+import { moduleInDomain, useAllow, useDomain } from '../../lib/permissions';
 import { QuestionSheet } from './ContentPages';
 import { Page, PageTitle, Section, Sheet, Empty, Badge, Spinner, toast, fmtDateTime } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
@@ -26,11 +26,16 @@ type Filter = 'hepsi' | 'yanlis' | 'bildirilen' | 'iptal' | 'duzeltilen';
 
 export const QuestionPoolPage: React.FC = () => {
   const me = useStaffSession();
-  const director = can(me.role, 'approve');
-  const { modules } = useContent();
+  const allow = useAllow();
+  // Düzeltme/iptal: "Soruları düzelt" yetkisi. Alanı sınırlı rol (Operasyon Müdürü) yalnızca kendi yollarını görür.
+  const director = allow(me.role, 'soruDuzelt');
+  const domain = useDomain(me.role);
+  const { modules: allModules } = useContent();
+  const modules = useMemo(() => allModules.filter((m) => moduleInDomain(domain, m)), [allModules, domain]);
   const attempts = useStaffData((x) => x.attempts);
-  const { data: questions, loading } = useQueryLive<Question>(query(collection(db, 'questions')), 'question-pool');
-  const { data: feedback } = useQueryLive<Feedback>(director || me.role === 'regional' ? query(collection(db, 'feedback')) : null, 'pool-feedback');
+  const { data: allQuestions, loading } = useQueryLive<Question>(query(collection(db, 'questions')), 'question-pool');
+  const questions = useMemo(() => (domain ? allQuestions.filter((q) => modules.some((m) => m.id === q.moduleId)) : allQuestions), [allQuestions, modules, domain]);
+  const { data: feedback } = useQueryLive<Feedback>(allow(me.role, 'ekran.geriBildirim') ? query(collection(db, 'feedback')) : null, 'pool-feedback');
   const [params, setParams] = useSearchParams();
   const [mod, setMod] = useState('');
   const [text, setText] = useState('');

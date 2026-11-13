@@ -177,7 +177,7 @@ export const BulletinSheet: React.FC<{
   /** Onay bekleyen bir öneriden açıldıysa: kaydetmek onu yayınlar/günceller. */
   proposalId?: string | null;
 }> = ({ value, onClose, author, stores, baristas, proposalId }) => {
-  const publisher = canPublishNow();
+  const publisher = canPublishNow({ op: 'set', col: 'bulletins', id: '' });
   const [d, setD] = useState<Draft>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

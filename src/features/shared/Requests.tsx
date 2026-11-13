@@ -52,7 +52,7 @@ const NEXT: Record<RequestStatus, RequestStatus[]> = {
   rejected: ['in_progress']
 };
 const ACTION: Record<RequestStatus, string> = {
-  open: 'Yeniden aç', seen: 'Görüldü', in_progress: 'İşleme al', approval: 'Direktör onayına gönder',
+  open: 'Yeniden aç', seen: 'Görüldü', in_progress: 'İşleme al', approval: 'Servis onayına gönder',
   done: 'Çözüldü', rejected: 'Reddet'
 };
 
@@ -62,7 +62,7 @@ export const RequestThread: React.FC<{
   me: { uid: string; name: string };
   /** Operasyon tarafında hangi durum geçişlerine izin var. */
   canChange?: boolean;
-  /** Onay bekleyen talebi onaylayabilir mi (Kahve Operasyon Direktörü). */
+  /** Onay bekleyen talebi onaylayabilir mi (servis onayı yetkisi: Direktör, Operasyon Müdürü). */
   canApprove?: boolean;
   /** Yalnızca yazışmayı göster (Yönetim Kurulu): yanıt kutusu ve düğmeler yok. */
   readOnly?: boolean;

@@ -27,6 +27,7 @@ export const NOTIFY_EVENTS: { id: NotifyEvent; label: string; when: string; grou
 export const NOTIFY_DEFAULTS: Record<string, NotifyEvent[]> = {
   developer: ['geri_bildirim', 'haftalik_rapor'],
   director: ['talep_acil', 'talep_onay', 'oneri_yeni', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
+  opsmanager: ['talep_acil', 'talep_onay', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
   regional: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_karar', 'talep_geciken', 'oneri_karar', 'kurul_soru', 'gunluk_ozet'],
   board: ['kurul_yanit', 'haftalik_rapor']
 };

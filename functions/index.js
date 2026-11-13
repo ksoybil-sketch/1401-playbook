@@ -58,7 +58,7 @@ export const talepDegisti = onDocumentUpdated({ document: 'requests/{id}', ...op
   if (before.status !== r.status && r.status === 'approval') {
     await send('talep_onay', `Servis onayı bekliyor · ${r.storeName}`, {
       title: `Onayınız bekleniyor: ${r.title}`,
-      lines: [`${esc(r.storeName)} · ${esc(CAT[r.category] || '')}${r.equipment ? ` · ${esc(r.equipment)}` : ''}`, 'Bölge Müdürü yetkili servis için onayınızı istiyor.'],
+      lines: [`${esc(r.storeName)} · ${esc(CAT[r.category] || '')}${r.equipment ? ` · ${esc(r.equipment)}` : ''}`, 'Yetkili servis için onayınız bekleniyor.'],
       button: { label: 'Onaylar', url: app('/talepler?durum=onay') }
     }, ref);
   }
@@ -117,13 +117,14 @@ export const geriBildirim = onDocumentCreated({ document: 'feedback/{id}', ...op
 /* Yönetim Kurulu soruları                                              */
 /* ------------------------------------------------------------------ */
 
-const TO = { director: 'Kahve Operasyon Direktörü', regional: 'Bölge Müdürü', both: 'Direktör ve Bölge Müdürü' };
+const TO = { director: 'Kahve Operasyon Direktörü', opsmanager: 'Operasyon Müdürü', regional: 'Bölge Müdürü', all: 'Bütün yöneticiler', both: 'Bütün yöneticiler' };
+const forMe = (q, p) => q.to === 'all' || q.to === 'both' || !p.role || p.role === q.to || p.role === 'developer';
 
 export const kurulSorusu = onDocumentCreated({ document: 'boardQuestions/{id}', ...opts }, async (e) => {
   const q = e.data?.data();
   if (!q) return;
   // Soru kime sorulduysa ona; rolü bilinmeyen (elle eklenmiş) alıcıya da gider.
-  const to = (await recipients('kurul_soru')).filter((p) => q.to === 'both' || !p.role || p.role === q.to || p.role === 'developer');
+  const to = (await recipients('kurul_soru')).filter((p) => forMe(q, p));
   if (!to.length) return;
   await sendTo(to, 'kurul_soru', `Yönetim Kurulu sorusu · ${q.topic?.title || ''}`, {
     title: `${q.createdByName} soruyor: ${q.topic?.title || ''}`,
@@ -148,7 +149,7 @@ export const kurulYazisma = onDocumentUpdated({ document: 'boardQuestions/{id}',
   }
   const followUp = added.find((m) => m.side === 'board');
   if (followUp) {
-    const to = (await recipients('kurul_soru')).filter((p) => q.to === 'both' || !p.role || p.role === q.to || p.role === 'developer');
+    const to = (await recipients('kurul_soru')).filter((p) => forMe(q, p));
     if (to.length) await sendTo(to, 'kurul_soru', `Kurul ek soru · ${q.topic?.title || ''}`, {
       title: `${followUp.byName} ek soru yazdı: ${q.topic?.title || ''}`,
       lines: [esc(followUp.text)],

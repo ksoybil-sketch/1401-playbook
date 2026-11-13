@@ -1,8 +1,9 @@
 import { addDoc, collection, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import { useSession } from '../store/session';
-import { can } from '../lib/roles';
-import type { ChangeOp, Proposal, ProposalKind } from '../../shared/types';
+import { useContent } from '../store/content';
+import { allowed, domainOf } from '../lib/permissions';
+import type { ChangeOp, Proposal, ProposalKind, StaffRole } from '../../shared/types';
 
 /**
  * İçerik ve bülten yazımının tek kapısı.
@@ -33,10 +34,43 @@ function staff() {
   return s;
 }
 
-/** Yayınlama yetkisi var mı (Cenk Bey ve geliştirici). */
-export function canPublishNow(): boolean {
+/**
+ * Bu değişikliği doğrudan yayınlayabilir mi? Yetki ayarına (Yetkiler ekranı)
+ * ve rolün alanına bakar: Operasyon Müdürü kahve dışı yollarda yayınlar,
+ * kahve içeriğini öneri olarak gönderir. Kurallar (firestore.rules) aynısını
+ * sunucu tarafında da denetler.
+ */
+function opAllowed(role: StaffRole, o: ChangeOp, all: ChangeOp[]): boolean {
+  if (o.col === 'assignments') return allowed(role, 'gorevAtama');
+  if (o.col === 'bulletins') return allowed(role, 'bultenYayin');
+  const may = allowed(role, 'icerikYayin') || (o.col === 'questions' && allowed(role, 'soruDuzelt'));
+  if (!may) return false;
+  const dom = domainOf(role);
+  if (!dom) return true;
+  if (o.col === 'tracks') return false;
+  const { modules, lessons } = useContent.getState();
+  const d = (o.data || {}) as Record<string, unknown>;
+  const trackOfModule = (mid?: unknown) => {
+    if (typeof mid !== 'string') return undefined;
+    return modules.find((m) => m.id === mid)?.trackId
+      ?? (all.find((x) => x.col === 'modules' && x.id === mid)?.data?.trackId as string | undefined);
+  };
+  const track = o.col === 'modules'
+    ? ((d.trackId as string) || modules.find((m) => m.id === o.id)?.trackId)
+    : trackOfModule(d.moduleId ?? (o.col === 'lessons' ? lessons.find((l) => l.id === o.id)?.moduleId : undefined));
+  return !!track && dom.includes(track);
+}
+
+export function canPublishOps(ops: ChangeOp[]): boolean {
   const s = useSession.getState().session;
-  return s.kind === 'staff' && can(s.role, 'publish');
+  return s.kind === 'staff' && ops.length > 0 && ops.every((o) => opAllowed(s.role, o, ops));
+}
+
+/** Yayınlama yetkisi var mı. Hedef verilirse (ör. bir ders) alan sınırına da bakar. */
+export function canPublishNow(target?: ChangeOp): boolean {
+  const s = useSession.getState().session;
+  if (s.kind !== 'staff') return false;
+  return target ? opAllowed(s.role, target, [target]) : allowed(s.role, 'icerikYayin');
 }
 
 /** Firestore `undefined` kabul etmez; öneride saklanan veriyi temizler. */
@@ -61,7 +95,7 @@ export const newId = (col: ChangeOp['col']) => doc(collection(db, col)).id;
 export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId?: string | null): Promise<ChangeResult> {
   const s = staff();
   const data = clean(ops);
-  if (can(s.role, 'publish')) {
+  if (canPublishOps(data)) {
     // Görev (yeni ürün akışı) onaylanınca yayınlayanın adına yazılır:
     // kurallar görevi yalnızca atayanın kendi kimliğiyle yazmasına izin verir.
     const applied = data.map((o) => (o.col === 'assignments' && o.op === 'set'
@@ -94,8 +128,9 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
 /** Son oluşturulan önerinin kimliği — editör, öneri üzerinde düzenlemeye devam edebilsin. */
 export let lastProposalId: string | null = null;
 
-/** Olduğu gibi yayınla. */
+/** Olduğu gibi yayınla. Onaylayanın alanı dışındaysa yayınlanmaz. */
 export async function approveProposal(p: Proposal): Promise<void> {
+  if (!canPublishOps(p.ops)) throw new Error('Bu öneri sizin yetki alanınızın dışında; Kahve Operasyon Direktörü onaylayabilir.');
   await commitChange(p.ops, { kind: p.kind, title: p.title, summary: p.summary }, p.id);
 }
 
@@ -112,4 +147,4 @@ export async function withdrawProposal(p: Proposal): Promise<void> {
 
 /** Kullanıcıya gösterilecek sonuç metni. */
 export const resultText = (r: ChangeResult, applied = 'Kaydedildi') =>
-  r === 'applied' ? applied : 'Onaya gönderildi — Kahve Operasyon Direktörü yayınlayınca görünür';
+  r === 'applied' ? applied : 'Onaya gönderildi — yetkili yönetici yayınlayınca görünür';

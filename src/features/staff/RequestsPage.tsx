@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useContent } from '../../store/content';
 import { CATEGORIES, isClosed, markSeen, STATUS } from '../../api/requests';
 import { can } from '../../lib/roles';
+import { allowed } from '../../lib/permissions';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
 import { RequestSummary, RequestThread } from '../shared/Requests';
@@ -21,7 +22,8 @@ import type { RequestCategory, StoreRequest } from '../../../shared/types';
 export const RequestsPage: React.FC = () => {
   const me = useStaffSession();
   const handle = can(me.role, 'handleRequests');
-  const approver = can(me.role, 'approve');
+  // Servis onayı: Kahve Operasyon Direktörü ve Operasyon Müdürü (Yetkiler ayarı).
+  const approver = allowed(me.role, 'servisOnay');
   const requests = useStaffData((x) => x.requests);
   const { stores } = useContent();
   // Kartlar listeyi süzer; adres çubuğunda da tutulur (?durum=acil) ki

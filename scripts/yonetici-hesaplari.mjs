@@ -1,14 +1,15 @@
 /**
- * Yönetim Kurulu hesaplarını açar (salt okunur "Yönetim Kurulu" ekranı).
- * Demo verisini sıfırlamadan yalnızca bu üç hesabı ekler; yeniden
- * çalıştırmak güvenlidir (hesap varsa rolünü ve adını günceller).
+ * Sonradan eklenen yönetici hesaplarını açar: Operasyon Müdürü (Semih Dizdar)
+ * ve Yönetim Kurulu üyeleri. Demo verisini sıfırlamadan yalnızca bu
+ * hesapları ekler; yeniden çalıştırmak güvenlidir (hesap varsa rolünü ve
+ * adını günceller).
  *
- *   node scripts/kurul-hesaplari.mjs --emulator
- *   node scripts/kurul-hesaplari.mjs --demo        (yalnızca playbook-demo-1401)
+ *   node scripts/yonetici-hesaplari.mjs --emulator
+ *   node scripts/yonetici-hesaplari.mjs --demo        (yalnızca playbook-demo-1401)
  *
- * Canlı sistemde bu betik kullanılmaz: kurul üyelerini uygulama geliştiricisi
- * panelden (Genel bakış → Kahve Operasyonu ekibi → Ekle → Yönetim Kurulu
- * Üyesi) gerçek e-postalarıyla ekler; şifrelerini e-postayla kendileri belirler.
+ * Canlı sistemde bu betik kullanılmaz: kişileri Kahve Operasyon Direktörü
+ * ya da uygulama geliştiricisi panelden (Genel bakış → Kahve Operasyonu
+ * ekibi → Ekle) gerçek e-postalarıyla ekler; şifrelerini e-postayla belirlerler.
  */
 import { readFileSync } from 'node:fs';
 
@@ -38,18 +39,19 @@ if (!EMU) {
 
 // seed.mjs TEST.staffExtra ile aynı (emülatör kurulumu oradan açar).
 const board = [
-  { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı' },
-  { email: 'bulentozgurkilic@1401coffee.com', password: '351925', name: 'Bülent Özgür Kılıç' },
-  { email: 'alpbasar@1401coffee.com', password: '351925', name: 'R. Alp Başar' }
+  { email: 'semihdizdar@1401coffee.com', password: '351925', name: 'Semih Dizdar', role: 'opsmanager' },
+  { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı', role: 'board' },
+  { email: 'bulentozgurkilic@1401coffee.com', password: '351925', name: 'Bülent Özgür Kılıç', role: 'board' },
+  { email: 'alpbasar@1401coffee.com', password: '351925', name: 'R. Alp Başar', role: 'board' }
 ];
 const now = Date.now();
 for (const m of board) {
   let acc = await post(`${IDT}/accounts:signUp?key=${KEY}`, { email: m.email, password: m.password, returnSecureToken: true });
   if (!acc.localId) acc = await post(`${IDT}/accounts:signInWithPassword?key=${KEY}`, { email: m.email, password: m.password, returnSecureToken: true });
   if (!acc.localId) throw new Error(`${m.email} açılamadı: ${JSON.stringify(acc.error)}`);
-  const fields = { role: { stringValue: 'board' }, name: { stringValue: m.name }, email: { stringValue: m.email }, active: { booleanValue: true }, createdAt: { integerValue: String(now) } };
+  const fields = { role: { stringValue: m.role }, name: { stringValue: m.name }, email: { stringValue: m.email }, active: { booleanValue: true }, createdAt: { integerValue: String(now) } };
   const res = await fetch(`${FS}/users/${acc.localId}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
   if (!res.ok) throw new Error(`${m.email} rolü yazılamadı: ${res.status} ${await res.text()}`);
-  console.log(`  kurul: ${m.name} · ${m.email}`);
+  console.log(`  ${m.role}: ${m.name} · ${m.email}`);
 }
 console.log('Hazır.');

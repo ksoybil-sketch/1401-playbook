@@ -10,8 +10,10 @@ import type { BoardMessage, BoardQuestion, BoardTopic } from '../../shared/types
 
 export const TO_LABEL: Record<BoardQuestion['to'], string> = {
   director: 'Kahve Operasyon Direktörü',
+  opsmanager: 'Operasyon Müdürü',
   regional: 'Bölge Müdürü',
-  both: 'Direktör ve Bölge Müdürü'
+  all: 'Bütün yöneticiler',
+  both: 'Bütün yöneticiler'
 };
 
 export const TOPIC_LABEL: Record<BoardTopic['kind'], string> = {

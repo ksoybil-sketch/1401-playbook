@@ -43,7 +43,8 @@ export const NewProductPage: React.FC = () => {
   const navigate = useNavigate();
   const { modules, lessons, stores } = useContent();
   const recipeModules = modules.filter((m) => m.trackId === RECIPE_TRACK_ID).sort((a, b) => a.order - b.order);
-  const publishNow = canPublishNow();
+  // Yeni ürün kahve (içecek standartları) yolunda: alanı dışındaysa öneri olur.
+  const publishNow = canPublishNow({ op: 'set', col: 'modules', id: '', data: { trackId: RECIPE_TRACK_ID } });
 
   const [name, setName] = useState('');
   const [moduleId, setModuleId] = useState('');

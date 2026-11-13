@@ -29,7 +29,7 @@ export function useBoardQuestions(enabled = true) {
 
 /** Soru bana mı soruldu (operasyon tarafı rozet ve süzgeç için). */
 export const askedTo = (q: BoardQuestion, role: StaffRole) =>
-  q.to === 'both' || role === 'developer' || role === 'admin' || q.to === role;
+  q.to === 'all' || q.to === 'both' || role === 'developer' || role === 'admin' || q.to === role;
 
 export const STATUS_LABEL: Record<BoardQuestion['status'], { label: string; tone: 'caution' | 'positive' | 'neutral' }> = {
   open: { label: 'Yanıt bekliyor', tone: 'caution' },
@@ -38,13 +38,13 @@ export const STATUS_LABEL: Record<BoardQuestion['status'], { label: string; tone
 };
 
 interface Person { id: string; name: string; role: StaffRole; active: boolean }
-export interface OpsPeople { director: string; regional: string }
+export interface OpsPeople { director: string; opsmanager: string; regional: string }
 
 /** Kahve Operasyon Direktörü ve Bölge Müdürü'nün adları (kurul bu ikisini listeleyebilir). */
 export function useOpsPeople(): OpsPeople {
-  const { data } = useQueryLive<Person>(query(collection(db, 'users'), where('role', 'in', ['director', 'regional'])), 'board-ops-people');
-  const nameOf = (r: 'director' | 'regional') => data.filter((p) => p.active && p.role === r).map((p) => p.name).join(', ');
-  return { director: nameOf('director'), regional: nameOf('regional') };
+  const { data } = useQueryLive<Person>(query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional'])), 'board-ops-people');
+  const nameOf = (r: 'director' | 'opsmanager' | 'regional') => data.filter((p) => p.active && p.role === r).map((p) => p.name).join(', ');
+  return { director: nameOf('director'), opsmanager: nameOf('opsmanager'), regional: nameOf('regional') };
 }
 
 /**
@@ -85,8 +85,9 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
 
   const options: { id: BoardQuestion['to']; label: string; who: string }[] = [
     { id: 'director', label: TO_LABEL.director, who: people.director },
+    { id: 'opsmanager', label: TO_LABEL.opsmanager, who: people.opsmanager },
     { id: 'regional', label: TO_LABEL.regional, who: people.regional },
-    { id: 'both', label: 'İkisine birden', who: [people.director, people.regional].filter(Boolean).join(' ve ') }
+    { id: 'all', label: 'Hepsine', who: 'Hepsine' }
   ];
   const choice = (on: boolean) => `w-full text-left rounded-xl border px-4 py-3 transition-colors ${on ? 'border-crema bg-panel-3 ring-1 ring-crema/40' : 'border-line bg-panel hover:bg-panel-2'}`;
 
@@ -126,11 +127,11 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
       )}
       <div className="flex flex-col gap-2">
         <span className="text-[14px] font-semibold text-fg-2">Kime?</span>
-        <div className="grid sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {options.map((o) => (
             <button key={o.id} type="button" onClick={() => setTo(o.id)} className={choice(to === o.id)}>
               <div className="text-[15px] font-semibold leading-snug">{o.who || o.label}</div>
-              <div className="text-[12.5px] text-fg-3 mt-0.5 leading-snug">{o.id === 'both' ? 'Direktör ve Bölge Müdürü' : o.label}</div>
+              <div className="text-[12.5px] text-fg-3 mt-0.5 leading-snug">{o.id === 'all' ? 'Direktör, Operasyon Müdürü ve Bölge Müdürü' : o.label}</div>
             </button>
           ))}
         </div>

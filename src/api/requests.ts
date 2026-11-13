@@ -24,7 +24,7 @@ export const STATUS: Record<RequestStatus, { label: string; tone: 'neutral' | 'p
   open: { label: 'Yeni', tone: 'caution' },
   seen: { label: 'Görüldü', tone: 'accent' },
   in_progress: { label: 'İşlemde', tone: 'accent' },
-  approval: { label: 'Direktör onayında', tone: 'caution' },
+  approval: { label: 'Onay bekliyor', tone: 'caution' },
   done: { label: 'Çözüldü', tone: 'positive' },
   rejected: { label: 'Reddedildi', tone: 'negative' }
 };
@@ -35,7 +35,7 @@ export const isClosed = (s: RequestStatus) => s === 'done' || s === 'rejected';
 export const WAIT_REASONS: { id: RequestWaitReason; label: string }[] = [
   { id: 'parca', label: 'Parça / malzeme bekleniyor' },
   { id: 'servis', label: 'Servis randevusu bekleniyor' },
-  { id: 'onay', label: 'Direktör onayı bekleniyor' },
+  { id: 'onay', label: 'Yönetici onayı bekleniyor' },
   { id: 'butce', label: 'Bütçe / fiyat teklifi bekleniyor' },
   { id: 'tedarikci', label: 'Tedarikçi bekleniyor' },
   { id: 'magaza', label: 'Mağazadan bilgi bekleniyor' },
