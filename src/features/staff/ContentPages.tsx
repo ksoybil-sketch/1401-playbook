@@ -444,7 +444,10 @@ export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose:
     const answerText = opts[f.answer ?? 0]?.trim();
     const answer = options.indexOf(answerText);
     if (answer < 0) return setError('Doğru cevap boş bir seçenek olamaz.');
-    const data = { moduleId: f.moduleId!, type: f.type || 'single', prompt: f.prompt.trim(), options, answer, explanation: f.explanation?.trim() || '', imageUrl: f.imageUrl || '', ...(f.kind ? { kind: f.kind } : {}) };
+    // edited: müfredat güncellemesi bu düzeltmeyi ezmez. kaynak 'panel': panelde
+    // eklenen yeni soru güncellemede silinmez.
+    const data = { moduleId: f.moduleId!, type: f.type || 'single', prompt: f.prompt.trim(), options, answer, explanation: f.explanation?.trim() || '', imageUrl: f.imageUrl || '', ...(f.kind ? { kind: f.kind } : {}),
+      ...(f.lessonId ? { lessonId: f.lessonId } : {}), ...(f.id ? { edited: true } : { kaynak: 'panel' }) };
     const r = await commitChange(
       [f.id ? { op: 'update', col: 'questions', id: f.id, data } : { op: 'set', col: 'questions', id: newId('questions'), data }],
       { kind: 'question', title: data.prompt.slice(0, 90), summary: f.id ? 'Soru düzenlendi' : 'Yeni soru' }, proposalId);

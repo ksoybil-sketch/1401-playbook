@@ -1,3 +1,4 @@
+import { ReportQuestionLink } from '../shared/Feedback';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppError, errorText } from '../../api/backend';
@@ -276,5 +277,7 @@ export const MistakeCard: React.FC<{ m: AttemptReviewItem }> = ({ m }) => (
       </div>
     </div>
     {m.explanation && <p className="text-[12px] text-fg-3 leading-relaxed border-t border-line pt-2.5">{m.explanation}</p>}
+    {/* Hatalı soru: doğrudan Soru havuzuna bildirim olarak düşer. */}
+    <ReportQuestionLink questionId={m.questionId} prompt={m.prompt} />
   </div>
 );

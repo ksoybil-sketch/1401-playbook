@@ -59,6 +59,8 @@ export const StaffLayout: React.FC = () => {
     // Yeni ürün: reçete + mini sınav + bülten + görev tek seferde.
     { to: '/yeni-urun', label: 'Yeni ürün', icon: 'coffee' },
     { to: '/icerik', label: 'Akademi', icon: 'layers' },
+    // Bütün sınav soruları: düzelt, iptal et, sınavları yeniden puanla.
+    { to: '/soru-havuzu', label: 'Soru havuzu', icon: 'target' },
     { to: '/geri-bildirim', label: 'Geri bildirim', icon: 'message' },
     // E-posta bildirim ayarları: Kahve Operasyon Direktörü ve geliştirici.
     ...(approver ? [{ to: '/bildirimler', label: 'Bildirimler', icon: 'bell' as IconName }] : []),

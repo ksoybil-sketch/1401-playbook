@@ -300,7 +300,8 @@ export function amountToDrinkQuestion(recipe, name, moduleRecipes, nameOf, nth =
     const wrong = seeded([...new Set([...others, ...pad])], key + amt).slice(0, 3);
     if (wrong.length < 3) continue;
     return Q(
-      `Hangi içeceğin reçetesinde ${amt} ${lc(ing.name)} vardır?`,
+      // Çift ölçü ("15 / 20 ml") küçük / büyük bardak içindir; soru bunu söyler.
+      `Hangi içeceğin reçetesinde ${amt} ${lc(ing.name)} vardır?${/\d\s*\/\s*\d/.test(amt) ? ' (küçük / büyük bardak)' : ''}`,
       name, wrong,
       `${name}: ${recipe.ing.map((i) => `${i.name} ${i.amt}`).join(', ')}.`,
       'eslestir'

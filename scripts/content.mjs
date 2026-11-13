@@ -11,6 +11,7 @@
  * İçerik editöründen yönetilir.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
@@ -443,15 +444,48 @@ function recipeQuestions(lessons, allRecipes) {
       const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
     });
+    // Ölçü soruları boyu açıkça söyler. İki boylu reçetede "40 / 60 ml"
+    // (8 oz / 12 oz) ile tek ölçü "40 ml" aynı şıklarda olunca soru
+    // belirsizleşiyordu: "40 ml" 8 oz için doğru cevaptı (Cenk Bey'in
+    // bildirdiği hata). Kural: çift ölçü sorusunda bütün şıklar çift
+    // ölçüdür; tek ölçüde bütün şıklar tek ölçüdür; iki boyda aynı olan
+    // ölçü bunu söyler; büyük boy için ayrıca tek ölçülü soru sorulur.
+    const pair = (a) => a.match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*(.*)$/);
+    const sizes = l._cup && l._cup.includes('/') ? l._cup.split('/').map((x) => x.trim()) : null;
+    const pairVariants = (a) => {
+      const m = pair(a);
+      if (!m) return [];
+      const x = parseFloat(m[1].replace(',', '.')), y = parseFloat(m[2].replace(',', '.')), unit = m[3];
+      const st = (n) => (n >= 100 ? 30 : n >= 20 ? 10 : n >= 5 ? 5 : 1);
+      return [[x - st(x), y - st(y)], [x + st(x), y + st(y)], [x, y + 2 * st(y)], [x + st(x), y]]
+        .filter(([u, v]) => u > 0 && v > 0 && u < v).map(([u, v]) => `${Math.round(u)} / ${Math.round(v)} ${unit}`.trim());
+    };
     for (const ing of ranked) {
-      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
-      const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
+      const amt = ing.amt.trim();
+      const isPair = !!pair(amt);
+      const same = (a) => a.replace(/\s/g, '') === amt.replace(/\s/g, '');
+      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])]
+        .filter((a) => !same(a) && /\d/.test(a) && !!pair(a) === isPair);
+      const wrong = [...new Set([...pool, ...(isPair ? pairVariants(amt) : numericVariants(amt))])].filter((a) => !same(a)).slice(0, 3);
       if (wrong.length < 3) continue;
+      const ingName = ing.name.toLocaleLowerCase('tr');
+      const tag = isPair && sizes ? ` (${sizes.join(' / ')})` : sizes ? ` (${sizes.join(' ve ')} için aynı)` : l._cup ? ` (${l._cup})` : '';
       out.push(Q(
-        `${name} reçetesinde ${ing.name.toLocaleLowerCase('tr')} ölçüsü nedir?`,
-        ing.amt.trim(), wrong,
+        `${name} reçetesinde ${ingName} ölçüsü nedir?${tag}`,
+        amt, wrong,
         `Ölçü, 1401'in imzasıdır: aynı içecek her şubede, her baristada aynı tatta çıkmalı — fazlası da azı da misafirin tanıdığı lezzeti bozar. ${name}: ${recipeLine(r)}.`
       ));
+      // Büyük boy için tek ölçülü soru: hangi boyun sorulduğu açık.
+      const m = pair(amt);
+      if (m && sizes && sizes[1]) {
+        const big = `${m[2]} ${m[3]}`.trim(), small = `${m[1]} ${m[3]}`.trim();
+        const w = [...new Set([small, ...numericVariants(big)])].filter((a) => a.replace(/\s/g, '') !== big.replace(/\s/g, '')).slice(0, 3);
+        if (w.length === 3) out.push(Q(
+          `${sizes[1]} ${name} için ${ingName} ne kadar?`,
+          big, w,
+          `${name}: ${ing.name} ${amt} (${sizes.join(' / ')}). ${sizes[1]} için ${big}.`
+        ));
+      }
     }
     // Porsiyon sorusu yalnızca modülde ayırt edici ise: lattelerin hepsi
     // 8 oz / 12 oz iken her biri için ayrı soru, aynı cevabı tekrar ettirir.
@@ -552,7 +586,7 @@ function recipeQuestions(lessons, allRecipes) {
   });
 
   // Tür etiketi verilmemiş eski şablonlar
-  const kindOf = (p) => /ölçüsü nedir/.test(p) ? 'olcu' : /porsiyonda/.test(p) ? 'porsiyon' : /YOKTUR/.test(p) ? 'malzeme'
+  const kindOf = (p) => /ölçüsü nedir|için .* ne kadar\?/.test(p) ? 'olcu' : /porsiyonda/.test(p) ? 'porsiyon' : /YOKTUR/.test(p) ? 'malzeme'
     : /ilk adım/.test(p) ? 'adim' : /espresso bardağın/.test(p) ? 'katman' : 'genel';
   out.forEach((q) => { if (!q.kind) q.kind = kindOf(q.prompt); });
   return out;
@@ -1182,10 +1216,21 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       const mm = modules[modules.length - 1];
       mm.examSize = examSizeFor(m.examSize, m.questions.length);
       mm.questionCount = m.questions.length;
+      // Kimlik sorunun içeriğinden: aynı soru her müfredat güncellemesinde
+      // aynı kimliği alır (araya soru eklenince kaymaz). Böylece Kahve
+      // Operasyon Direktörü'nün panelde düzelttiği ya da iptal ettiği soru,
+      // sonraki güncellemede başka bir sorunun yerine geçmez. Metni ve
+      // doğru cevabı aynı olan kopya sorular bir kez yazılır.
+      const ids = new Set();
       m.questions.forEach((q, qi) => {
         if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
-        questions.push({ id: `${m.id}-q${String(qi + 1).padStart(3, '0')}`, moduleId: m.id, imageUrl: '', ...q });
+        const key = `${q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()}|${String(q.options[q.answer]).trim()}`;
+        const id = `${m.id}-${createHash('sha1').update(key).digest('hex').slice(0, 10)}`;
+        if (ids.has(id)) return;
+        ids.add(id);
+        questions.push({ id, moduleId: m.id, imageUrl: '', ...q });
       });
+      mm.questionCount = ids.size;
     });
   });
   return { tracks, modules, lessons, questions };

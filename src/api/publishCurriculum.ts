@@ -124,6 +124,12 @@ export async function publishCurriculum(
           // Panelden yapılan düzenlemeler ezilmesin.
           if (typeof prev.published === 'boolean') data.published = prev.published;
           if (col === 'questions' && typeof prev.imageUrl === 'string' && prev.imageUrl) data.imageUrl = prev.imageUrl;
+          // Soru havuzunda düzeltilen soru (edited) olduğu gibi kalır; iptal
+          // edilen sorunun iptali (disabled) korunur.
+          if (col === 'questions' && prev.edited) Object.assign(data, prev);
+          if (col === 'questions' && prev.disabled) {
+            for (const k of ['disabled', 'disabledReason', 'disabledByName', 'disabledAt']) data[k] = prev[k];
+          }
 
           // Elle düzeltilmiş bardak şeması korunur. Reçete dosyasındaki
           // gramaj yanlışsa Kahve Operasyonu panelden düzeltiyor; bu düzeltme

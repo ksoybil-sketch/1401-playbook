@@ -109,7 +109,7 @@ function argVal(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-let writeAll, deleteStale, setDoc, addDoc, delDoc, ensureUser, signInAs;
+let writeAll, deleteStale, setDoc, addDoc, delDoc, ensureUser, signInAs, readQuestionFlags;
 
 if (EMULATOR) {
   // Emülatörde kimlik sorunu yok (FIRESTORE_EMULATOR_HOST env'i Admin SDK'yı
@@ -146,6 +146,10 @@ if (EMULATOR) {
       await batch.commit();
     }
     if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
+  };
+  readQuestionFlags = async () => {
+    const snap = await db.collection('questions').get();
+    return new Map(snap.docs.filter((d) => d.get('edited') || d.get('disabled')).map((d) => [d.id, d.data()]));
   };
 } else {
   // Gerçek projede servis hesabı anahtarı aramak yerine, zaten var olan bir
@@ -314,6 +318,24 @@ if (EMULATOR) {
     if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
   };
 
+  /** Soru havuzunda düzeltilen (edited) ya da iptal edilen (disabled) sorular. */
+  readQuestionFlags = async () => {
+    const out = new Map();
+    let pageToken = '';
+    do {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/questions?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      const body = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } }).then((x) => x.json());
+      for (const d of body.documents || []) {
+        const f = d.fields || {};
+        if (f.edited?.booleanValue || f.disabled?.booleanValue) {
+          out.set(d.name.split('/').pop(), Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.stringValue ?? v.booleanValue ?? (v.integerValue !== undefined ? Number(v.integerValue) : v.doubleValue ?? (v.arrayValue ? (v.arrayValue.values || []).map((x) => x.stringValue) : null))])));
+        }
+      }
+      pageToken = body.nextPageToken || '';
+    } while (pageToken);
+    return out;
+  };
+
   if (DEMO && adminUid) {
     // Müfredat yazmak "admin" rolü ister; rol belgesi her şeyden önce yazılır.
     // İlk çalıştırmada kurallar bunu yalnızca config/bootstrap yokken kabul
@@ -334,7 +356,15 @@ console.log('Müfredat yükleniyor…');
 await writeAll('tracks', data.tracks);
 await writeAll('modules', data.modules);
 await writeAll('lessons', data.lessons);
-await writeAll('questions', data.questions);
+// Soru havuzunda düzeltilen soru ezilmez; iptal edilen sorunun iptali korunur.
+const flags = await readQuestionFlags();
+await writeAll('questions', data.questions
+  .filter((q) => !flags.get(q.id)?.edited)
+  .map((q) => {
+    const f = flags.get(q.id);
+    return f?.disabled ? { ...q, disabled: true, disabledReason: f.disabledReason || '', disabledByName: f.disabledByName || '', disabledAt: f.disabledAt || 0 } : q;
+  }));
+if (flags.size) console.log(`  questions: ${[...flags.values()].filter((f) => f.edited).length} düzeltilmiş soru korundu, ${[...flags.values()].filter((f) => f.disabled).length} iptal korundu`);
 
 // Menü/müfredat değiştiğinde eskisinden kalan belgeleri temizle.
 console.log('Eski içerik temizleniyor…');

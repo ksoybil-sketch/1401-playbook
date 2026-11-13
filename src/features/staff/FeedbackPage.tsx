@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, doc, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useQueryLive } from '../../hooks/useFirestore';
@@ -62,6 +63,11 @@ export const FeedbackPage: React.FC = () => {
                         <span className="text-[12px] text-fg-3 ml-auto">{fmtDateTime(f.createdAt)}</span>
                       </div>
                       <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{f.text}</p>
+                      {f.questionId && (
+                        <Link to={`/soru-havuzu?soru=${f.questionId}`} className="text-[13px] rounded-lg bg-panel-2 px-3 py-2 hover:bg-panel-3">
+                          Soru: {f.questionPrompt} <span className="text-fg-3">· Soru havuzunda aç →</span>
+                        </Link>
+                      )}
                       {f.imageUrl && <img src={f.imageUrl} alt="" className="max-h-64 self-start rounded-lg border border-line" loading="lazy" />}
                       <div className="text-[12px] text-fg-3">
                         {f.byName}{f.storeName ? ` · ${f.storeName}` : ''} · ekran {f.path}{f.lessonTitle ? ` · ${f.lessonTitle}` : ''} · {f.device} · {f.version}

@@ -18,6 +18,7 @@ import { RequestStatsPage } from './features/staff/RequestStatsPage';
 import { NewProductPage } from './features/staff/NewProductPage';
 import { FeedbackPage } from './features/staff/FeedbackPage';
 import { NotificationsPage } from './features/staff/NotificationsPage';
+import { QuestionPoolPage } from './features/staff/QuestionPoolPage';
 import { ApprovalsPage } from './features/staff/ApprovalsPage';
 import { BadgeSettingsPage } from './features/staff/BadgeSettingsPage';
 import { StaffLayout } from './features/staff/StaffLayout';
@@ -119,6 +120,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="icerik" element={<ContentPage />} />
             <Route path="yeni-urun" element={<NewProductPage />} />
             <Route path="geri-bildirim" element={<FeedbackPage />} />
+            <Route path="soru-havuzu" element={<QuestionPoolPage />} />
             {can(session.role, 'approve') && <Route path="bildirimler" element={<NotificationsPage />} />}
             <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />
             <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />

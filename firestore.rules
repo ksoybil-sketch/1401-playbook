@@ -216,6 +216,11 @@ service cloud.firestore {
         && resource.data.submittedAt == null
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided']);
+      // Hatalı soru iptal edilince Kahve Operasyon Direktörü geçmiş sınavları
+      // o soru olmadan yeniden puanlar (Soru havuzu); yalnızca puan alanları.
+      allow update: if isDirector() && resource.data.submittedAt != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['score', 'passed', 'correct', 'total', 'mistakes', 'regradedAt', 'regradeNote', 'voidedQuestions']);
       // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
       // Yalnızca admin, hatalı/deneme kayıtlarını temizlemek ve demo
       // ortamını sıfırlamak için silebilir.

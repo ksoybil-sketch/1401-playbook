@@ -303,7 +303,7 @@ export const AttemptRow: React.FC<{ a: Attempt; open: boolean; onToggle: () => v
       <Badge tone={a.passed ? 'positive' : 'negative'}>%{a.score ?? '–'}</Badge>
       <div className="flex-1 min-w-0">
         <div className="text-[14px] font-medium truncate">{showName ? `${a.baristaName} · ` : ''}{a.moduleTitle}</div>
-        <div className="text-[12px] text-fg-3">{fmtDateTime(a.submittedAt)} · {a.correct}/{a.total} doğru</div>
+        <div className="text-[12px] text-fg-3">{fmtDateTime(a.submittedAt)} · {a.correct}/{a.total} doğru{a.regradedAt ? ' · hatalı soru iptal edildi, yeniden puanlandı' : ''}</div>
       </div>
       {(a.mistakes?.length || 0) > 0 && <Icon name={open ? 'arrowUp' : 'arrowDown'} size={15} className="text-fg-3" />}
     </button>

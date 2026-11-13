@@ -56,11 +56,20 @@ function shuffle<T>(arr: T[]): T[] {
  * önce gelir; hepsini gördüyse en uzun süredir görmedikleri. Yalnızca
  * rastgele seçmek, art arda girilen sınavlarda aynı soruları getiriyordu.
  */
-export function pickQuestions<T extends { id: string; kind?: string }>(
+export function pickQuestions<T extends { id: string; kind?: string; prompt?: string }>(
   pool: T[], size: number, missed: Set<string>, seenAt: Map<string, number> = new Map()
 ): T[] {
+  // Aynı metinli iki soru (farklı kayıtlar) aynı sınava girmesin.
+  const keyOf = (q: T) => (q.prompt || q.id).toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+  const usedKeys = new Set<string>();
   const fromMissed = Math.min(Math.floor(size / 3), pool.filter((q) => missed.has(q.id)).length);
-  const missedPick = shuffle(pool.filter((q) => missed.has(q.id))).slice(0, fromMissed);
+  const missedPick: T[] = [];
+  for (const q of shuffle(pool.filter((x) => missed.has(x.id)))) {
+    if (missedPick.length >= fromMissed) break;
+    if (usedKeys.has(keyOf(q))) continue;
+    usedKeys.add(keyOf(q));
+    missedPick.push(q);
+  }
   const taken = new Set(missedPick.map((q) => q.id));
 
   // İki geçiş: önce görülmemiş sorular türler arasında dengeli dağıtılır;
@@ -74,7 +83,8 @@ export function pickQuestions<T extends { id: string; kind?: string }>(
     while (fresh.length < want && order.some((k) => groups.get(k)!.length)) {
       for (const k of order) {
         const g = groups.get(k)!;
-        if (g.length && fresh.length < want) fresh.push(g.shift()!);
+        while (g.length && usedKeys.has(keyOf(g[0]))) g.shift();
+        if (g.length && fresh.length < want) { const q = g.shift()!; usedKeys.add(keyOf(q)); fresh.push(q); }
       }
     }
   };
@@ -182,7 +192,8 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
     (a.mistakes || []).forEach((m) => seenAt.set(m.questionId, Math.max(seenAt.get(m.questionId) || 0, a.startedAt)));
   });
 
-  const pool = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+  // İptal edilen (Soru havuzundan kaldırılan) sorular sınava gelmez.
+  const pool = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question)).filter((q) => !q.disabled);
   const size = quiz ? pool.length : Math.min(mod.examSize || 10, pool.length);
   const passScore = quiz ? QUIZ_PASS : mod.passScore;
   const picked = pickQuestions(pool, size, missed, seenAt);

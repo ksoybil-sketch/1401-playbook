@@ -107,8 +107,8 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
               ))}
             </div>
           </div>
-          <Link to={`/icerik/modul/${q.moduleId}?sekme=sorular`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
-            <Icon name="edit" size={14} /> Soruyu ya da dersi düzenle
+          <Link to={`/soru-havuzu?soru=${q.questionId}`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
+            <Icon name="edit" size={14} /> Soru havuzunda aç: düzelt ya da iptal et
           </Link>
         </div>
       )}

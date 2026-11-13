@@ -220,6 +220,17 @@ export interface Question {
   lessonId?: string;
   /** 'panel': panelde oluşturuldu, müfredat güncellemesi silmez. */
   kaynak?: 'panel';
+  /**
+   * Kahve Operasyon Direktörü soruyu iptal etti (hatalı): sınavlara gelmez,
+   * geçmiş sınavlar bu soru olmadan yeniden puanlanır. Müfredat güncellemesi
+   * bu işareti korur.
+   */
+  disabled?: boolean;
+  /** Soru havuzunda elle düzeltildi: müfredat güncellemesi ezmez. */
+  edited?: boolean;
+  disabledReason?: string;
+  disabledByName?: string;
+  disabledAt?: number;
 }
 
 /** Sınav sırasında telefona giden soru — doğru cevap içermez. */
@@ -270,6 +281,10 @@ export interface Attempt {
   voided?: boolean;
   /** Mini sınav (tek ders) ise o dersin kimliği. */
   lessonId?: string | null;
+  /** İptal edilen soru(lar) çıkarılarak yeniden puanlandı. */
+  regradedAt?: number;
+  regradeNote?: string;
+  voidedQuestions?: string[];
 }
 
 export interface Progress {
@@ -339,6 +354,9 @@ export interface Feedback {
   imageUrl?: string;
   lessonId?: string;
   lessonTitle?: string;
+  /** Sınav sonucundan "Bu soruda hata var" ile bildirildiyse. */
+  questionId?: string;
+  questionPrompt?: string;
   /** Gönderildiği ekran, uygulama sürümü, cihaz. */
   path: string;
   version: string;

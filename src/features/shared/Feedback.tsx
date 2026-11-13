@@ -29,7 +29,7 @@ function context() {
   };
 }
 
-export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; preset?: FeedbackKind; lessonId?: string; lessonTitle?: string }> = ({ open, onClose, preset, lessonId, lessonTitle }) => {
+export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; preset?: FeedbackKind; lessonId?: string; lessonTitle?: string; questionId?: string; questionPrompt?: string }> = ({ open, onClose, preset, lessonId, lessonTitle, questionId, questionPrompt }) => {
   const session = useSession((s) => s.session);
   const [kind, setKind] = useState<FeedbackKind>(preset || 'hata');
   const [text, setText] = useState('');
@@ -51,6 +51,7 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
       await addDoc(collection(db, 'feedback'), {
         kind, text: text.trim().slice(0, 2000), ...(image ? { imageUrl: image } : {}),
         ...(lessonId ? { lessonId, lessonTitle: lessonTitle || '' } : {}),
+        ...(questionId ? { questionId, questionPrompt: (questionPrompt || '').slice(0, 300) } : {}),
         ...context(),
         by: who.uid, byName: who.name, role: who.role, storeName: who.store,
         status: 'yeni', createdAt: Date.now()
@@ -78,6 +79,7 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
         ))}
       </div>
       {lessonTitle && <p className="text-[13px] text-fg-2">Konu: <b>{lessonTitle}</b></p>}
+      {questionPrompt && <p className="text-[13px] text-fg-2">Soru: <b>{questionPrompt}</b></p>}
       <textarea className={`${t.textarea} min-h-28`} value={text} onChange={(e) => setText(e.target.value)}
         placeholder={kind === 'icerik' ? '12 oz\'da süt 270 ml yazıyor, kitapçıkta 250 ml…' : kind === 'oneri' ? 'Şöyle olsa daha kolay olurdu…' : 'Ne yapıyordun, ne oldu?'} />
       <div className={t.field}><span className={t.label}>Ekran görüntüsü (isteğe bağlı)</span>
@@ -112,6 +114,17 @@ export const ReportContentLink: React.FC<{ lessonId: string; lessonTitle: string
     <>
       <button onClick={() => setOpen(true)} className="self-center text-[12.5px] text-fg-3 underline underline-offset-2 py-2">Bu reçetede bir yanlış mı var?</button>
       <FeedbackSheet open={open} onClose={() => setOpen(false)} preset="icerik" lessonId={lessonId} lessonTitle={lessonTitle} />
+    </>
+  );
+};
+
+/** Sınav sonucunda yanlış sorunun altında: "Bu soruda hata var". */
+export const ReportQuestionLink: React.FC<{ questionId: string; prompt: string }> = ({ questionId, prompt }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="self-start text-[12px] text-fg-3 underline underline-offset-2">Bu soruda hata var</button>
+      <FeedbackSheet open={open} onClose={() => setOpen(false)} preset="icerik" questionId={questionId} questionPrompt={prompt} />
     </>
   );
 };
