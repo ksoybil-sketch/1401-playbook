@@ -7,6 +7,7 @@ import {
 import { useContent } from '../../store/content';
 import { useBaristaSession } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
+import { useBackHandler } from '../../lib/backButton';
 import { Page, ProgressBar, Ring, Spinner, ErrorText, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { AttemptReviewItem, ExamQuestion } from '../../../shared/types';
@@ -78,6 +79,13 @@ export const ExamPage: React.FC = () => {
   useEffect(() => {
     if (phase.k === 'run' && now >= phase.deadline) submit(phase.attemptId, true, phase.questions.map((x) => x.id));
   }, [now, phase, submit]);
+
+  // Android geri tuşu: sınav çözülürken çıkmadan önce onay iste.
+  const EXIT_CONFIRM = 'Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?';
+  useBackHandler(phase.k === 'run' || phase.k === 'sending' || phase.k === 'loading', () => {
+    if (phase.k === 'run' && confirm(EXIT_CONFIRM)) navigate(back);
+    return true;
+  });
 
   // Sınav sırasında yanlışlıkla geri tuşuna basılırsa uyar.
   useEffect(() => {
@@ -203,7 +211,7 @@ export const ExamPage: React.FC = () => {
     <Page>
       <div className="flex items-center gap-3">
         <button
-          onClick={() => confirm('Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?') && navigate(back)}
+          onClick={() => confirm(EXIT_CONFIRM) && navigate(back)}
           className={t.iconBtn}
           aria-label="Sınavdan çık"
         >

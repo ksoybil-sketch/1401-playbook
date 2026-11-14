@@ -23,6 +23,7 @@ import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
 import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import type { Bulletin, BoardTopic, StoreRequest } from '../../../shared/types';
+import { IS_ANDROID_APP } from '../../lib/backButton';
 
 /* ------------------------------------------------------------------ */
 /* Ortak                                                               */
@@ -725,24 +726,26 @@ export const BoardReportsPage: React.FC = () => {
 
   return (
     <Page wide>
-      <PageTitle title="Raporlar" subtitle="Seçtiğiniz dönem için yönetim raporu ve Excel'de açılan tablolar." />
+      <PageTitle title="Raporlar" subtitle={IS_ANDROID_APP ? 'Seçtiğiniz dönem için yönetim raporu. Excel tabloları ve yazdırma bilgisayardaki panelde.' : "Seçtiğiniz dönem için yönetim raporu ve Excel'de açılan tablolar."} />
       <PeriodPicker value={period} onChange={setPeriod} />
       <Link to={`/rapor${period.id !== '30' ? `?donem=${period.id}` : ''}`} className={`${t.cardInteractive} p-5 flex items-center gap-4`}>
         <span className={t.iconChip('accent')}><Icon name="chart" size={18} /></span>
         <span className="flex-1 min-w-0">
           <span className="block text-[16px] font-semibold">Yönetim raporu · {period.label}</span>
-          <span className="block text-[13px] text-fg-3 leading-relaxed mt-0.5">Özet göstergeler, mağaza karnesi, talep süreleri, eğitim başarısı ve ekip hareketi tek sayfada. Yazdırılabilir, PDF olarak kaydedilebilir.</span>
+          <span className="block text-[13px] text-fg-3 leading-relaxed mt-0.5">Özet göstergeler, mağaza karnesi, talep süreleri, eğitim başarısı ve ekip hareketi tek sayfada.{IS_ANDROID_APP ? '' : ' Yazdırılabilir, PDF olarak kaydedilebilir.'}</span>
         </span>
         <Icon name="chevronRight" size={18} className="text-fg-3" />
       </Link>
-      <Section label="Excel tabloları (CSV)">
+      {/* APK'da (Android WebView) dosya indirme ve yazdırma çalışmıyor; bu
+          düğmeler yalnızca tarayıcıda görünür. */}
+      {!IS_ANDROID_APP && <Section label="Excel tabloları (CSV)">
         <div className="grid sm:grid-cols-2 gap-3">
           <Item icon="store" title="Mağaza karnesi" text="Her mağaza için ilerleme, sınav başarısı, talepler, gecikmiş görevler, ekip hareketi." onClick={csv.karne} />
           <Item icon="users" title="Barista eğitim durumu" text="Her baristanın ilerlemesi, geçtiği modüller ve dönemdeki sınavları." onClick={csv.barista} />
           <Item icon="wrench" title="Talepler" text="Dönemde açılan ve hâlâ açık olan talepler, durumları ve süreleri." onClick={csv.talep} />
           <Item icon="clipboard" title="Sınav sonuçları" text="Dönemdeki bütün sınavlar: barista, modül, puan, sonuç." onClick={csv.sinav} />
         </div>
-      </Section>
+      </Section>}
     </Page>
   );
 };
@@ -769,7 +772,7 @@ export const BoardPrintReport: React.FC = () => {
     <div className="print-report max-w-[860px] mx-auto px-5 py-6 flex flex-col gap-6">
       <div className="flex items-center gap-2 print:hidden">
         <Link to={`/raporlar${period.id !== '30' ? `?donem=${period.id}` : ''}`} className={`${t.btn} ${t.btnGhost} ${t.btnSm}`}><Icon name="chevronLeft" size={14} /> Raporlar</Link>
-        <button onClick={() => window.print()} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>
+        {!IS_ANDROID_APP && <button onClick={() => window.print()} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>}
       </div>
       <header className="flex flex-col gap-1 border-b border-line pb-4">
         <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-fg-3">1401 Coffee · Yönetim Kurulu</div>

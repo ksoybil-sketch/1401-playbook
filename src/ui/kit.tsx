@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
+import { useBackHandler } from '../lib/backButton';
 
 /* ------------------------------------------------------------------ */
 /* Sayfa iskeleti                                                      */
@@ -157,6 +158,8 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+  // Android geri tuşu önce alt sayfayı kapatır.
+  useBackHandler(open, () => { onClose(); return true; });
   if (!open) return null;
   return (
     <div className={t.modalOverlay} onClick={onClose}>

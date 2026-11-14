@@ -11,6 +11,7 @@ import { Page, PageTitle, Empty } from '../../ui/kit';
 import { HUE } from '../../ui/palette';
 import * as t from '../../ui/tokens';
 import type { Lesson } from '../../../shared/types';
+import { useBackHandler } from '../../lib/backButton';
 
 /**
  * Reçeteler — servis sırasında kullanılan ekran.
@@ -181,6 +182,8 @@ export const RecipeDetailPage: React.FC = () => {
   const signedInBarista = useSession((x) => x.session.kind === 'barista');
   // Ölçüye bakarken ekran kararmasın.
   useKeepAwake(!!recipe);
+  // Android geri tuşu önce büyütülmüş fotoğrafı kapatır.
+  useBackHandler(zoom, () => { setZoom(false); return true; });
   if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
   const mod = modules.find((m) => m.id === recipe.moduleId);
   // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,

@@ -35,6 +35,7 @@ import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
+import { IS_ANDROID_APP } from '../../lib/backButton';
 
 /**
  * Excel / CSV / PDF / görsel dosyasından ders taslağı ve soru önerileri
@@ -185,9 +186,12 @@ export const ImportLessonSheet: React.FC<{
       onClose={busy ? () => {} : () => { reset(); onClose(); }}
       footer={
         <div className="flex gap-2 w-full">
-          <button onClick={downloadTemplate} className={`${t.btn} ${t.btnGhost} ${t.btnLg}`}>
-            <Icon name="download" size={15} /> Şablon
-          </button>
+          {/* APK'da dosya indirme çalışmıyor; şablon yalnızca tarayıcıda. */}
+          {!IS_ANDROID_APP && (
+            <button onClick={downloadTemplate} className={`${t.btn} ${t.btnGhost} ${t.btnLg}`}>
+              <Icon name="download" size={15} /> Şablon
+            </button>
+          )}
           {result && (
             <button onClick={reset} disabled={busy} className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`}>Başka dosya</button>
           )}
@@ -239,7 +243,7 @@ export const ImportLessonSheet: React.FC<{
           {busy ? <Spinner size={22} /> : <Icon name="upload" size={22} className="text-fg-3" />}
           <span className="text-[14px] font-medium">{busy ? (progress || 'Okunuyor…') : 'Dosya seç'}</span>
           <span className={t.emptyText}>
-            PDF (metinli ya da taranmış), fotoğraf / ekran görüntüsü, Excel ya da CSV. Excel şablonu için aşağıdaki "Şablon" düğmesini kullan.
+            PDF (metinli ya da taranmış), fotoğraf / ekran görüntüsü, Excel ya da CSV.{IS_ANDROID_APP ? '' : ' Excel şablonu için aşağıdaki "Şablon" düğmesini kullan.'}
           </span>
         </button>
       )}

@@ -1,0 +1,76 @@
+import { useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
+
+/**
+ * Android geri tuşu (yalnızca APK'da).
+ *
+ * Sırayla:
+ *  1. Açık bir alt sayfa (Sheet) ya da büyütülmüş görsel varsa önce o kapanır.
+ *  2. Sınav çözülürken çıkmadan önce onay istenir.
+ *  3. Kök ekranda (ana ekran, barista seçimi, eşleştirme) uygulama kapanmaz,
+ *     arka plana alınır — mağaza telefonunda uygulamayı yeniden açmak
+ *     açılış süresi demekti.
+ *  4. Diğer ekranlarda bir önceki ekrana dönülür.
+ *
+ * Çıkış yapınca geçmiş sıfırlanır (resetBackHistory): baristanın geri
+ * tuşuyla bir önceki baristanın ekranlarına dönmesi olmaz.
+ *
+ * Ekranlar useBackHandler ile kendi işleyicilerini ekler; en son eklenen
+ * önce sorulur. İşleyici true dönerse geri tuşu "kullanılmış" sayılır.
+ */
+type Handler = () => boolean;
+const stack: { h: { current: Handler } }[] = [];
+
+export const IS_NATIVE_APP = Capacitor.isNativePlatform();
+export const IS_ANDROID_APP = IS_NATIVE_APP && Capacitor.getPlatform() === 'android';
+
+/** react-router'ın geçmiş kaydındaki sıra numarası. */
+const historyIdx = (): number => {
+  const idx = (window.history.state as { idx?: number } | null)?.idx;
+  return typeof idx === 'number' ? idx : 0;
+};
+/** Bu sıranın gerisine geri tuşuyla gidilmez (çıkıştan önceki ekranlar). */
+let floor = -1;
+
+const currentPath = () => (location.hash.replace(/^#/, '').split('?')[0] || '/');
+const isRoot = () => currentPath() === '/' || historyIdx() <= floor;
+
+export function useBackHandler(active: boolean, handler: Handler) {
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    if (!active || !IS_ANDROID_APP) return;
+    const entry = { h: ref };
+    stack.push(entry);
+    return () => {
+      const i = stack.indexOf(entry);
+      if (i >= 0) stack.splice(i, 1);
+    };
+  }, [active]);
+}
+
+/** Çıkışta çağrılır: adres köke döner, önceki ekranlara geri tuşuyla dönülmez. */
+export function resetBackHistory() {
+  try {
+    if (currentPath() !== '/') window.history.replaceState(window.history.state, '', '#/');
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+  } catch { /* yok say */ }
+  floor = historyIdx();
+}
+
+let installed = false;
+export function installBackButton() {
+  if (!IS_ANDROID_APP || installed) return;
+  installed = true;
+  App.addListener('backButton', ({ canGoBack }) => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i].h.current()) return;
+    }
+    if (!canGoBack || isRoot()) {
+      App.minimizeApp().catch(() => {});
+      return;
+    }
+    window.history.back();
+  }).catch(() => {});
+}

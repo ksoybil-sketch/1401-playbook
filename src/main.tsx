@@ -4,9 +4,13 @@ import { HashRouter } from 'react-router-dom';
 import { App } from './App';
 import './styles.css';
 import { watchForUpdates } from './lib/updateCheck';
+import { installBackButton } from './lib/backButton';
 
 // Açık kalan sekmeler yeni sürümü kendiliğinden alsın.
 watchForUpdates();
+
+// Android geri tuşu: alt sayfa → sınav onayı → önceki ekran → arka plana al.
+installBackButton();
 
 // Çevrimdışı kabuk (public/sw.js): Wi-Fi gidince de uygulama açılsın.
 // Geliştirmede ve Android uygulamasında (dosyalar zaten cihazda) yok.

@@ -6,6 +6,7 @@ import { backend } from '../api/backend';
 import { loadDevice, saveDevice, clearDevice, type StoredDevice } from '../api/device';
 import type { Barista, BaristaRole, Profile, StaffRole } from '../../shared/types';
 import { STAFF_ROLES, BARISTA_ROLES } from '../lib/roles';
+import { resetBackHistory } from '../lib/backButton';
 
 /**
  * Oturum durumu — uygulamanın hangi ekran setini göstereceğini belirler.
@@ -173,6 +174,8 @@ export const useSession = create<SessionState>((set, get) => {
     /** Barista ya da yönetici çıkışı. Telefon kayıtlıysa mağaza moduna döner. */
     logout: async () => {
       await signOut(auth);
+      // Geri tuşu bir önceki kişinin ekranlarına dönmesin.
+      resetBackHistory();
     },
 
     unpair: async () => {
@@ -180,6 +183,7 @@ export const useSession = create<SessionState>((set, get) => {
       set({ device: null });
       await signOut(auth);
       set({ session: { kind: 'unpaired' } });
+      resetBackHistory();
     },
 
     retry: async () => {
