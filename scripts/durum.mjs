@@ -33,7 +33,8 @@ for (const s of SITES) {
 
 const head = sh('git rev-parse --short HEAD');
 const master = sh('git rev-parse --short origin/master');
-const dirty = sh(`git status --porcelain -- ${APP_PATHS}`);
+// Satır sonu farkları (Windows'tan gelen dosyalar) sayılmaz.
+const dirty = (sh(`git diff --ignore-cr-at-eol --name-only HEAD -- ${APP_PATHS}`) + sh(`git ls-files --others --exclude-standard -- ${APP_PATHS}`)).trim();
 
 console.log(`\n1401 Campus · durum (${fmt(new Date().toISOString())})\n`);
 for (const s of live) {

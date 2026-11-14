@@ -13,7 +13,10 @@ function gitCommit(): string {
   try {
     const id = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
     // Yalnızca uygulamaya giren dosyalar sayılır (bkz. scripts/durum.mjs).
-    const dirty = execSync('git status --porcelain -- src public shared index.html package.json firestore.rules vite.config.ts scripts/source', { encoding: 'utf8' }).trim();
+    // Satır sonu farkları (Windows'tan gelen dosyalar) sayılmaz.
+    const paths = 'src public shared index.html package.json firestore.rules vite.config.ts scripts/source';
+    const dirty = (execSync(`git diff --ignore-cr-at-eol --name-only HEAD -- ${paths}`, { encoding: 'utf8' })
+      + execSync(`git ls-files --others --exclude-standard -- ${paths}`, { encoding: 'utf8' })).trim();
     return dirty ? `${id}+` : id;
   } catch { return 'bilinmiyor'; }
 }
