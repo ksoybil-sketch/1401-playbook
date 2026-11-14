@@ -80,7 +80,11 @@ export const ContentPage: React.FC = () => {
       <ImportLessonSheet
         open={importing}
         onClose={() => setImporting(false)}
-        onCreated={(id, pid) => { setImporting(false); navigate(pid ? `/icerik/ders/${id}?oneri=${pid}` : `/icerik/ders/${id}`); }}
+        onCreated={(id, pid, { count, moduleId }) => {
+          setImporting(false);
+          // Birden çok ders eklendiyse modülde hepsi görünsün; tek dersse doğrudan editörüne git.
+          navigate(pid ? `/icerik/ders/${id}?oneri=${pid}` : count > 1 ? `/icerik/modul/${moduleId}` : `/icerik/ders/${id}`);
+        }}
       />
 
       {tracks.length === 0 && <Empty icon="layers" text="Henüz eğitim yolu yok." />}
@@ -424,7 +428,7 @@ export const ModuleEditorPage: React.FC = () => {
         open={importing}
         onClose={() => setImporting(false)}
         fixedModuleId={mod.id}
-        onCreated={(id, proposalId) => { setImporting(false); navigate(proposalId ? `/icerik/ders/${id}?oneri=${proposalId}` : `/icerik/ders/${id}`); }}
+        onCreated={(id, proposalId, { count }) => { setImporting(false); if (proposalId) navigate(`/icerik/ders/${id}?oneri=${proposalId}`); else if (count === 1) navigate(`/icerik/ders/${id}`); }}
       />
     </Page>
   );
@@ -852,7 +856,7 @@ const AiKeySheet: React.FC<{ open: boolean; onClose: () => void; by: string }> =
       <div className="flex gap-3 p-3.5 rounded-xl bg-caution-bg border border-caution-line text-[12.5px] leading-relaxed">
         <Icon name="alert" size={16} className="text-caution mt-0.5" />
         <span>
-          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Direktörü, Bölge Müdürü ve geliştiricinin
+          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Kahve Operasyonu ve geliştiricinin
           tarayıcısına iner (baristalar göremez). Console'da yalnızca bu iş için ayrı bir anahtar açıp <strong>aylık harcama sınırı</strong> koy.
         </span>
       </div>

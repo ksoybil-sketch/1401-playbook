@@ -130,7 +130,8 @@ service cloud.firestore {
     // Yapay zekâ anahtarı (dosyadan ders üretimi, bkz. src/lib/aiLesson.ts).
     // Barista ve mağaza oturumları hiç okuyamaz.
     match /config/ai {
-      allow get: if isDirector() || myRole() in ['opsmanager', 'regional'];
+      // Kahve Operasyonu (ops) da dosyadan ders hazırladığı için okur (14.11.2026 kararı).
+      allow get: if isDirector() || myRole() in ['opsmanager', 'regional', 'ops'];
       // Anahtarı yalnızca uygulama geliştiricisi yazar.
       allow write: if isAdmin();
     }

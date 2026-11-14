@@ -1,5 +1,8 @@
 import type { LessonBlock, QuestionKind, QuestionType } from '../../shared/types';
 import type { SheetRow } from './sheet';
+import type { LessonDraft } from './pdfLesson';
+
+export type { LessonDraft };
 
 /**
  * Tablo satırlarını ve düz metni ders bloklarına çevirir.
@@ -18,12 +21,13 @@ export interface DraftQuestion {
   answer: number;
   explanation: string;
   kind: QuestionKind;
+  /** Hangi taslak dersten çıktı (ImportResult.lessons içindeki sıra). */
+  lesson?: number;
 }
 
 export interface ImportResult {
-  title: string;
-  durationMin: number;
-  blocks: LessonBlock[];
+  /** Dosyadan çıkan dersler; uzun PDF'ler bölümlerinden birkaç derse bölünür. */
+  lessons: LessonDraft[];
   warnings: string[];
   /** Soru bankasına önerilen sorular (kullanıcı seçer). */
   questions?: DraftQuestion[];
@@ -160,64 +164,10 @@ export function rowsToLesson(rows: SheetRow[], fallbackTitle: string): ImportRes
   }
   if (!blocks.length) warnings.push('Dosyadan hiçbir içerik çıkarılamadı.');
 
-  return { title, durationMin, blocks, warnings };
+  return { lessons: [{ title, durationMin, blocks }], warnings };
 }
 
-/* ------------------------------------------------------------------ */
-/* Düz metin (PDF)                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * PDF'den çıkan metni kaba bloklara böler: kısa ve sonu noktasız satırlar
- * başlık, "1." / "-" ile başlayanlar adım, kalanı paragraf sayılır.
- * Kesin değil — bu yüzden sonuç her zaman uyarıyla gelir.
- */
-export function textToLesson(text: string, fallbackTitle: string): ImportResult {
-  const warnings = [
-    'PDF metinden çıkarıldı: başlık ve adım ayrımı tahminidir. Yayınlamadan önce blokları gözden geçir.'
-  ];
-  const blocks: LessonBlock[] = [];
-  const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => l.length > 1);
-
-  let title = '';
-  let steps: string[] = [];
-  let para: string[] = [];
-
-  const flushSteps = () => { if (steps.length) { blocks.push({ type: 'steps', items: steps }); steps = []; } };
-  const flushPara = () => {
-    if (para.length) { blocks.push({ type: 'text', text: para.join(' ') }); para = []; }
-  };
-
-  for (const line of lines) {
-    const stepMatch = line.match(/^(?:\d{1,2}[.)]\s*|[-•*]\s+)(.*)$/);
-    if (stepMatch && stepMatch[1].length > 2) {
-      flushPara();
-      steps.push(stepMatch[1].trim());
-      continue;
-    }
-    const isHeading = line.length <= 60 && !/[.!?:,;]$/.test(line) && line.split(' ').length <= 8;
-    if (isHeading) {
-      flushSteps();
-      flushPara();
-      if (!title) { title = line; continue; }
-      blocks.push({ type: 'heading', text: line });
-      continue;
-    }
-    flushSteps();
-    para.push(line);
-  }
-  flushSteps();
-  flushPara();
-
-  if (!title) {
-    title = fallbackTitle;
-    warnings.push('Ders adı bulunamadı; dosya adı kullanıldı.');
-  }
-  if (!blocks.length) {
-    warnings.push('Dosyadan okunabilir metin çıkmadı. Görüntü çok bulanık olabilir; daha net bir tarama dene ya da yapay zekâ ile oku.');
-  }
-  return { title, durationMin: 2, blocks, warnings };
-}
+/* PDF'ten ders: bkz. src/lib/pdfLesson.ts */
 
 /* ------------------------------------------------------------------ */
 
