@@ -10,6 +10,7 @@ import { useStaffSession } from '../staff/StaffLayout';
 import { ThemePicker, useStaffTheme } from '../staff/theme';
 import { useBoardQuestions } from './BoardQuestions';
 import { useAllow, type Perm } from '../../lib/permissions';
+import { useIdleLogout } from '../../lib/idleLogout';
 
 /**
  * Yönetim Kurulu ekranı. Kahve Operasyonu girişinden girilir; panelin
@@ -25,6 +26,10 @@ const since = () => new Date(new Date().getFullYear() - 1, 0, 1).getTime();
 export const BoardLayout: React.FC = () => {
   const s = useStaffSession();
   const logout = useSession((x) => x.logout);
+  // Mağaza telefonundan giriş yapan yöneticinin oturumu 5 dk hareketsizlikte
+  // kapanır (telefon mağaza moduna döner). Kendi cihazında çalışmaz.
+  const sharedDevice = useSession((x) => !!x.device);
+  useIdleLogout(5 * 60 * 1000, sharedDevice);
   const subscribe = useStaffData((x) => x.subscribe);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);

@@ -4,7 +4,7 @@ import { useBaristaSession, useMyBulletins, useMyProgress, markBulletinRead } fr
 import { RichText } from '../academy/LessonBlocks';
 import { PeopleList } from '../staff/BulletinPages';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Empty, Badge, fmtDate } from '../../ui/kit';
+import { Page, PageTitle, Empty, Badge, fmtDate, Spinner } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
 /**
@@ -92,7 +92,7 @@ export const BulletinsPage: React.FC = () => {
         title="Bülten"
         subtitle={unread > 0 ? `${unread} okunmamış duyuru` : undefined}
       />
-      {loading ? null : items.length === 0 ? (
+      {loading ? <div className="flex justify-center py-10"><Spinner /></div> : items.length === 0 ? (
         <Empty icon="bell" text="Şimdilik duyuru yok. Yeni bir şey olduğunda burada görünecek." />
       ) : (
         <div className="flex flex-col gap-2.5">

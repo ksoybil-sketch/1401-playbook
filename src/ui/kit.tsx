@@ -170,7 +170,7 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
           <button className={t.iconBtn} onClick={onClose} aria-label="Kapat"><Icon name="close" size={16} /></button>
         </div>
         <div className={`${t.modalBody} flex flex-col gap-4`}>{children}</div>
-        {footer && <div className="px-5 pb-5 pt-1 flex gap-2 justify-end">{footer}</div>}
+        {footer && <div className="shrink-0 px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] border-t border-line flex flex-wrap gap-2 justify-end">{footer}</div>}
       </div>
     </div>
   );

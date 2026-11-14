@@ -285,7 +285,11 @@ const StaffTeamSection: React.FC = () => {
               <>
                 <select className={`${t.input} h-8 w-auto text-[12px]`} value={s.role}
                   onChange={async (e) => {
-                    try { await updateDoc(doc(db, 'users', s.id), { role: e.target.value }); toast('Rol güncellendi'); }
+                    // Seçim anında kaydediliyor; telefonda kaydırırken yanlışlıkla
+                    // değişen seçim kişinin bütün panelini değiştiriyordu.
+                    const to = e.target.value as typeof s.role;
+                    if (!confirm(`${s.name}: ${STAFF_ROLE_LABEL[s.role] || s.role} → ${STAFF_ROLE_LABEL[to] || to}. Gördüğü ekranlar ve yetkileri değişir. Onaylıyor musun?`)) { e.target.value = s.role; return; }
+                    try { await updateDoc(doc(db, 'users', s.id), { role: to }); toast('Rol güncellendi'); }
                     catch (err) { toast(errorText(err), 'negative'); }
                   }}>
                   {roles.map((r) => <option key={r} value={r}>{STAFF_ROLE_LABEL[r]}</option>)}
@@ -413,6 +417,7 @@ export const ApronBadgesSection: React.FC = () => {
                 </div>
                 {canMark && (
                   <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
+                    if (!confirm(`${b.name}: önlükteki rozet değişsin mi?`)) return;
                     try {
                       await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.qualified?.id || null, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
                       toast('Önlük rozeti güncellendi');
@@ -490,13 +495,19 @@ export const StoresPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const add = async () => {
-    if (name.trim().length < 2) return;
+    // Kısa adda sessizce duruyor, hata olunca "Ekle" kalıcı kilitleniyordu.
+    if (name.trim().length < 2) { toast('Mağaza adını yaz.', 'negative'); return; }
     setBusy(true);
-    await addDoc(collection(db, 'stores'), { name: name.trim(), city: city.trim(), active: true, createdAt: Date.now() });
-    setBusy(false);
-    setOpen(false);
-    setName('');
-    toast('Mağaza eklendi', 'positive');
+    try {
+      await addDoc(collection(db, 'stores'), { name: name.trim(), city: city.trim(), active: true, createdAt: Date.now() });
+      setOpen(false);
+      setName('');
+      toast('Mağaza eklendi', 'positive');
+    } catch (e) {
+      toast(errorText(e), 'negative');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -558,7 +569,11 @@ export const StoreDetailPage: React.FC = () => {
       <PageTitle title={store.name} subtitle={store.city} back="/magazalar"
         action={manage ? (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`}
-            onClick={async () => { await updateDoc(doc(db, 'stores', store.id), { active: !store.active }); toast(store.active ? 'Mağaza pasifleştirildi' : 'Mağaza aktif'); }}>
+            onClick={async () => {
+              if (store.active && !confirm(`${store.name} pasifleştirilsin mi? Mağaza listelerden ve raporlardan düşer.`)) return;
+              try { await updateDoc(doc(db, 'stores', store.id), { active: !store.active }); toast(store.active ? 'Mağaza pasifleştirildi' : 'Mağaza aktif'); }
+              catch (e) { toast(errorText(e), 'negative'); }
+            }}>
             {store.active ? 'Pasifleştir' : 'Aktifleştir'}
           </button>
         ) : undefined} />

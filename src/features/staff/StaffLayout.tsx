@@ -10,6 +10,7 @@ import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
+import { useIdleLogout } from '../../lib/idleLogout';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean; perm?: Perm }
 
@@ -31,6 +32,10 @@ export function useStaffSession(): StaffSession {
 export const StaffLayout: React.FC = () => {
   const s = useStaffSession();
   const logout = useSession((x) => x.logout);
+  // Mağaza telefonundan giriş yapan yöneticinin oturumu 5 dk hareketsizlikte
+  // kapanır (telefon mağaza moduna döner). Kendi cihazında çalışmaz.
+  const sharedDevice = useSession((x) => !!x.device);
+  useIdleLogout(5 * 60 * 1000, sharedDevice);
   const subscribe = useStaffData((x) => x.subscribe);
   const proposals = useStaffData((x) => x.proposals);
   const requests = useStaffData((x) => x.requests);
@@ -49,7 +54,9 @@ export const StaffLayout: React.FC = () => {
   // Yönetim Kurulu'nun bana sorduğu, yanıt bekleyen sorular.
   const board = useBoardQuestions(allow(s.role, 'ekran.kurulSorulari'));
   const boardWaiting = board.data.filter((q) => q.status === 'open' && askedTo(q, s.role)).length;
-  const openRequests = requests.filter((r) => r.status !== 'done' && r.status !== 'rejected' && r.lastSide === 'store').length;
+  // Kapanmış talebe mağaza yeniden yazdıysa o da sayılır (kapatınca son söz
+  // operasyonda olur; mağaza sonradan yazdıysa yanıt bekliyor demektir).
+  const openRequests = requests.filter((r) => r.lastSide === 'store').length;
 
   // Her menü satırı Yetkiler ayarına bağlı (perm). Kapalı olan görünmez.
   const NAV: NavItem[] = ([

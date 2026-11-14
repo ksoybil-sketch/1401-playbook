@@ -53,7 +53,7 @@ export const RequestsPage: React.FC = () => {
         action={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setCreating(true)}><Icon name="plus" size={15} /> Yeni</button>} />
 
       <Section label={`Açık · ${open.length}`}>
-        {loading ? null : open.length === 0 ? <Empty icon="inbox" text="Açık talebin yok." /> : (
+        {loading ? <div className="flex justify-center py-8"><Spinner /></div> : open.length === 0 ? <Empty icon="inbox" text="Açık talebin yok." /> : (
           <div className="flex flex-col gap-2">
             {open.map((r) => (
               <button key={r.id} onClick={() => show(r)} className={`${t.cardInteractive} p-4 text-left flex`}>

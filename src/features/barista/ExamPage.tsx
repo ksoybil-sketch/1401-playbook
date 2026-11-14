@@ -83,7 +83,7 @@ export const ExamPage: React.FC = () => {
   // Android geri tuşu: sınav çözülürken çıkmadan önce onay iste.
   const EXIT_CONFIRM = 'Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?';
   useBackHandler(phase.k === 'run' || phase.k === 'sending' || phase.k === 'loading', () => {
-    if (phase.k === 'run' && confirm(EXIT_CONFIRM)) navigate(back);
+    if (phase.k === 'run' && confirm(EXIT_CONFIRM)) navigate(back, { replace: true });
     return true;
   });
 
@@ -135,7 +135,7 @@ export const ExamPage: React.FC = () => {
     return (
       <Page>
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(back)} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
+          <button onClick={() => navigate(back, { replace: true })} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
           <span className="text-[13px] text-fg-3">{lesson ? 'Mini sınav' : 'Modül sınavı'}</span>
         </div>
         <div className="flex flex-col items-center text-center gap-4 pt-6">
@@ -211,7 +211,7 @@ export const ExamPage: React.FC = () => {
     <Page>
       <div className="flex items-center gap-3">
         <button
-          onClick={() => confirm(EXIT_CONFIRM) && navigate(back)}
+          onClick={() => confirm(EXIT_CONFIRM) && navigate(back, { replace: true })}
           className={t.iconBtn}
           aria-label="Sınavdan çık"
         >
@@ -219,6 +219,16 @@ export const ExamPage: React.FC = () => {
         </button>
         <ProgressBar value={((idx + 1) / phase.questions.length) * 100} tone="accent" className="flex-1" />
         <span className="text-[12px] text-fg-3 tnum">{idx + 1}/{phase.questions.length}</span>
+      </div>
+
+      {/* Soru haritası: emin olunmayan soru boş geçilip sonra dönülebilir. */}
+      <div className="flex flex-wrap gap-1.5" aria-label="Sorular">
+        {phase.questions.map((x, i) => (
+          <button key={x.id} onClick={() => setIdx(i)} aria-label={`Soru ${i + 1}${answers[x.id] === undefined ? ', boş' : ''}`}
+            className={`w-8 h-8 rounded-lg text-[12px] font-semibold tnum border transition-colors ${
+              i === idx ? 'border-crema text-crema bg-panel-3' : answers[x.id] !== undefined ? 'border-line bg-panel-3 text-fg-2' : 'border-line border-dashed text-fg-3'
+            }`}>{i + 1}</button>
+        ))}
       </div>
 
       <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${left < 60000 ? 'bg-negative-bg border-negative-line text-negative' : left < total * 0.25 ? 'bg-caution-bg border-caution-line text-caution' : 'bg-panel border-line text-fg-2'}`}>
@@ -254,7 +264,6 @@ export const ExamPage: React.FC = () => {
           </button>
           {isLast ? (
             <button
-              disabled={picked === undefined}
               onClick={() => {
                 const blank = phase.questions.length - answeredCount;
                 if (blank > 0 && !confirm(`${blank} soru boş. Yine de gönderilsin mi?`)) return;
@@ -265,8 +274,8 @@ export const ExamPage: React.FC = () => {
               Sınavı bitir
             </button>
           ) : (
-            <button disabled={picked === undefined} onClick={() => setIdx((i) => i + 1)} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}>
-              Sonraki <Icon name="chevronRight" size={16} />
+            <button onClick={() => setIdx((i) => i + 1)} className={`${t.btn} ${picked === undefined ? t.btnSecondary : t.btnPrimary} ${t.btnLg} flex-1`}>
+              {picked === undefined ? 'Boş geç' : 'Sonraki'} <Icon name="chevronRight" size={16} />
             </button>
           )}
         </div>

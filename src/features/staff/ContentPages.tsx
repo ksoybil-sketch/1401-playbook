@@ -624,7 +624,7 @@ export const LessonEditorPage: React.FC = () => {
                   <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3 flex-1">{BLOCK_TYPES.find((x) => x.type === b.type)?.label}</span>
                   <button className={t.iconBtn} disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrowUp" size={13} /></button>
                   <button className={t.iconBtn} disabled={i === draft.blocks.length - 1} onClick={() => move(i, 1)}><Icon name="arrowDown" size={13} /></button>
-                  <button className={t.iconBtn} onClick={() => patch({ blocks: draft.blocks.filter((_, j) => j !== i) })}><Icon name="trash" size={13} /></button>
+                  <button className={t.iconBtn} aria-label="Bloğu sil" onClick={() => confirm('Bu blok silinsin mi?') && patch({ blocks: draft.blocks.filter((_, j) => j !== i) })}><Icon name="trash" size={13} /></button>
                 </div>
                 <BlockEditor block={b} onChange={(nb) => setBlock(i, nb)} />
               </div>

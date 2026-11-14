@@ -5,7 +5,7 @@ import { db } from '../../api/firebase';
 import { useContent, publishedOnly } from '../../store/content';
 import { moduleState, trackPercent } from '../../lib/progress';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, ProgressBar, Ring, Empty, Badge, toast } from '../../ui/kit';
+import { Page, PageTitle, Section, ProgressBar, Ring, Empty, Badge, toast, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { HUE, trackHue } from '../../ui/palette';
 import { LessonBlocks } from '../academy/LessonBlocks';
@@ -109,16 +109,31 @@ export const ModulePage: React.FC = () => {
   const { items: attempts } = useMyAttempts(50);
   const mod = modules.find((m) => m.id === moduleId);
 
-  const weekAttempts = useMemo(() => attempts.filter((a) => a.moduleId === moduleId && !a.voided && a.startedAt > Date.now() - 7 * 86400000), [attempts, moduleId]);
+  // Haftalık hak yalnızca modül sınavlarını sayar (reçete mini sınavları
+  // ayrı; bkz. exam.ts → startExam). Süresi dolmamış açık deneme varsa
+  // hak dolmuş olsa da "kaldığın yerden devam" her zaman açık.
+  const weekAttempts = useMemo(() => attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt > Date.now() - 7 * 86400000), [attempts, moduleId]);
+  const openAttempt = attempts.find((a) => a.moduleId === moduleId && !a.lessonId && !a.submittedAt && !!a.deadline && a.deadline > Date.now());
   const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
   const st = moduleState(mod, lessons, progress);
   const left = Math.max(0, EXAMS_PER_WEEK - weekAttempts.length);
+  const nextSlotAt = left === 0 && weekAttempts.length ? Math.min(...weekAttempts.map((a) => a.startedAt)) + 7 * 86400000 : null;
+  const prereq = st.locked ? modules.find((m) => m.id === mod.prerequisiteId) : undefined;
+  const canStart = !st.locked && (left > 0 || !!openAttempt);
 
   return (
     <Page>
       <PageTitle title={mod.title} subtitle={mod.description} back={`/akademi/${mod.trackId}`} />
+
+      {/* Görevden ya da bağlantıyla gelen barista kilitli modülü de açabiliyor;
+          sınavın neden açılmadığı en başta yazsın. */}
+      {st.locked && (
+        <div className="text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5 leading-relaxed">
+          Bu modülün sınavı kilitli. Önce {prereq ? <Link to={`/modul/${prereq.id}`} className="underline font-semibold">{prereq.title}</Link> : 'önceki modülü'} sınavını geçmelisin.
+        </div>
+      )}
 
       <Section label={`Dersler · ${st.lessonsDone}/${st.lessons.length}`}>
         {st.lessons.length === 0 ? (
@@ -152,15 +167,16 @@ export const ModulePage: React.FC = () => {
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
                 {mod.examSize} soru · Geçme notu {mod.passScore} · Bu hafta {left}/{EXAMS_PER_WEEK} deneme hakkın kaldı
+                {!openAttempt && nextSlotAt && <> · Yeni hakkın {fmtDateTime(nextSlotAt)} tarihinde açılır</>}
               </div>
             </div>
           </div>
           <Link
-            to={left > 0 ? `/sinav/${mod.id}` : '#'}
-            onClick={(e) => left === 0 && e.preventDefault()}
-            className={`${t.btn} ${st.passed ? t.btnSecondary : t.btnPrimary} ${t.btnLg} ${left === 0 ? 'opacity-40 pointer-events-none' : ''}`}
+            to={canStart ? `/sinav/${mod.id}` : '#'}
+            onClick={(e) => !canStart && e.preventDefault()}
+            className={`${t.btn} ${st.passed ? t.btnSecondary : t.btnPrimary} ${t.btnLg} ${!canStart ? 'opacity-40 pointer-events-none' : ''}`}
           >
-            {st.passed ? 'Puanını yükselt' : 'Sınava başla'}
+            {openAttempt ? 'Kaldığın yerden devam et' : st.passed ? 'Puanını yükselt' : 'Sınava başla'}
           </Link>
           {myModuleAttempts.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -208,7 +224,7 @@ export const LessonPage: React.FC = () => {
   return (
     <Page>
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/modul/${lesson.moduleId}`)} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
+        <button onClick={() => navigate(`/modul/${lesson.moduleId}`, { replace: true })} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
         <div className="flex-1 min-w-0">
           <div className="text-[12px] text-fg-3 truncate">{mod?.title}</div>
           <ProgressBar value={((idx + 1) / siblings.length) * 100} tone="accent" className="mt-1.5" />

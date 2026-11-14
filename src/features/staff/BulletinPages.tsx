@@ -265,6 +265,7 @@ export const BulletinSheet: React.FC<{
 
   const remove = async () => {
     if (!value.id) return;
+    if (!confirm(`"${value.title || 'Bülten'}" silinsin mi? Bu geri alınamaz.`)) return;
     setBusy(true);
     try {
       const r = await commitChange([{ op: 'delete', col: 'bulletins', id: value.id }],

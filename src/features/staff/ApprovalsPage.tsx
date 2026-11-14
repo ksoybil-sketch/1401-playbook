@@ -145,7 +145,10 @@ export const ApprovalsPage: React.FC = () => {
                     {p.status === 'pending' && !(approver && canPublishOps(p.ops)) && p.createdBy === me.uid && (
                       <>
                         {editable(p) && <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => edit(p)}><Icon name="edit" size={13} /> Düzenle</button>}
-                        <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => { await withdrawProposal(p); toast('Öneri geri çekildi'); }}>Geri çek</button>
+                        <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => {
+                          if (!confirm('Öneri geri çekilsin mi? Onay listesinden düşer.')) return;
+                          try { await withdrawProposal(p); toast('Öneri geri çekildi'); } catch (e) { toast(errorText(e), 'negative'); }
+                        }}>Geri çek</button>
                       </>
                     )}
                   </div>
@@ -290,14 +293,16 @@ function blockDiff(a: unknown[], b: unknown[]): string {
 const RejectSheet: React.FC<{ p: Proposal | null; onClose: () => void }> = ({ p, onClose }) => {
   const [note, setNote] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => { setNote(''); setErr(null); }, [p]);
   if (!p) return null;
   return (
     <Sheet open title="Öneriyi reddet" onClose={onClose}
-      footer={<button className={`${t.btn} ${t.btnDanger} ${t.btnMd}`} onClick={async () => {
+      footer={<button disabled={busy} className={`${t.btn} ${t.btnDanger} ${t.btnMd}`} onClick={async () => {
         if (note.trim().length < 3) { setErr('Öneriyi yapan kişi neyi düzelteceğini bilsin: kısa bir not yaz.'); return; }
-        try { await rejectProposal(p, note); toast('Öneri geri gönderildi'); onClose(); } catch (e) { setErr(errorText(e)); }
-      }}>Reddet</button>}>
+        setBusy(true);
+        try { await rejectProposal(p, note); toast('Öneri geri gönderildi'); onClose(); } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
+      }}>{busy ? <Spinner size={14} /> : 'Reddet'}</button>}>
       <div className="text-[14px] font-medium">{p.title}</div>
       <label className={t.field}>
         <span className={t.label}>Not ({p.createdByName} görecek)</span>

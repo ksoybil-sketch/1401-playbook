@@ -84,6 +84,7 @@ service cloud.firestore {
     function canManageBaristas() { return perm('baristaYonetim', ['regional']); }
     /** Mağaza taleplerini yanıtlar, durumunu değiştirir ya da servis onayı verir. */
     function canHandleRequests() { return perm('talepYanit', ['director', 'opsmanager', 'regional']) || perm('servisOnay', ['director', 'opsmanager']); }
+    function canApproveService() { return perm('servisOnay', ['director', 'opsmanager']); }
     function isStoreSession() { return myRole() in ['store', 'barista', 'lead', 'shift']; }
     function isBarista() { return myRole() in ['barista', 'lead', 'shift']; }
     /** Mağaza müdürü ve vardiya müdürü. */
@@ -253,7 +254,10 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'open' && request.resource.data.lastSide == 'store')
         || isAdmin();
-      allow update: if canHandleRequests()
+      // Servis onayı bekleyen talebi yalnızca onay yetkisi olan bu durumdan
+      // çıkarır; yanıt yetkisi olan "İşleme al" ile onayı atlayamaz (mesaj yazabilir).
+      allow update: if (canHandleRequests()
+            && (resource.data.status != 'approval' || request.resource.data.status == 'approval' || canApproveService()))
         || (isLead() && resource.data.storeId == myStoreId()
             && request.resource.data.lastSide == 'store'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide']));

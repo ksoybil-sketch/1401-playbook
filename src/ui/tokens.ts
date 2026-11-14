@@ -81,7 +81,7 @@ export const btnSm = 'h-8 px-3 text-[12px]';
 
 /** Kare ikon butonu. */
 export const iconBtn =
-  'inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-lg bg-panel-2 border border-line text-fg-2 cursor-pointer transition-colors duration-150 hover:bg-panel-3 hover:text-crema active:opacity-80 disabled:opacity-40';
+  'inline-flex items-center justify-center w-10 h-10 md:w-8 md:h-8 shrink-0 rounded-lg bg-panel-2 border border-line text-fg-2 cursor-pointer transition-colors duration-150 hover:bg-panel-3 hover:text-crema active:opacity-80 disabled:opacity-40';
 
 /* ---------------------------------------------------------------
    FORM ELEMANLARI
@@ -102,7 +102,7 @@ export const field = 'flex flex-col gap-1.5';
 
 export const segment = 'inline-flex items-center gap-1 p-1 rounded-lg bg-panel border border-line';
 export const segmentItem =
-  'px-3 h-7 inline-flex items-center rounded-md text-[12px] font-medium cursor-pointer transition-colors duration-150 whitespace-nowrap';
+  'px-3 h-9 md:h-7 inline-flex items-center rounded-md text-[12px] font-medium cursor-pointer transition-colors duration-150 whitespace-nowrap';
 export const segmentItemOn = 'bg-panel-3 text-crema';
 export const segmentItemOff = 'text-fg-3 hover:text-fg-2';
 
@@ -125,16 +125,17 @@ export const modalOverlay =
   'fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-[fadeIn_0.15s_ease-out]';
 
 export const modalPanel =
-  'w-full max-w-[460px] max-h-[90vh] overflow-y-auto bg-bean border border-line rounded-t-2xl sm:rounded-2xl shadow-[0_-16px_48px_rgba(0,0,0,0.7)] animate-[sheetUp_0.28s_cubic-bezier(0.32,0.72,0,1)]';
+  'w-full max-w-[460px] max-h-[90dvh] flex flex-col overflow-hidden bg-bean border border-line rounded-t-2xl sm:rounded-2xl shadow-[0_-16px_48px_rgba(0,0,0,0.7)] animate-[sheetUp_0.28s_cubic-bezier(0.32,0.72,0,1)]';
 
-export const modalGrabber = 'w-9 h-1 rounded-full bg-line-2 mx-auto mt-2.5 sm:hidden';
+export const modalGrabber = 'w-9 h-1 shrink-0 rounded-full bg-line-2 mx-auto mt-2.5 sm:hidden';
 
 export const modalHeader =
-  'flex items-center justify-between gap-3 px-5 pt-4 pb-3.5 border-b border-line';
+  'shrink-0 flex items-center justify-between gap-3 px-5 pt-4 pb-3.5 border-b border-line';
 
 export const modalTitle = 'text-[17px] font-semibold text-crema';
 
-export const modalBody = 'px-5 py-5';
+/** Yalnızca gövde kayar: başlık (Kapat) ve alttaki düğmeler hep görünür. */
+export const modalBody = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5';
 
 /* ---------------------------------------------------------------
    TİPOGRAFİ

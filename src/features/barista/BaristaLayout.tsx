@@ -1,5 +1,5 @@
 import { useBaristaTheme } from './Themes';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { HUE, type Hue } from '../../ui/palette';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { useStoreRequests, hasNewReply } from './RequestsPage';
@@ -10,27 +10,10 @@ import { Avatar } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyBulletins } from './useBaristaData';
 import { finalizeExpired } from '../../api/exam';
+import { useIdleLogout } from '../../lib/idleLogout';
 
 /** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
-
-function useIdleLogout() {
-  const logout = useSession((s) => s.logout);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => {
-    const reset = () => {
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => logout(), IDLE_LOGOUT_MS);
-    };
-    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
-    reset();
-    return () => {
-      clearTimeout(timer.current);
-      events.forEach((e) => window.removeEventListener(e, reset));
-    };
-  }, [logout]);
-}
 
 export const BaristaLayout: React.FC = () => {
   const s = useBaristaSession();
@@ -41,7 +24,7 @@ export const BaristaLayout: React.FC = () => {
   const { unread } = useMyBulletins();
   const { items: requests } = useStoreRequests(isManager(s.role));
   const replies = requests.filter(hasNewReply).length;
-  useIdleLogout();
+  useIdleLogout(IDLE_LOGOUT_MS);
 
   // Yarıda kalıp süresi dolmuş denemeler, oturum açılır açılmaz o ana kadarki
   // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
@@ -82,9 +65,13 @@ export const BaristaLayout: React.FC = () => {
             <div className="text-[14px] font-semibold truncate">{s.name}</div>
             <div className="text-[11px] text-fg-3 truncate">{s.storeName}{s.role !== 'barista' ? ` · ${BARISTA_ROLE_LABEL[s.role]}` : ''}</div>
           </div>
-          <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
-            <Icon name="logout" size={14} /> Çıkış
-          </button>
+          {/* Ders ve sınavda çıkış yok: sınavın kendi "Kapat"ı onay ister,
+              buradaki tek dokunuşla oturum kapanıyor, süre işlemeye devam ediyordu. */}
+          {!focused && (
+            <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
+              <Icon name="logout" size={14} /> Çıkış
+            </button>
+          )}
         </div>
       </header>
 

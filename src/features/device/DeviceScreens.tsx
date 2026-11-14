@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
@@ -10,6 +10,7 @@ import { Icon } from '../../ui/Icon';
 import { Avatar, ErrorText, Spinner, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
+import { useBackHandler } from '../../lib/backButton';
 import { DemoStaffNotice, DemoPairNotice, DemoPinHint } from './DemoNotice';
 import type { Barista } from '../../../shared/types';
 
@@ -103,6 +104,16 @@ export const StoreHome: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
   const [menu, setMenu] = useState(false);
+
+  // Ortak telefon: yanlış isim seçilince geri tuşu seçimi kaldırsın (eskiden
+  // uygulama arka plana gidiyor, açılınca aynı kişinin PIN ekranı duruyordu).
+  // Bir dakika işlem görmeyen PIN ekranı da kendiliğinden kapanır.
+  useBackHandler(!!selected, () => { setSelected(null); setError(null); return true; });
+  useEffect(() => {
+    if (!selected || busy) return;
+    const id = setTimeout(() => { setSelected(null); setError(null); }, 60_000);
+    return () => clearTimeout(id);
+  }, [selected, busy, errKey]);
 
   const submit = async (pin: string) => {
     if (!selected) return;
@@ -319,16 +330,20 @@ export const StaffLogin: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const reset = async () => {
     setError(null);
     setInfo(null);
     if (!email.includes('@')) return setError('Önce e-posta adresini yaz.');
+    setResetting(true);
     try {
       await staffResetPassword(email);
       setInfo(`${email.trim()} adresine şifre belirleme bağlantısı gönderildi. Gelen kutunu (ve spam klasörünü) kontrol et.`);
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -363,7 +378,7 @@ export const StaffLogin: React.FC = () => {
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} disabled={busy}>
           {busy ? <Spinner size={16} /> : 'Giriş yap'}
         </button>
-        <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={reset}>
+        <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={reset} disabled={resetting}>
           Şifremi unuttum / ilk şifremi belirle
         </button>
         <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/kurulum')}>

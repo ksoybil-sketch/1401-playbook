@@ -51,12 +51,29 @@ const RecipeRow: React.FC<{ hit: LessonHit }> = ({ hit }) => {
   );
 };
 
+/** Reçeteler ekranının oturumluk hafızası (sekme kapanınca silinir). */
+const memo = {
+  get: (k: string) => { try { return sessionStorage.getItem('receteler.' + k); } catch { return null; } },
+  set: (k: string, v: string) => { try { sessionStorage.setItem('receteler.' + k, v); } catch { /* yok say */ } }
+};
+
 export const RecipesPage: React.FC = () => {
   const { tracks, modules, lessons } = useContent();
   const [params, setParams] = useSearchParams();
-  const [q, setQ] = useState(params.get('q') || '');
-  const [cat, setCat] = useState<string>('hepsi');
+  // Arama, kategori ve kaydırma konumu reçeteye girip dönünce kaybolmasın:
+  // serviste art arda üç reçeteye bakmak için üç kez yazmak gerekiyordu.
+  const [q, setQ] = useState(params.get('q') || memo.get('q') || '');
+  const [cat, setCat] = useState<string>(memo.get('kat') || 'hepsi');
   const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { memo.set('q', q); memo.set('kat', cat); }, [q, cat]);
+  useEffect(() => {
+    const y = Number(memo.get('y') || 0);
+    if (y) requestAnimationFrame(() => window.scrollTo(0, y));
+    const save = () => memo.set('y', String(Math.round(window.scrollY)));
+    window.addEventListener('scroll', save, { passive: true });
+    return () => window.removeEventListener('scroll', save);
+  }, []);
+  const signedIn = useSession((x) => x.session.kind === 'barista');
 
   // Ana ekrandaki arama kutusuna dokunulduğunda buraya odaklanarak gelinir.
   useEffect(() => {
@@ -133,7 +150,9 @@ export const RecipesPage: React.FC = () => {
                 </div>
               </div>
             )}
-            {otherHits.length > 0 && (
+            {/* Mağaza telefonunda (PIN'siz) dersler açılmaz; sonuçlar giriş
+                ekranına atıyordu. Dersler yalnızca giriş yapan baristaya. */}
+            {signedIn && otherHits.length > 0 && (
               <div className="flex flex-col gap-2">
                 <span className={t.sectionLabel}>Akademi dersleri · {otherHits.length}</span>
                 <div className={t.listGroup}>

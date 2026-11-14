@@ -152,8 +152,12 @@ export const RequestThread: React.FC<{
         <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
           placeholder={side === 'ops' ? 'Mağazaya yanıt: servis yarın 10:00\'da geliyor…' : closed ? 'Talep kapandı. Yeniden açılması için yaz…' : 'Ek bilgi yaz…'} />
         <div className="flex flex-wrap gap-2 justify-end">
-          {side === 'ops' && canChange && NEXT[r.status]
+          {/* Onay bekleyen talep: onay yetkisi olmayan yalnızca mesaj yazar
+              (eskiden "İşleme al" ile onayı atlayabiliyordu). Onaylayıcıda
+              "İşleme al" ile "Servisi onayla" aynı işi yapıyordu; tek düğme kaldı. */}
+          {side === 'ops' && canChange && (r.status !== 'approval' || canApprove) && NEXT[r.status]
             .filter((st) => st !== 'approval' || !canApprove)
+            .filter((st) => !(r.status === 'approval' && st === 'in_progress'))
             .map((st) => (
               <button key={st} disabled={!!busy} onClick={() => send(st)}
                 className={`${t.btn} ${st === 'rejected' ? t.btnDanger : st === 'done' ? t.btnSecondary : t.btnSecondary} ${t.btnSm}`}>

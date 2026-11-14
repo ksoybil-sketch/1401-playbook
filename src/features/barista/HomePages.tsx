@@ -15,7 +15,7 @@ import { assignmentDone, isOverdue, nextLesson, overallPercent, moduleState } fr
 import { Icon, type IconName } from '../../ui/Icon';
 import { HUE, trackHue, type Hue } from '../../ui/palette';
 import { RECIPE_TRACK_ID } from '../../lib/search';
-import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime } from '../../ui/kit';
+import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, Spinner } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyAssignments, useMyBadgeReport, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
@@ -57,7 +57,13 @@ export const HomePage: React.FC = () => {
   const { report } = useMyBadgeReport();
   const pct = overallPercent(modules, lessons, progress);
   const next = nextLesson(tracks, modules, lessons, progress);
-  const open = assignments.filter((a) => !assignmentDone(a, progress));
+  // Son tarihe göre: gecikenler ve yaklaşanlar önce, tarihsizler sonda.
+  const open = assignments.filter((a) => !assignmentDone(a, progress))
+    .sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+  const [allTasks, setAllTasks] = useState(false);
+  // "Tüm dersler bitti" yalnızca gerçekten bittiyse: kilitli modüller
+  // varken yeni barista müfredatın çoğu önündeyken bunu görüyordu.
+  const lockedLeft = useMemo(() => modules.some((m) => m.published && tracks.some((tr) => tr.id === m.trackId && tr.published) && moduleState(m, lessons, progress).locked), [modules, tracks, lessons, progress]);
   const latestBulletin = bulletins.find((b) => !progress.bulletins?.[b.id]) || bulletins[0];
   const pubModules = modules.filter((m) => m.published);
   const recipeCount = lessons.filter((l) => l.published && pubModules.some((m) => m.id === l.moduleId && m.trackId === RECIPE_TRACK_ID)).length;
@@ -134,7 +140,7 @@ export const HomePage: React.FC = () => {
         {next ? (
           <Tile to={`/ders/${next.lesson.id}`} hue="sky" icon="play" label="Kaldığın ders" title={next.lesson.title} hint={`${next.module.title} · ${next.lesson.durationMin} dk`} />
         ) : (
-          <Tile to="/akademi" hue="sky" icon="cap" label="Akademi" title="Tüm dersler bitti" />
+          <Tile to="/akademi" hue="sky" icon="cap" label="Akademi" title={lockedLeft ? 'Açık dersler bitti' : 'Tüm dersler bitti'} hint={lockedLeft ? 'Sıradakiler sınavı geçince açılır' : undefined} />
         )}
         <Tile to="/bulten" hue="mint" icon="bell" label={unreadBulletins ? 'Yeni duyuru' : 'Bülten'} title={latestBulletin?.title || 'Duyuru yok'}
           hint={unreadBulletins ? `${unreadBulletins} okunmamış` : 'Hepsini okudun'} badge={unreadBulletins} />
@@ -143,7 +149,13 @@ export const HomePage: React.FC = () => {
       {open.length > 0 && (
         <Section label={`Görevlerin · ${open.length}`}>
           <div className={t.listGroup}>
-            {open.slice(0, 3).map((a) => <AssignmentRow key={a.id} a={a} progress={progress} />)}
+            {(allTasks ? open : open.slice(0, 3)).map((a) => <AssignmentRow key={a.id} a={a} progress={progress} />)}
+            {/* Başlık "Görevlerin · 5" deyip yalnızca 3'ünü gösteriyordu; kalanlar hiçbir yerde yoktu. */}
+            {open.length > 3 && (
+              <button onClick={() => setAllTasks((v) => !v)} className={`${t.listRow} justify-center text-[13px] text-fg-2`}>
+                {allTasks ? 'Daha az göster' : `+${open.length - 3} görev daha`}
+              </button>
+            )}
           </div>
         </Section>
       )}
@@ -277,7 +289,7 @@ export const ResultsPage: React.FC = () => {
       </Section>
 
       <Section label="Sınav geçmişi">
-        {loading ? null : submitted.length === 0 ? (
+        {loading ? <div className="flex justify-center py-8"><Spinner /></div> : submitted.length === 0 ? (
           <Empty icon="clipboard" text="Henüz sınava girmedin." />
         ) : (
           <div className="flex flex-col gap-2">

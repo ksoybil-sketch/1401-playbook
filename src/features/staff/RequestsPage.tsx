@@ -117,7 +117,7 @@ export const RequestsPage: React.FC = () => {
           <div className="flex flex-col gap-2">
             {list.map((r) => (
               <button key={r.id} onClick={() => open(r)} className={`${t.cardInteractive} p-4 text-left flex`}>
-                <RequestSummary r={r} showStore unread={!isClosed(r.status) && r.lastSide === 'store'} />
+                <RequestSummary r={r} showStore unread={r.lastSide === 'store'} />
               </button>
             ))}
           </div>

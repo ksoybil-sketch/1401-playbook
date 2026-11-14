@@ -242,6 +242,8 @@ export const NewProductPage: React.FC = () => {
         <div className="flex-1 text-[13px] text-fg-2">
           1 reçete · {quiz.length} soru{withBulletin ? ' · 1 bülten' : ''}{withTask ? ` · ${activeStores.length} görev` : ''}
           {!publishNow && <div className="text-[12px] text-fg-3">Kahve Operasyon Direktörü onaylayınca yayına girer.</div>}
+          {/* Hata sayfanın en altında kalıyordu; düğmeye formun ortasında basan görmüyordu. */}
+          {error && <div className="text-[12px] text-negative mt-1">{error}</div>}
         </div>
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} disabled={busy} onClick={save}>
           {busy ? <Spinner size={16} /> : publishNow ? 'Yayınla' : 'Onaya gönder'}

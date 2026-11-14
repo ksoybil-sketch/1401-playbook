@@ -83,7 +83,9 @@ export async function addNote(req: StoreRequest, note: {
   };
   // Yalnızca neden değişikliği (metin yok, durum aynı): mağaza tarafına
   // "yeni yanıt" gibi görünmesin.
-  const reasonOnly = !n.text && !statusChange;
+  // İstisna: "Mağazadan bilgi bekleniyor" mağazanın yapması gereken bir şey;
+  // mağaza müdürü bunu "yeni yanıt" olarak görmeli, yoksa bilgi hiç gelmiyordu.
+  const reasonOnly = !n.text && !statusChange && !(note.side === 'ops' && note.reason === 'magaza');
   const patch: Record<string, unknown> = { notes: arrayUnion(n), updatedAt: n.at, ...(reasonOnly ? {} : { lastSide: note.side }) };
   if (note.side === 'ops' && statusChange) {
     patch.status = statusChange;
