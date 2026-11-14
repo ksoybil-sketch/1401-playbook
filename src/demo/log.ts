@@ -27,7 +27,7 @@ const SID = (() => {
 })();
 const DEVICE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? 'telefon' : 'bilgisayar';
 
-export type Kind = 'oturum' | 'sayfa' | 'değişiklik';
+export type Kind = 'oturum' | 'sayfa' | 'değişiklik' | 'ölçüm';
 
 /** Koleksiyon adlarının okunur karşılıkları. */
 const COLLECTIONS: Record<string, string> = {

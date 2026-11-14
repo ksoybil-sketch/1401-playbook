@@ -85,6 +85,20 @@ if (!res.ok) { console.error('Okunamadı:', res.status, await res.text()); proce
 const rows = (await res.json()).filter((x) => x.document).map((x) =>
   Object.fromEntries(Object.entries(x.document.fields).map(([k, v]) => [k, unwrap(v)])));
 
+// --ham: saniyesiyle, sekme/cihaz bilgili ham satırlar (hız ölçümleri için).
+//   npm run demo:kayit -- --ham [--kim zeynep] [--tur ölçüm]
+if (argv.includes('--ham')) {
+  const kim = argVal('--kim')?.toLocaleLowerCase('tr');
+  const tur = argVal('--tur');
+  const hms = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  for (const r of rows) {
+    if (kim && !String(r.who).toLocaleLowerCase('tr').includes(kim)) continue;
+    if (tur && r.kind !== tur) continue;
+    console.log([hms(r.at), r.device, r.sid, r.who, r.kind, r.label, r.op, r.path, (r.detail || '').slice(0, 400)].join(' | '));
+  }
+  process.exit(0);
+}
+
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 const day = (ms) => new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' });
 
@@ -123,7 +137,7 @@ for (const p of people.values()) {
   }
   out.push('<details><summary>Adım adım</summary>', '');
   for (const r of p.rows) {
-    const what = r.kind === 'oturum' ? `Giriş (${r.device})` : r.kind === 'sayfa' ? `→ ${r.label}` : `✎ ${r.label} · ${r.op} (${r.path})`;
+    const what = r.kind === 'oturum' ? `Giriş (${r.device})` : r.kind === 'sayfa' ? `→ ${r.label}` : r.kind === 'ölçüm' ? `⏱ ${r.label} · ${r.op}${r.path ? ` (${r.path})` : ''} ${r.detail || ''}` : `✎ ${r.label} · ${r.op} (${r.path})`;
     out.push(`- ${hhmm(r.at)} ${what}`);
   }
   out.push('', '</details>', '');

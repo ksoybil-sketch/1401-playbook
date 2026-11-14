@@ -28,10 +28,30 @@ const config = USE_EMULATOR
 
 const EMU_HOST = import.meta.env.VITE_EMULATOR_HOST || location.hostname || 'localhost';
 
+/**
+ * Firestore bağlantı biçimi (ölçüm/deney için). Demo ve emülatör paketinde
+ * localStorage'daki 'fs.transport' ile değiştirilebilir:
+ *   'long' → uzun yoklama (experimentalForceLongPolling)
+ *   'auto' → kendiliğinden seçim (varsayılan)
+ */
+const NATIVE = !!(globalThis as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+function pickTransport(): 'auto' | 'long' {
+  if (import.meta.env.VITE_ACTIVITY_LOG === 'true') {
+    try {
+      const v = localStorage.getItem('fs.transport');
+      if (v === 'long' || v === 'auto') return v;
+    } catch { /* yok say */ }
+  }
+  return 'auto';
+}
+export const FS_TRANSPORT = pickTransport();
+export const IS_NATIVE = NATIVE;
+
 export const app = initializeApp(config);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  ...(FS_TRANSPORT === 'long' ? { experimentalForceLongPolling: true } : { experimentalAutoDetectLongPolling: true })
 });
 
 if (USE_EMULATOR) {

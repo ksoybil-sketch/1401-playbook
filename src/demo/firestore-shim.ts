@@ -10,6 +10,33 @@
 import * as real from '@firebase/firestore';
 import { record } from './log';
 
+/** Bu kadar uzun süren okumalar demo kaydına "ölçüm" olarak düşer. */
+const SLOW_MS = 1000;
+const tick = () => performance.now();
+function whereOf(x: unknown): string {
+  const r = x as { path?: string; _query?: { path?: { canonicalString?: () => string }; collectionGroup?: string | null; filters?: unknown[] } };
+  if (typeof r?.path === 'string') return r.path;
+  const q = r?._query;
+  const base = q?.collectionGroup || q?.path?.canonicalString?.() || '?';
+  return q?.filters?.length ? `${base} (${q.filters.length} koşul)` : base;
+}
+function slow(kind: string, target: unknown, ms: number, extra: Record<string, unknown> = {}) {
+  if (ms < SLOW_MS) return;
+  const at = whereOf(target);
+  if (at.startsWith('demoLog')) return;
+  record(null, 'ölçüm', { label: `Yavaş ${kind}`, op: `${Math.round(ms)} ms`, path: at, data: { toplam: Math.round(ms), ...extra } });
+}
+
+export const getDoc = ((ref: Ref) => {
+  const t = tick();
+  return real.getDoc(ref as never).then((s) => { slow('okuma', ref, tick() - t, { önbellekten: s.metadata.fromCache }); return s; });
+}) as typeof real.getDoc;
+
+export const getDocs = ((q: unknown) => {
+  const t = tick();
+  return real.getDocs(q as never).then((s) => { slow('sorgu', q, tick() - t, { belge: s.size, önbellekten: s.metadata.fromCache }); return s; });
+}) as typeof real.getDocs;
+
 export * from '@firebase/firestore';
 
 type Ref = { path: string; firestore: real.Firestore };
@@ -27,25 +54,30 @@ function fieldsOf(args: unknown[]): unknown {
 
 const opName = (op: string, merge?: boolean) => (op === 'set' ? (merge ? 'güncelle' : 'yaz') : op === 'update' ? 'güncelle' : op === 'delete' ? 'sil' : 'ekle');
 
-function logOps(db: real.Firestore, ops: Op[]) {
+function logOps(db: real.Firestore, ops: Op[], t0?: number) {
   for (const o of ops) record(db, 'değişiklik', { path: o.path, op: o.op, data: o.data });
+  if (t0 !== undefined && ops.length) slow('yazma', { path: ops[0].path }, tick() - t0, { işlem: ops.length });
 }
 
 export const setDoc = ((ref: Ref, data: unknown, options?: real.SetOptions) => {
+  const t = tick();
   const p = options ? real.setDoc(ref as never, data as never, options) : real.setDoc(ref as never, data as never);
-  return p.then((r) => { logOps(ref.firestore, [{ op: opName('set', !!options), path: ref.path, data }]); return r; });
+  return p.then((r) => { logOps(ref.firestore, [{ op: opName('set', !!options), path: ref.path, data }], t); return r; });
 }) as typeof real.setDoc;
 
 export const updateDoc = ((ref: Ref, ...args: unknown[]) => {
+  const t = tick();
   const p = (real.updateDoc as (...a: unknown[]) => Promise<void>)(ref, ...args);
-  return p.then((r) => { logOps(ref.firestore, [{ op: 'güncelle', path: ref.path, data: fieldsOf(args) }]); return r; });
+  return p.then((r) => { logOps(ref.firestore, [{ op: 'güncelle', path: ref.path, data: fieldsOf(args) }], t); return r; });
 }) as typeof real.updateDoc;
 
-export const addDoc = ((col: Ref, data: unknown) =>
-  real.addDoc(col as never, data as never).then((r) => {
-    logOps(col.firestore, [{ op: 'ekle', path: r.path, data }]);
+export const addDoc = ((col: Ref, data: unknown) => {
+  const t = tick();
+  return real.addDoc(col as never, data as never).then((r) => {
+    logOps(col.firestore, [{ op: 'ekle', path: r.path, data }], t);
     return r;
-  })) as typeof real.addDoc;
+  });
+}) as typeof real.addDoc;
 
 export const deleteDoc = ((ref: Ref) =>
   real.deleteDoc(ref as never).then((r) => { logOps(ref.firestore, [{ op: 'sil', path: ref.path }]); return r; })) as typeof real.deleteDoc;
@@ -64,7 +96,7 @@ export const writeBatch = ((db: real.Firestore) => {
   };
   wrap('set'); wrap('update'); wrap('delete');
   const commit = b.commit.bind(b);
-  b.commit = () => commit().then((r) => { logOps(db, ops); return r; });
+  b.commit = () => { const t = tick(); return commit().then((r) => { logOps(db, ops, t); return r; }); };
   return b;
 }) as typeof real.writeBatch;
 

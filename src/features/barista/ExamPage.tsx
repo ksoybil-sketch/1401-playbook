@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppError, errorText } from '../../api/backend';
 import {
-  findActiveAttempt, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
+  activeAttemptIn, prepareExam, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
 import { useBaristaSession } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
@@ -41,10 +41,14 @@ export const ExamPage: React.FC = () => {
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const submitting = useRef(false);
 
-  // Bu modülde süresi dolmamış açık deneme var mı? Varsa "Başla" yerine "Devam et".
+  // Sınavın okumaları ekran açılınca başlar ("Başla"ya basılana kadar çoğu
+  // zaman biter). Aynı okumadan: bu modülde süresi dolmamış açık deneme var
+  // mı? Varsa "Başla" yerine "Devam et".
   useEffect(() => {
     if (!mod) return;
-    findActiveAttempt(s.baristaId, mod.id, lesson?.id).then((a) => setResumable(a?.deadline ? { deadline: a.deadline } : null)).catch(() => {});
+    prepareExam(mod, s.baristaId, lesson?.id)
+      .then((d) => { const a = activeAttemptIn(d.open, mod.id, lesson?.id); setResumable(a?.deadline ? { deadline: a.deadline } : null); })
+      .catch(() => {});
   }, [s.baristaId, mod, lesson]);
 
   // Geri sayım
@@ -54,13 +58,13 @@ export const ExamPage: React.FC = () => {
     return () => clearInterval(id);
   }, [phase.k]);
 
-  const submit = useCallback(async (attemptId: string, timedOut = false) => {
+  const submit = useCallback(async (attemptId: string, timedOut = false, questionIds?: string[]) => {
     if (submitting.current) return;
     submitting.current = true;
     clearTimeout(saveTimer.current);
     setPhase({ k: 'sending' });
     try {
-      const res = await submitExam(attemptId, answers, { timedOut });
+      const res = await submitExam(attemptId, answers, { timedOut, questionIds, baristaId: s.baristaId });
       setPhase({ k: 'result', ...res });
     } catch (e) {
       setError(errorText(e));
@@ -68,11 +72,11 @@ export const ExamPage: React.FC = () => {
     } finally {
       submitting.current = false;
     }
-  }, [answers]);
+  }, [answers, s.baristaId]);
 
   // Süre dolunca o ana kadarki cevaplarla otomatik teslim.
   useEffect(() => {
-    if (phase.k === 'run' && now >= phase.deadline) submit(phase.attemptId, true);
+    if (phase.k === 'run' && now >= phase.deadline) submit(phase.attemptId, true, phase.questions.map((x) => x.id));
   }, [now, phase, submit]);
 
   // Sınav sırasında yanlışlıkla geri tuşuna basılırsa uyar.
@@ -246,7 +250,7 @@ export const ExamPage: React.FC = () => {
               onClick={() => {
                 const blank = phase.questions.length - answeredCount;
                 if (blank > 0 && !confirm(`${blank} soru boş. Yine de gönderilsin mi?`)) return;
-                submit(phase.attemptId);
+                submit(phase.attemptId, false, phase.questions.map((x) => x.id));
               }}
               className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}
             >

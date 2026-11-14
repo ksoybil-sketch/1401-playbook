@@ -7,12 +7,13 @@ import * as t from '../ui/tokens';
 
 interface Entry {
   id: string; at: number; uid: string; who: string; role: string; sid: string; device: string;
-  kind: 'oturum' | 'sayfa' | 'değişiklik'; path: string; op: string; label: string; detail: string;
+  kind: 'oturum' | 'sayfa' | 'değişiklik' | 'ölçüm'; path: string; op: string; label: string; detail: string;
 }
 
 const DAY = 86400000;
 const startOfDay = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+const hms = (ms: number) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const dayName = (ms: number) => new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' });
 
 const RANGES = [
@@ -31,6 +32,7 @@ export const DemoLogPage: React.FC = () => {
   const [range, setRange] = useState<(typeof RANGES)[number]['id']>('bugun');
   const [person, setPerson] = useState<string>('');
   const [onlyChanges, setOnlyChanges] = useState(false);
+  const [onlyTimings, setOnlyTimings] = useState(false);
   const r = RANGES.find((x) => x.id === range)!;
   const from = r.from();
 
@@ -56,7 +58,7 @@ export const DemoLogPage: React.FC = () => {
     return [...m.values()].sort((a, b) => b.last - a.last);
   }, [rows]);
 
-  const shown = rows.filter((e) => (!person || e.who === person) && (!onlyChanges || e.kind === 'değişiklik'));
+  const shown = rows.filter((e) => (!person || e.who === person) && (!onlyChanges || e.kind === 'değişiklik') && (!onlyTimings || e.kind === 'ölçüm'));
   const groups = useMemo(() => {
     const g: { day: number; items: Entry[] }[] = [];
     for (const e of shown) {
@@ -78,6 +80,7 @@ export const DemoLogPage: React.FC = () => {
           ))}
         </div>
         <button onClick={() => setOnlyChanges((v) => !v)} className={`${t.chip} ${onlyChanges ? t.chipOn : t.chipOff}`}>Yalnızca değişiklikler</button>
+        <button onClick={() => setOnlyTimings((v) => !v)} className={`${t.chip} ${onlyTimings ? t.chipOn : t.chipOff}`}>Hız ölçümleri</button>
       </div>
 
       {loading ? <div className="py-10 flex justify-center"><Spinner /></div> : error ? (
@@ -116,14 +119,16 @@ export const DemoLogPage: React.FC = () => {
 
 const Row: React.FC<{ e: Entry; showWho: boolean }> = ({ e, showWho }) => {
   const [open, setOpen] = useState(false);
-  const change = e.kind === 'değişiklik';
-  const text = e.kind === 'oturum' ? `Giriş yaptı (${e.device})` : e.kind === 'sayfa' ? e.label : `${e.label} · ${e.op}`;
+  const timing = e.kind === 'ölçüm';
+  const change = e.kind === 'değişiklik' || timing;
+  const ms = timing ? Number.parseInt(e.op, 10) : 0;
+  const text = e.kind === 'oturum' ? `Giriş yaptı (${e.device})` : e.kind === 'sayfa' ? e.label : timing ? `⏱ ${e.label} · ${(ms / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sn` : `${e.label} · ${e.op}`;
   return (
     <div className="px-4 py-2.5 flex flex-col gap-1">
       <button onClick={() => change && e.detail && setOpen((v) => !v)} className="flex items-baseline gap-3 text-left w-full">
-        <span className="text-[12px] text-fg-3 tnum w-11 shrink-0">{hhmm(e.at)}</span>
+        <span className={`text-[12px] text-fg-3 tnum shrink-0 ${timing ? 'w-16' : 'w-11'}`}>{timing ? hms(e.at) : hhmm(e.at)}</span>
         {showWho && <span className="text-[13px] text-fg-2 w-48 shrink-0 truncate">{e.who}</span>}
-        <span className={`text-[13px] flex-1 min-w-0 ${change ? `font-semibold ${OP_TONE[e.op] || 'text-crema'}` : e.kind === 'oturum' ? 'text-crema' : 'text-fg-2'}`}>
+        <span className={`text-[13px] flex-1 min-w-0 ${timing ? `font-semibold ${ms >= 5000 ? 'text-negative' : ms >= 1500 ? 'text-caution' : 'text-positive'}` : change ? `font-semibold ${OP_TONE[e.op] || 'text-crema'}` : e.kind === 'oturum' ? 'text-crema' : 'text-fg-2'}`}>
           {text}
           {change && <span className="ml-2 font-normal text-fg-3 break-all">{e.path}</span>}
         </span>
