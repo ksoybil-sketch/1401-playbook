@@ -8,7 +8,7 @@ import {
   allowedIn, DEFAULT_DOMAINS, DEFAULTS, domainIn, EDITABLE_ROLES, PERMS, usePermStore,
   type Perm, type PermConfig, type PermDef
 } from '../../lib/permissions';
-import { STAFF_ROLE_LABEL, STAFF_ROLES } from '../../lib/roles';
+import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole } from '../../lib/roles';
 import { useStaffSession } from './StaffLayout';
 import { Badge, Empty, Page, PageTitle, Section, fmtDateTime, toast } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
@@ -36,7 +36,7 @@ export const PermissionsPage: React.FC = () => {
   const me = useStaffSession();
   const cfg = usePermStore((s) => s.config);
   const { tracks } = useContent();
-  const { data: people } = useQueryLive<Person>(query(collection(db, 'users'), where('role', 'in', STAFF_ROLES)), 'perm-people');
+  const { data: people } = useQueryLive<Person>(query(collection(db, 'users'), where('role', 'in', visibleStaffRoles(me.role))), 'perm-people');
   const [busy, setBusy] = useState<string | null>(null);
   const ref = doc(db, 'config', 'permissions');
 
@@ -45,7 +45,10 @@ export const PermissionsPage: React.FC = () => {
   const changedCount = (r: Role) => PERMS.filter((p) => applies(r, p) && changed(r, p.id)).length;
 
   const logLine = (text: string): PermConfig['log'] =>
-    [...(cfg.log || []), { at: Date.now(), byName: me.name, text }].slice(-60);
+    [...(cfg.log || []), { at: Date.now(), byName: me.name, text, ...(isDevRole(me.role) ? { dev: true } : {}) }].slice(-60);
+  // Geliştiricinin yaptığı değişiklikler yalnızca ona görünür.
+  const dev = isDevRole(me.role);
+  const log = (cfg.log || []).filter((l) => dev || !l.dev);
 
   const toggle = async (r: Role, p: PermDef) => {
     const next = !allowedIn(cfg, r, p.id);
@@ -85,7 +88,7 @@ export const PermissionsPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Yetkiler"
-        subtitle="Her birimin neyi görüp neyi değiştirebildiği yan yana. Bir hücreye dokunarak açıp kapatırsınız: kapanan ekran menüden kalkar, kapanan işlem yapılamaz (sunucu da reddeder). Uygulama geliştiricisi bu ayardan etkilenmez; ekibe kişi ekleme ve bu ekran sizde sabittir." />
+        subtitle={`Her birimin neyi görüp neyi değiştirebildiği yan yana. Bir hücreye dokunarak açıp kapatırsınız: kapanan ekran menüden kalkar, kapanan işlem yapılamaz (sunucu da reddeder). ${dev ? 'Uygulama geliştiricisi bu ayardan etkilenmez; ekibe kişi ekleme ve bu ekran direktörde sabittir.' : 'Ekibe kişi ekleme ve bu ekran sizde sabittir.'}`} />
 
       <div className="overflow-x-auto -mx-1 px-1">
         <table className="w-full min-w-[760px] border-separate border-spacing-0">
@@ -170,9 +173,9 @@ export const PermissionsPage: React.FC = () => {
       </Section>
 
       <Section label="Son değişiklikler">
-        {!cfg.log?.length ? <Empty icon="key" text="Henüz değişiklik yok; herkes varsayılan yetkilerle çalışıyor." /> : (
+        {!log.length ? <Empty icon="key" text="Henüz değişiklik yok; herkes varsayılan yetkilerle çalışıyor." /> : (
           <div className={t.listGroup}>
-            {[...cfg.log].reverse().slice(0, 20).map((l, i) => (
+            {[...log].reverse().slice(0, 20).map((l, i) => (
               <div key={i} className={t.listRowStatic}>
                 <Icon name="key" size={14} className="text-fg-3" />
                 <span className="flex-1 min-w-0 text-[13.5px]">{l.text}</span>

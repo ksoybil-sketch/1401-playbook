@@ -91,16 +91,21 @@ service cloud.firestore {
     function isLead() { return myRole() in ['lead', 'shift']; }
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
     /** Ekibe verilebilecek roller: Kahve Operasyon Direktörü kurul dahil ekibi kurar. */
-    function teamRolesFor() { return isAdmin() ? ['developer', 'director', 'opsmanager', 'regional', 'ops', 'admin', 'board'] : ['opsmanager', 'regional', 'ops', 'board']; }
+    // Ekibe geliştirici eklenmez (tektir); geliştirici ekibin geri kalanını kurar.
+    function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'ops', 'board'] : ['opsmanager', 'regional', 'ops', 'board']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
 
     // --- Kullanıcı hesapları ------------------------------------------
     match /users/{uid} {
-      allow get: if isStaff() || (signedIn() && request.auth.uid == uid);
+      // Uygulama geliştiricisinin (ve eski 'admin') belgesi yalnızca ona görünür:
+      // direktör dahil kimse adını, e-postasını ya da rolünü okuyamaz. Ekip
+      // listeleri bu yüzden sorguda rolü süzer (bkz. roles.ts visibleStaffRoles).
+      allow get: if (isStaff() && (isAdmin() || resource == null || !(resource.data.role in ['developer', 'admin'])))
+                 || (signedIn() && request.auth.uid == uid);
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
-      allow list: if isStaff()
+      allow list: if (isStaff() && (isAdmin() || !(resource.data.role in ['developer', 'admin'])))
         // Kurul, soru sorarken kime soracağını seçmek için direktörü ve bölge müdürünü görür.
         || (isBoard() && resource.data.role in ['director', 'opsmanager', 'regional']);
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.

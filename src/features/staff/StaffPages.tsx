@@ -21,7 +21,7 @@ import { isClosed } from '../../api/requests';
 import { useStaffSession } from './StaffLayout';
 import type { Attempt, Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
 import { allowed, domainOf } from '../../lib/permissions';
-import { can, assignableRoles, STAFF_ROLES, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
+import { can, assignableRoles, visibleStaffRoles, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
 const WEEK = 7 * 86400000;
 const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, updatedAt: 0 };
@@ -322,7 +322,7 @@ const StaffTeamSection: React.FC = () => {
   const me = useStaffSession();
   const manage = can(me.role, 'manageTeam');
   const roles = assignableRoles(me.role);
-  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', STAFF_ROLES)), 'staff-team');
+  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', visibleStaffRoles(me.role))), 'staff-team');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

@@ -100,7 +100,7 @@ export interface PermConfig {
   domains?: Partial<Record<StaffRole, string[] | null>>;
   updatedAt?: number;
   updatedByName?: string;
-  log?: { at: number; byName: string; text: string }[];
+  log?: { at: number; byName: string; text: string; dev?: boolean }[];
 }
 
 interface PermState { config: PermConfig; ready: boolean; subscribe: () => () => void }
