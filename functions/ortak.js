@@ -11,7 +11,7 @@ setGlobalOptions({ region: 'europe-west1', maxInstances: 3, memory: '256MiB' });
 
 export const SMTP_URL = defineSecret('SMTP_URL');
 export const MAIL_FROM = defineString('MAIL_FROM', { default: '1401 Campus <bildirim@1401coffee.com>' });
-export const APP_URL = defineString('APP_URL', { default: 'https://playbook-1401.web.app' });
+export const APP_URL = defineString('APP_URL', { default: 'https://1401-campus.web.app' });
 export const TZ = 'Europe/Istanbul';
 export const H = 3600000;
 
