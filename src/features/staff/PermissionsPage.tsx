@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { collection, deleteField, doc, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteField, doc, query, runTransaction, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
@@ -8,7 +8,7 @@ import {
   allowedIn, DEFAULT_DOMAINS, DEFAULTS, domainIn, EDITABLE_ROLES, PERMS, usePermStore,
   type Perm, type PermConfig, type PermDef
 } from '../../lib/permissions';
-import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole } from '../../lib/roles';
+import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole, authorName } from '../../lib/roles';
 import { useStaffSession } from './StaffLayout';
 import { Badge, Empty, Page, PageTitle, Section, fmtDateTime, toast } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
@@ -44,22 +44,29 @@ export const PermissionsPage: React.FC = () => {
   const changed = (r: Role, p: Perm) => typeof cfg.roles?.[r]?.[p] === 'boolean' && cfg.roles![r]![p] !== (DEFAULTS[r] || []).includes(p);
   const changedCount = (r: Role) => PERMS.filter((p) => applies(r, p) && changed(r, p.id)).length;
 
-  const logLine = (text: string): PermConfig['log'] =>
-    [...(cfg.log || []), { at: Date.now(), byName: me.name, text, ...(isDevRole(me.role) ? { dev: true } : {}) }].slice(-60);
-  // Geliştiricinin yaptığı değişiklikler yalnızca ona görünür.
+  // Geliştiricinin yaptığı değişiklikler yalnızca ona görünür; adı da yazılmaz.
   const dev = isDevRole(me.role);
+  const byName = authorName(me.role, me.name);
   const log = (cfg.log || []).filter((l) => dev || !l.dev);
+
+  /**
+   * Ayarı ve günlük satırını tek işlemde yazar. Günlük eskiden yerel kopyadan
+   * yeniden yazılıyordu: art arda iki değişiklikte ilki kayboluyordu.
+   */
+  const write = (text: string, patch: (cur: PermConfig) => Record<string, unknown>) =>
+    runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const cur = (snap.data() as PermConfig | undefined) || {};
+      const line = { at: Date.now(), byName, text, ...(dev ? { dev: true } : {}) };
+      tx.set(ref, { ...patch(cur), updatedAt: Date.now(), updatedByName: byName, log: [...(cur.log || []), line].slice(-60) }, { merge: true });
+    });
 
   const toggle = async (r: Role, p: PermDef) => {
     const next = !allowedIn(cfg, r, p.id);
-    if (r === 'director' && !next && !confirm(`Kahve Operasyon Direktörü için "${p.label}" kapatılsın mı? Bu sizin de yetkinizi kapatır.`)) return;
+    if (r === 'director' && !next && !confirm(`Kahve Operasyon Direktörü için "${p.label}" kapatılsın mı? Bu senin de yetkini kapatır.`)) return;
     setBusy(`${r}:${p.id}`);
     try {
-      await setDoc(ref, {
-        roles: { [r]: { [p.id]: next } },
-        updatedAt: Date.now(), updatedByName: me.name,
-        log: logLine(`${STAFF_ROLE_LABEL[r]} · ${p.label}: ${next ? 'açıldı' : 'kapatıldı'}`)
-      }, { merge: true });
+      await write(`${STAFF_ROLE_LABEL[r]} · ${p.label}: ${next ? 'açıldı' : 'kapatıldı'}`, () => ({ roles: { [r]: { [p.id]: next } } }));
     } catch (e) { toast(errorText(e), 'negative'); }
     setBusy(null);
   };
@@ -67,18 +74,15 @@ export const PermissionsPage: React.FC = () => {
   const reset = async (r: Role) => {
     if (!confirm(`${STAFF_ROLE_LABEL[r]} için bütün yetkiler varsayılana dönsün mü?`)) return;
     try {
-      await setDoc(ref, { updatedAt: Date.now() }, { merge: true });
-      await updateDoc(ref, { [`roles.${r}`]: deleteField(), [`domains.${r}`]: deleteField(), log: logLine(`${STAFF_ROLE_LABEL[r]}: varsayılana döndü`) });
+      await write(`${STAFF_ROLE_LABEL[r]}: varsayılana döndü`, () => ({ roles: { [r]: deleteField() }, domains: { [r]: deleteField() } }));
       toast('Varsayılana döndü', 'positive');
     } catch (e) { toast(errorText(e), 'negative'); }
   };
 
   const setDomain = async (r: Role, list: string[] | null) => {
     try {
-      await setDoc(ref, {
-        domains: { [r]: list }, updatedAt: Date.now(), updatedByName: me.name,
-        log: logLine(`${STAFF_ROLE_LABEL[r]} · içerik alanı: ${list ? list.map((id) => tracks.find((x) => x.id === id)?.title || id).join(', ') || 'hiçbiri' : 'her yer'}`)
-      }, { merge: true });
+      await write(`${STAFF_ROLE_LABEL[r]} · içerik alanı: ${list ? list.map((id) => tracks.find((x) => x.id === id)?.title || id).join(', ') || 'hiçbiri' : 'her yer'}`,
+        () => ({ domains: { [r]: list } }));
     } catch (e) { toast(errorText(e), 'negative'); }
   };
 
@@ -88,7 +92,7 @@ export const PermissionsPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Yetkiler"
-        subtitle={`Her birimin neyi görüp neyi değiştirebildiği yan yana. Bir hücreye dokunarak açıp kapatırsınız: kapanan ekran menüden kalkar, kapanan işlem yapılamaz (sunucu da reddeder). ${dev ? 'Uygulama geliştiricisi bu ayardan etkilenmez; ekibe kişi ekleme ve bu ekran direktörde sabittir.' : 'Ekibe kişi ekleme ve bu ekran sizde sabittir.'}`} />
+        subtitle={`Her birimin neyi görüp neyi değiştirebildiği yan yana. Bir hücreye dokunarak açıp kapatırsın. Kapanan işlem yapılamaz, sunucu da reddeder. Kapanan ekran menüden kalkar; ancak Geri bildirim, Kurul soruları ve E-posta bildirimleri dışındaki ekranların verisi okunmaya devam eder (ör. Genel bakış'ta baristalar ve sınavlar görünür). ${dev ? 'Uygulama geliştiricisi bu ayardan etkilenmez; ekibe kişi ekleme ve bu ekran direktörde sabittir.' : 'Ekibe kişi ekleme ve bu ekran sende sabittir.'}`} />
 
       <div className="overflow-x-auto -mx-1 px-1">
         <table className="w-full min-w-[760px] border-separate border-spacing-0">
@@ -179,7 +183,7 @@ export const PermissionsPage: React.FC = () => {
               <div key={i} className={t.listRowStatic}>
                 <Icon name="key" size={14} className="text-fg-3" />
                 <span className="flex-1 min-w-0 text-[13.5px]">{l.text}</span>
-                <span className="text-[12px] text-fg-3 whitespace-nowrap">{l.byName} · {fmtDateTime(l.at)}</span>
+                <span className="text-[12px] text-fg-3 whitespace-nowrap">{l.byName ? `${l.byName} · ` : ''}{fmtDateTime(l.at)}</span>
               </div>
             ))}
           </div>

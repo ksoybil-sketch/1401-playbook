@@ -5,7 +5,8 @@ import { errorText } from '../../api/backend';
 import { useSession } from '../../store/session';
 import { MediaInput } from '../staff/MediaInput';
 import { Icon } from '../../ui/Icon';
-import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
+import { Sheet, Spinner, ErrorText, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
+import { authorName } from '../../lib/roles';
 import * as t from '../../ui/tokens';
 import type { FeedbackKind } from '../../../shared/types';
 import { APP_VERSION, bundleName } from '../../lib/version';
@@ -38,7 +39,8 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const who = session.kind === 'staff' ? { uid: session.uid, name: session.name, role: session.role, store: '' }
+  // Uygulama geliştiricisi iz bırakmaz: adı boş yazılır.
+  const who = session.kind === 'staff' ? { uid: session.uid, name: authorName(session.role, session.name), role: session.role, store: '' }
     : session.kind === 'barista' ? { uid: session.uid, name: session.name, role: session.role, store: session.storeName }
       : session.kind === 'store' ? { uid: session.uid, name: `${session.storeName} telefonu`, role: 'store', store: session.storeName }
         : null;
@@ -49,15 +51,17 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
     setBusy(true);
     setError(null);
     try {
-      await addDoc(collection(db, 'feedback'), {
+      // Çevrimdışıyken addDoc sunucu onayını bekleyip hiç dönmüyordu; pencere
+      // kapanamıyordu. Kuyruğa alındıysa pencere kapanır, bağlantı gelince gider.
+      const q = await sendOrQueue(addDoc(collection(db, 'feedback'), {
         kind, text: text.trim().slice(0, 2000), ...(image ? { imageUrl: image } : {}),
         ...(lessonId ? { lessonId, lessonTitle: lessonTitle || '' } : {}),
         ...(questionId ? { questionId, questionPrompt: (questionPrompt || '').slice(0, 300) } : {}),
         ...context(),
         by: who.uid, byName: who.name, role: who.role, storeName: who.store,
         status: 'yeni', createdAt: Date.now()
-      });
-      toast('Teşekkürler, iletildi.');
+      }));
+      toast(q === 'queued' ? QUEUED_TEXT : 'Teşekkürler, iletildi.');
       setText(''); setImage('');
       onClose();
     } catch (e) {

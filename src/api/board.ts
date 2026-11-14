@@ -1,5 +1,7 @@
 import { addDoc, arrayUnion, collection, doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { useSession } from '../store/session';
+import { authorName } from '../lib/roles';
 import type { BoardMessage, BoardQuestion, BoardTopic } from '../../shared/types';
 
 /**
@@ -58,7 +60,10 @@ export async function askBoardQuestion(input: { topic: BoardTopic; to: BoardQues
 /** Kurul ek soru yazar (soru yeniden açılır) ya da operasyon yanıtlar. */
 export async function replyBoardQuestion(q: BoardQuestion, side: 'board' | 'ops', text: string, by: { uid: string; name: string }) {
   const now = Date.now();
-  const msg: BoardMessage = { at: now, by: by.uid, byName: by.name, side, text: text.trim() };
+  // Uygulama geliştiricisi yanıtlarsa adı yazılmaz (iz bırakmaz).
+  const s = useSession.getState().session;
+  const byName = s.kind === 'staff' ? authorName(s.role, by.name) : by.name;
+  const msg: BoardMessage = { at: now, by: by.uid, byName, side, text: text.trim() };
   await updateDoc(doc(db, 'boardQuestions', q.id), {
     messages: arrayUnion(msg),
     status: side === 'ops' ? 'answered' : 'open',

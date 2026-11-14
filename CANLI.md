@@ -48,9 +48,8 @@ Raporu Claude'a ver: "bu raporun açık hatalarını düzelt".
 
 ## Açık kalanlar (14.11.2026)
 
-- [ ] **Yapay zekâ anahtarı:** canlı panelde Akademi → Yapay zekâ. Anahtarı yalnızca sen girersin.
-- [ ] **Gerçek mağazalar ve ekip:** canlıda yalnızca Moda Cadde ve 1 barista var. Kahve Operasyonu ekibi ve diğer mağazalar canlı panelden eklenecek.
-- [ ] **Demodaki bültenler:** demoda 11 Kasım'da yazılmış 4 bülten var: "Chestnut Latte 15 Kasım'da menüde", "Çocuk Menüsü", "Ekim ayında en çok Black Latte satanlar", "bundan sonra latte artlar böyle". Gerçek duyuruysa canlıda yeniden yayınlanmalı.
+- [ ] **Yapay zekâ anahtarı:** API masrafı için önce Yönetim Kurulu onayı alınacak. Onaydan sonra canlı panelde Akademi → Yapay zekâ; anahtarı yalnızca sen girersin. O zamana kadar "Dosyadan ders" yapay zekâsız okur.
+- [ ] **Gerçek mağazalar ve ekip:** liste hazır olunca canlı panelden eklenecek. Şu an canlıda yalnızca Moda Cadde ve 1 barista var.
 - [ ] **Telefonla son kontrol:** gerçek mağaza telefonunda eşleştirme, barista PIN'i, bir ders, bir sınav.
 - [ ] **E-posta konusu ve gönderen adı:** Firebase bu projede şablon düzenlemeyi kapatmış; e-postalardaki ad proje adından ("1401 Campus") gelir.
 

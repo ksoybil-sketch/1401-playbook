@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
-import { approveProposal, canPublishOps, rejectProposal, withdrawProposal } from '../../api/changes';
+import { approveProposal, canPublishOps, proposalStale, rejectProposal, StaleError, withdrawProposal, type ProposalDoc } from '../../api/changes';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
-import { can } from '../../lib/roles';
+import { authorName, can } from '../../lib/roles';
 import { useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
 import { BulletinSheet } from './BulletinPages';
@@ -61,13 +61,21 @@ export const ApprovalsPage: React.FC = () => {
   const history = mine.filter((p) => p.status !== 'pending');
   const list = tab === 'pending' ? pending : history;
 
-  const publish = async (p: Proposal) => {
+  const publish = async (p: Proposal, force = false) => {
     setBusy(p.id);
     try {
-      await approveProposal(p);
+      await approveProposal(p, force);
       toast('Yayınlandı', 'positive');
       setDetail(null);
     } catch (e) {
+      if (e instanceof StaleError) {
+        // Hedef belge öneriden sonra değişti (başkası düzeltti ya da müfredat
+        // güncellendi): sessizce ezilmez. Fark "Ne değişiyor"da görünür.
+        setBusy(null);
+        if (confirm(`${e.titles.join(', ') || 'Bu içerik'} öneriden sonra değişti. Öneriyi olduğu gibi yayınlarsan sonraki değişiklikler gider.\n\nFarkı görmek için "Vazgeç"e basıp "Ne değişiyor"u aç. Yine de yayınlansın mı?`)) return publish(p, true);
+        setDetail(p);
+        return;
+      }
       toast(errorText(e), 'negative');
     } finally {
       setBusy(null);
@@ -122,8 +130,8 @@ export const ApprovalsPage: React.FC = () => {
                       </div>
                       <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{p.title}</div>
                       <div className="text-[12px] text-fg-3 mt-0.5">
-                        {p.summary} · {p.createdByName} · {fmtDateTime(p.createdAt)}
-                        {p.reviewedAt ? ` · ${p.reviewedByName}, ${fmtDateTime(p.reviewedAt)}` : ''}
+                        {[p.summary, p.createdByName, fmtDateTime(p.createdAt)].filter(Boolean).join(' · ')}
+                        {p.reviewedAt ? ` · ${p.reviewedByName ? `${p.reviewedByName}, ` : ''}${fmtDateTime(p.reviewedAt)}` : ''}
                       </div>
                       {p.reviewNote && <div className="text-[13px] text-fg-2 mt-1.5">Not: “{p.reviewNote}”</div>}
                     </div>
@@ -159,7 +167,7 @@ export const ApprovalsPage: React.FC = () => {
         )}
       </Section>
 
-      <DiffSheet p={detail} onClose={() => setDetail(null)} onPublish={approver && detail && canPublishOps(detail.ops) ? publish : undefined} busy={!!detail && busy === detail.id} />
+      <DiffSheet p={detail} onClose={() => setDetail(null)} onPublish={approver && detail && canPublishOps(detail.ops) ? (x) => publish(x) : undefined} busy={!!detail && busy === detail.id} />
       <RejectSheet p={rejecting} onClose={() => setRejecting(null)} />
 
       {/* Düzeltme: önerideki veri ilgili editörde açılır; kaydetmek onu yayınlar. */}
@@ -167,7 +175,7 @@ export const ApprovalsPage: React.FC = () => {
         <BulletinSheet
           value={{ id: editing.op.id, ...(editing.op.data as Partial<Bulletin>) }}
           onClose={() => setEditing(null)}
-          author={{ uid: me.uid, name: me.name }}
+          author={{ uid: me.uid, name: authorName(me.role, me.name) }}
           stores={stores.map((x) => ({ id: x.id, name: x.name }))}
           baristas={baristas.filter((x) => x.active)}
           proposalId={editing.p.id}
@@ -201,7 +209,7 @@ const FIELD: Record<string, string> = {
   prompt: 'Soru', options: 'Seçenekler', answer: 'Doğru cevap', explanation: 'Açıklama', imageUrl: 'Görsel',
   storeIds: 'Mağazalar', rows: 'Sıralama', people: 'Kişiler', pinned: 'Sabit', expiresAt: 'Bitiş', kind: 'Tür', icon: 'İkon'
 };
-const SKIP = new Set(['createdAt', 'createdBy', 'createdByName', 'moduleId', 'trackId', 'questionCount', 'board', 'type']);
+const SKIP = new Set(['createdAt', 'createdBy', 'createdByName', 'moduleId', 'trackId', 'questionCount', 'board', 'type', 'updatedAt', 'kaynak']);
 
 function show(v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';
@@ -214,11 +222,14 @@ function show(v: unknown): string {
 const DiffSheet: React.FC<{ p: Proposal | null; onClose: () => void; onPublish?: (p: Proposal) => void; busy: boolean }> = ({ p, onClose, onPublish, busy }) => {
   const [current, setCurrent] = useState<Record<string, Record<string, unknown> | null>>({});
   const [loading, setLoading] = useState(false);
+  const [stale, setStale] = useState<string[]>([]);
 
   useEffect(() => {
     if (!p) return;
     let alive = true;
     setLoading(true);
+    setStale([]);
+    if (p.status === 'pending') proposalStale(p as ProposalDoc).then((x) => alive && setStale(x)).catch(() => {});
     Promise.all(p.ops.map(async (o) => {
       const snap = await getDoc(doc(db, o.col, o.id)).catch(() => null);
       return [`${o.col}/${o.id}`, snap?.exists() ? (snap.data() as Record<string, unknown>) : null] as const;
@@ -237,6 +248,12 @@ const DiffSheet: React.FC<{ p: Proposal | null; onClose: () => void; onPublish?:
       footer={onPublish && p.status === 'pending' ? (
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={() => onPublish(p)}>{busy ? <Spinner size={14} /> : 'Olduğu gibi yayınla'}</button>
       ) : undefined}>
+      {stale.length > 0 && (
+        <div className="flex gap-3 p-3.5 rounded-xl bg-caution-bg border border-caution-line text-[13px] leading-relaxed">
+          <Icon name="alert" size={16} className="text-caution mt-0.5 shrink-0" />
+          <span><strong>{stale.join(', ')}</strong> öneriden sonra değişti. Aşağıdaki fark şu anki hâline göre: üstü çizili olanlar yayında, öneri onları geri alır. Olduğu gibi yayınlarsan sonraki değişiklikler gider; istersen "Düzelt ve yayınla" ile birleştir.</span>
+        </div>
+      )}
       {loading ? <Spinner /> : p.ops.map((o, i) => {
         const before = current[`${o.col}/${o.id}`];
         const changes: { k: string; a: unknown; b: unknown }[] = [];
@@ -305,7 +322,7 @@ const RejectSheet: React.FC<{ p: Proposal | null; onClose: () => void }> = ({ p,
       }}>{busy ? <Spinner size={14} /> : 'Reddet'}</button>}>
       <div className="text-[14px] font-medium">{p.title}</div>
       <label className={t.field}>
-        <span className={t.label}>Not ({p.createdByName} görecek)</span>
+        <span className={t.label}>Not ({p.createdByName ? `${p.createdByName} görecek` : 'öneriyi yapan görecek'})</span>
         <textarea className={t.textarea} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ölçü 18 gr olmalı; görseli yenile." />
       </label>
       <ErrorText>{err}</ErrorText>

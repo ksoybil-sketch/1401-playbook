@@ -1,7 +1,9 @@
 import type { ThemeRules } from './baristaThemes';
 import type { Assignment, Attempt, Lesson, Module, Progress, Track } from '../../shared/types';
 import type { IconName } from '../ui/Icon';
-import { assignmentDone, assignmentDoneAt, isOverdue } from './progress';
+import { assignmentDone, assignmentDoneAt, isOverdue, visibleModules } from './progress';
+import { isTaskValid } from './taskValidity';
+import { localDayStart } from './day';
 
 /**
  * Başarımlar ve önlük rozetleri.
@@ -87,7 +89,11 @@ export interface BadgeContext {
   modules: Module[];
   lessons: Lesson[];
   progress: Progress;
-  /** Bu baristanın tamamlanmış (puanlanmış, iptal edilmemiş) denemeleri. */
+  /**
+   * Bu baristanın tamamlanmış (puanlanmış, iptal edilmemiş) denemeleri.
+   * Mini sınavlar (lessonId dolu) da gelebilir: modül sınavı sayılmazlar,
+   * yalnızca "İstikrar"da etkinlik olarak sayılırlar.
+   */
   attempts: Attempt[];
   assignments: Assignment[];
   /** İşe başlama (YYYY-AA-GG) */
@@ -133,7 +139,10 @@ export const GROUP_LABEL: Record<BadgeGroup, string> = {
 
 interface Derived extends BadgeContext {
   now: number;
+  /** Yalnızca modül sınavları (mini sınavlar hariç). */
   done: Attempt[];
+  /** Mini sınavlar dahil bütün teslim edilmiş denemeler (etkinlik). */
+  activity: Attempt[];
   best: (moduleId: string) => number | null;
   passed: (moduleId: string, min?: number) => boolean;
   trackModules: (trackId: string) => Module[];
@@ -146,8 +155,13 @@ const DAY = 86400000;
 function derive(c: BadgeContext, windowDays = 0): Derived {
   const now = c.now ?? Date.now();
   const since = windowDays > 0 ? now - windowDays * DAY : 0;
-  const done = c.attempts.filter((a) => a.submittedAt && !a.voided && a.submittedAt >= since)
+  const activity = c.attempts.filter((a) => a.submittedAt && !a.voided && a.submittedAt >= since)
     .sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0));
+  // Mini sınav (Yeni ürün, 3 soru) modül sınavı değildir: Tam Puan, İlk
+  // Seferde, Azim, Seri, ustalık notları ve rozet ortalaması yalnızca modül
+  // sınavlarından hesaplanır. Önceden 3/3'lük mini sınav 80'lik modül
+  // sınavını 100'e çıkarıyordu.
+  const done = activity.filter((a) => !a.lessonId);
   const progress: Progress = since
     ? {
         ...c.progress,
@@ -163,7 +177,7 @@ function derive(c: BadgeContext, windowDays = 0): Derived {
   };
   const start = c.startedAt ? new Date(c.startedAt).getTime() : c.createdAt || now;
   return {
-    ...c, progress, now, done, best,
+    ...c, progress, now, done, activity, best,
     passed: (id, min = 0) => (best(id) ?? -1) >= min && !!progress.modules?.[id],
     trackModules: (tid) => c.modules.filter((m) => m.trackId === tid && m.published),
     days: Math.max(0, Math.floor((now - start) / DAY))
@@ -299,7 +313,7 @@ export const BADGES: BadgeDef[] = [
     id: 'kitap-kurdu', title: 'Kitap Kurdu', group: 'basari', icon: 'book', params: [P('pct', 'Biten ders oranı', '%', 100, 50, 100)],
     rule: (p) => p.pct >= 100 ? 'Akademideki yayındaki tüm dersleri bitir.' : `Akademideki derslerin en az %${p.pct}'ini bitir.`,
     check: (d, p) => {
-      const pub = new Set(d.modules.filter((m) => m.published).map((m) => m.id));
+      const pub = new Set(visibleModules(d.modules, d.tracks).map((m) => m.id));
       const ls = d.lessons.filter((l) => l.published && pub.has(l.moduleId));
       return status(ls.filter((l) => d.progress.lessons?.[l.id]).length, Math.max(1, Math.ceil(ls.length * p.pct / 100)));
     }
@@ -313,7 +327,7 @@ export const BADGES: BadgeDef[] = [
       const from = d.now - p.span * 7 * DAY;
       const mark = (t: number) => { if (t >= from) weeks.add(Math.floor((d.now - t) / (7 * DAY))); };
       Object.values(d.progress.lessons || {}).forEach(mark);
-      d.done.forEach((a) => mark(a.submittedAt!));
+      d.activity.forEach((a) => mark(a.submittedAt!));
       return status(weeks.size, p.weeks);
     }
   },
@@ -321,11 +335,18 @@ export const BADGES: BadgeDef[] = [
     id: 'gorev-adami', title: 'Sözünün Eri', group: 'basari', icon: 'clipboard', params: [P('count', 'Zamanında görev', 'görev', 5, 1, 30)],
     rule: (p) => `Sana atanan ${p.count} görevi son tarihinden önce bitir; gecikmiş görevin olmasın.`,
     check: (d, p) => {
-      const onTime = d.assignments.filter((a) => {
+      // Yalnızca baristanın işe girişinden (ve hesabının açılmasından) sonra
+      // atanan, geçerli görevler sayılır: bağlı dersi/modülü silinmiş görev
+      // ya da kişi gelmeden önce açılıp süresi geçmiş mağaza görevi başarımı
+      // kalıcı olarak kilitliyordu (bkz. lib/taskValidity.ts).
+      const joined = Math.max(localDayStart(d.startedAt) ?? 0, d.createdAt || 0);
+      const mine = d.assignments.filter((a) => (a.createdAt || 0) >= joined
+        && isTaskValid(a, { modules: d.modules, lessons: d.lessons, tracks: d.tracks }));
+      const onTime = mine.filter((a) => {
         const at = assignmentDoneAt(a, d.progress);
         return at && (!a.dueAt || at <= a.dueAt);
       }).length;
-      const late = d.assignments.some((a) => isOverdue(a, assignmentDone(a, d.progress)));
+      const late = mine.some((a) => isOverdue(a, assignmentDone(a, d.progress)));
       return { earned: onTime >= p.count && !late, progress: [Math.min(onTime, p.count), p.count] };
     }
   },
@@ -335,13 +356,14 @@ export const BADGES: BadgeDef[] = [
     id: 'kidem-6ay', title: 'Altı Ay', group: 'kidem', icon: 'calendar',
     params: [P('days', 'Kıdem', 'gün', 180, 30, 730), P('modules', 'Geçilen modül', 'modül', 6, 1, 13)],
     rule: (p) => `1401'de ${p.days} gününü doldur ve en az ${p.modules} modül geç.`,
-    check: (d, p) => all(status(Math.min(d.days, p.days), p.days), status(Object.keys(d.progress.modules || {}).length, p.modules))
+    // Silinmiş modüllerin eski sonuçları sayılmaz.
+    check: (d, p) => all(status(Math.min(d.days, p.days), p.days), status(Object.keys(d.progress.modules || {}).filter((id) => d.modules.some((m) => m.id === id)).length, p.modules))
   },
   {
     id: 'kidem-1yil', title: 'Bir Yıl', group: 'kidem', icon: 'award', params: [P('days', 'Kıdem', 'gün', 365, 90, 1095)],
     rule: (p) => `1401'de ${p.days} gününü doldur ve yayındaki tüm modülleri geçmiş ol.`,
     check: (d, p) => {
-      const pub = d.modules.filter((m) => m.published);
+      const pub = visibleModules(d.modules, d.tracks);
       return all(status(Math.min(d.days, p.days), p.days), status(pub.filter((m) => d.passed(m.id)).length, Math.max(pub.length, 1)));
     }
   }

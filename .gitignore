@@ -32,3 +32,6 @@ functions/.secret.local
 
 # iOS derleme çıktısı (xcodebuild -derivedDataPath ios/build)
 ios/build/
+
+# Yük testi çıktıları (scripts/yuk-testi/out): yeniden üretilebilir
+scripts/yuk-testi/out/

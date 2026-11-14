@@ -520,13 +520,16 @@ const FullLoaderShell: React.FC = () => (
 
 export const OfflineScreen: React.FC = () => {
   const retry = useSession((s) => s.retry);
+  // Oturum açıkken profil okunamadıysa da bu ekran çıkar (bkz. session.ts):
+  // eşleşme ve oturum korunur, "Tekrar dene" aynı hesapla yeniden dener.
+  const paired = useSession((s) => !!s.device);
   return (
     <Shell>
       <Brand />
       <div className="flex flex-col items-center gap-2 text-center max-w-[300px]">
         <Icon name="alert" size={24} className="text-caution" />
         <h1 className="text-[17px] font-semibold">Sunucuya ulaşılamadı</h1>
-        <p className="text-[13px] text-fg-3 leading-relaxed">Telefonun internet bağlantısını kontrol et. Mağaza bağlantın silinmedi.</p>
+        <p className="text-[13px] text-fg-3 leading-relaxed">İnternet bağlantını kontrol edip tekrar dene.{paired ? ' Mağaza bağlantın silinmedi.' : ''}</p>
       </div>
       <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={retry}>
         <Icon name="refresh" size={16} /> Tekrar dene

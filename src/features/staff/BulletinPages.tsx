@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { collection, doc, orderBy, query } from 'firebase/firestore';
-import { commitChange, canPublishNow, resultText } from '../../api/changes';
+import { collection, doc, limit, orderBy, query } from 'firebase/firestore';
+import { commitChange, canPublishNow, resultText, StaleError, versionKey, verOf } from '../../api/changes';
+import { authorName } from '../../lib/roles';
+import { localDay, localDayStart } from '../../lib/day';
 import { db } from '../../api/firebase';
 import { errorText } from '../../api/backend';
 import { useQueryLive } from '../../hooks/useFirestore';
@@ -10,7 +12,7 @@ import { useStaffSession } from './StaffLayout';
 import { RichText } from '../academy/LessonBlocks';
 import { MediaInput } from './MediaInput';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, Sheet, Empty, Badge, ErrorText, toast, fmtDate, Avatar } from '../../ui/kit';
+import { Page, PageTitle, Section, Sheet, Empty, Badge, ErrorText, toast, fmtDate, Avatar, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { Barista, Bulletin, BulletinKind } from '../../../shared/types';
 
@@ -38,9 +40,11 @@ export const BulletinPage: React.FC = () => {
   const baristas = useStaffData((x) => x.baristas);
   const [draft, setDraft] = useState<Draft | null>(null);
 
+  // Son 50 bülten (eskiden hepsi canlı); "Daha eski" ile büyür.
+  const [max, setMax] = useState(50);
   const { data: bulletins, loading } = useQueryLive<Bulletin>(
-    query(collection(db, 'bulletins'), orderBy('createdAt', 'desc')),
-    'staff-bulletins'
+    query(collection(db, 'bulletins'), orderBy('createdAt', 'desc'), limit(max)),
+    `staff-bulletins-${max}`
   );
 
   const [openReaders, setOpenReaders] = useState<string | null>(null);
@@ -103,7 +107,7 @@ export const BulletinPage: React.FC = () => {
                       {expired && <Badge tone="neutral">Süresi doldu</Badge>}
                     </div>
                     <div className="text-[12px] text-fg-3 mt-1">
-                      {k.label} · {audience(b)} · {fmtDate(b.createdAt)} · {b.createdByName}
+                      {[k.label, audience(b), fmtDate(b.createdAt), b.createdByName].filter(Boolean).join(' · ')}
                     </div>
                     {b.published && (
                       <button onClick={() => setOpenReaders(showReaders ? null : b.id)}
@@ -153,12 +157,17 @@ export const BulletinPage: React.FC = () => {
             })}
           </div>
         )}
+        {bulletins.length >= max && (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start mt-2`} onClick={() => setMax(max + 50)}>
+            <Icon name="clock" size={13} /> Daha eski bültenleri göster
+          </button>
+        )}
       </Section>
 
       <BulletinSheet
         value={draft}
         onClose={() => setDraft(null)}
-        author={{ uid: s.uid, name: s.name }}
+        author={{ uid: s.uid, name: authorName(s.role, s.name) }}
         stores={stores.map((x) => ({ id: x.id, name: x.name }))}
         baristas={baristas.filter((x) => x.active)}
       />
@@ -206,7 +215,7 @@ export const BulletinSheet: React.FC<{
   const setRow = (i: number, patch: Partial<{ label: string; value: string }>) =>
     setD({ ...d, rows: rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
 
-  const save = async (publish: boolean) => {
+  const save = async (publish: boolean, force = false) => {
     const title = (d.title || '').trim();
     if (title.length < 3) { setError('Başlık gir.'); return; }
     if (!isLeader && !(d.body || '').trim()) { setError('Metin gir.'); return; }
@@ -237,11 +246,21 @@ export const BulletinSheet: React.FC<{
         createdBy: value.createdBy ?? author.uid,
         createdByName: value.createdByName ?? author.name
       };
-      const r = await commitChange([{ op: 'set', col: 'bulletins', id, data: payload as unknown as Record<string, unknown> }],
-        { kind: 'bulletin', title, summary: `${editing ? 'Bülten düzenlendi' : 'Yeni bülten'} · ${kindOf(payload.kind).label}${publish ? '' : ' (taslak)'}` }, proposalId);
-      toast(resultText(r, publish ? 'Bülten yayınlandı.' : 'Taslak kaydedildi.'), 'positive');
+      // Açılıştaki sürüm: bülten sen düzenlerken başkası kaydettiyse sessizce ezilmez (B17).
+      const base = editing && !proposalId ? { [versionKey('bulletins', id)]: verOf(value as unknown as Record<string, unknown>) } : undefined;
+      let r: 'applied' | 'proposed' | null = null;
+      const q = await sendOrQueue(commitChange([{ op: 'set', col: 'bulletins', id, data: payload as unknown as Record<string, unknown> }],
+        { kind: 'bulletin', title, summary: `${editing ? 'Bülten düzenlendi' : 'Yeni bülten'} · ${kindOf(payload.kind).label}${publish ? '' : ' (taslak)'}` }, proposalId,
+        { base, force }).then((x) => { r = x; }));
+      toast(q === 'queued' ? QUEUED_TEXT : resultText(r!, publish ? 'Bülten yayınlandı.' : 'Taslak kaydedildi.'), 'positive');
       onClose();
     } catch (e) {
+      if (e instanceof StaleError) {
+        setBusy(false);
+        if (confirm('Bu bülten sen düzenlerken başka biri tarafından kaydedildi. Kaydedersen onun değişiklikleri gider.\n\nYine de kaydedilsin mi? (Vazgeçersen pencereyi kapatıp bülteni yeniden açarak son hâlini görebilirsin.)')) return save(publish, true);
+        setError('Kaydedilmedi: bülten sen düzenlerken değişti. Pencereyi kapatıp yeniden aç.');
+        return;
+      }
       setError(errorText(e));
     } finally {
       setBusy(false);
@@ -252,9 +271,10 @@ export const BulletinSheet: React.FC<{
     if (!value.id) return;
     setBusy(true);
     try {
-      const r = await commitChange([{ op: 'update', col: 'bulletins', id: value.id, data: { published: false } }],
-        { kind: 'bulletin', title: value.title || 'Bülten', summary: 'Yayından kaldırma' });
-      toast(resultText(r, 'Bülten yayından kaldırıldı.'));
+      let r: 'applied' | 'proposed' | null = null;
+      const q = await sendOrQueue(commitChange([{ op: 'update', col: 'bulletins', id: value.id, data: { published: false } }],
+        { kind: 'bulletin', title: value.title || 'Bülten', summary: 'Yayından kaldırma' }).then((x) => { r = x; }));
+      toast(q === 'queued' ? QUEUED_TEXT : resultText(r!, 'Bülten yayından kaldırıldı.'));
       onClose();
     } catch (e) {
       setError(errorText(e));
@@ -268,9 +288,10 @@ export const BulletinSheet: React.FC<{
     if (!confirm(`"${value.title || 'Bülten'}" silinsin mi? Bu geri alınamaz.`)) return;
     setBusy(true);
     try {
-      const r = await commitChange([{ op: 'delete', col: 'bulletins', id: value.id }],
-        { kind: 'bulletin', title: value.title || 'Bülten', summary: 'Bülten silme' });
-      toast(resultText(r, 'Bülten silindi.'));
+      let r: 'applied' | 'proposed' | null = null;
+      const q = await sendOrQueue(commitChange([{ op: 'delete', col: 'bulletins', id: value.id }],
+        { kind: 'bulletin', title: value.title || 'Bülten', summary: 'Bülten silme' }).then((x) => { r = x; }));
+      toast(q === 'queued' ? QUEUED_TEXT : resultText(r!, 'Bülten silindi.'));
       onClose();
     } catch (e) {
       setError(errorText(e));
@@ -436,8 +457,8 @@ export const BulletinSheet: React.FC<{
           <label className="flex items-center gap-2 text-[13px] text-fg-2">
             Bitiş
             <input type="date" className={`${t.input} max-w-40 h-9`}
-                   value={d.expiresAt ? new Date(d.expiresAt).toISOString().slice(0, 10) : ''}
-                   onChange={(e) => setD({ ...d, expiresAt: e.target.value ? new Date(`${e.target.value}T23:59:59`).getTime() : null })} />
+                   value={d.expiresAt ? localDay(d.expiresAt) : ''} min={localDay()}
+                   onChange={(e) => setD({ ...d, expiresAt: e.target.value ? (localDayStart(e.target.value) ?? Date.now()) + 86399000 : null })} />
           </label>
         </div>
 

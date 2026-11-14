@@ -6,6 +6,8 @@ import { Sheet, ErrorText, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { Assignment, AssignmentKind, Barista, Progress } from '../../../shared/types';
 import { moduleState, EMPTY_PROGRESS } from '../../lib/progress';
+import { localDay, localDayStart } from '../../lib/day';
+import { errorText } from '../../api/backend';
 
 /**
  * Görev atama formu — hem Kahve Operasyonu (tüm mağazalar) hem mağaza
@@ -29,7 +31,7 @@ export const AssignSheet: React.FC<{
   const [targetId, setTargetId] = useState('');
   const [storeId, setStoreId] = useState(fixedStoreId || preset?.storeId || '');
   const [baristaId, setBaristaId] = useState(preset?.baristaId || '');
-  const [due, setDue] = useState(() => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+  const [due, setDue] = useState(() => localDay(Date.now() + 7 * 86400000));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +41,14 @@ export const AssignSheet: React.FC<{
   const allStores = !fixedStoreId && storeId === ALL;
   const effectiveStore = fixedStoreId || (allStores ? '' : storeId);
   const storeBaristas = baristas.filter((b) => b.storeId === effectiveStore && b.active);
-  const activeStores = stores.filter((s) => s.active);
+  // Mağazanın `active` alanı her yerde aynı okunur (alan yoksa aktif).
+  const activeStores = stores.filter((s) => s.active !== false);
+  // "Tüm mağazalar": aktif baristası olmayan mağazaya görev açılmaz (hiç tamamlanamaz, geçersiz kalırdı).
+  const staffedStores = activeStores.filter((s) => baristas.some((b) => b.active && b.storeId === s.id));
 
   // Kimler için: seçilen kişi, mağazadaki herkes ya da bütün zincir.
   const targets = allStores
-    ? baristas.filter((b) => b.active && activeStores.some((s) => s.id === b.storeId))
+    ? baristas.filter((b) => b.active && staffedStores.some((s) => s.id === b.storeId))
     : baristaId ? storeBaristas.filter((b) => b.id === baristaId) : storeBaristas;
   const info = useMemo(() => {
     if (!progressOf || !targetId || !targets.length) return null;
@@ -54,12 +59,12 @@ export const AssignSheet: React.FC<{
       const m = modules.find((x) => x.id === targetId);
       const pre = m?.prerequisiteId ? modules.find((x) => x.id === m.prerequisiteId) : undefined;
       if (m && pre) {
-        const missing = targets.filter((b) => !p(b).modules?.[targetId] && moduleState(m, lessons, p(b)).locked).length;
+        const missing = targets.filter((b) => !p(b).modules?.[targetId] && moduleState(m, lessons, p(b), { modules, tracks }).locked).length;
         if (missing) prereq = { title: pre.title, missing };
       }
     }
     return { already, total: targets.length, prereq };
-  }, [progressOf, targetId, targets, kind, modules, lessons]);
+  }, [progressOf, targetId, targets, kind, modules, lessons, tracks]);
 
   const options = useMemo(() => {
     const pubMods = publishedOnly(modules);
@@ -86,6 +91,10 @@ export const AssignSheet: React.FC<{
     setError(null);
     if (!effectiveStore && !allStores) return setError('Mağaza seç.');
     if (!targetId) return setError(kind === 'module' ? 'Modül seç.' : 'Ders seç.');
+    // Geçmiş son tarih: görev doğduğu anda gecikmiş oluyordu.
+    if (due && due < localDay()) return setError('Son tarih geçmiş bir gün olamaz.');
+    if (!allStores && !storeBaristas.length) return setError('Bu mağazada aktif barista yok; görev tamamlanamaz.');
+    if (allStores && !staffedStores.length) return setError('Aktif baristası olan mağaza yok.');
     setBusy(true);
     try {
       const base: Omit<Assignment, 'id' | 'storeId'> = {
@@ -94,13 +103,13 @@ export const AssignSheet: React.FC<{
         title,
         note: note.trim(),
         baristaId: allStores ? null : baristaId || null,
-        dueAt: due ? new Date(`${due}T23:59:00`).getTime() : null,
+        dueAt: due ? (localDayStart(due) ?? Date.now()) + (23 * 60 + 59) * 60000 : null,
         createdAt: Date.now(),
         createdBy: creator.uid,
         createdByName: creator.name
       };
       // Tek toplu yazım: ya hepsi atanır ya hiçbiri.
-      const ids = allStores ? activeStores.map((s) => s.id) : [effectiveStore];
+      const ids = allStores ? staffedStores.map((s) => s.id) : [effectiveStore];
       const batch = writeBatch(db);
       ids.forEach((sid) => batch.set(doc(collection(db, 'assignments')), { ...base, storeId: sid }));
       await batch.commit();
@@ -109,7 +118,8 @@ export const AssignSheet: React.FC<{
       setNote('');
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      // Ham İngilizce hata ("Missing or insufficient permissions") yerine Türkçe.
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -152,7 +162,7 @@ export const AssignSheet: React.FC<{
           <span className={t.label}>Mağaza</span>
           <select className={t.input} value={storeId} onChange={(e) => { setStoreId(e.target.value); setBaristaId(''); }}>
             <option value="">Seç…</option>
-            <option value={ALL}>Tüm aktif mağazalar ({activeStores.length})</option>
+            <option value={ALL}>Tüm aktif mağazalar ({staffedStores.length})</option>
             {activeStores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </label>
@@ -184,7 +194,7 @@ export const AssignSheet: React.FC<{
 
       <label className={t.field}>
         <span className={t.label}>Son tarih</span>
-        <input type="date" className={t.input} value={due} onChange={(e) => setDue(e.target.value)} />
+        <input type="date" className={t.input} value={due} min={localDay()} onChange={(e) => setDue(e.target.value)} />
       </label>
 
       <label className={t.field}>

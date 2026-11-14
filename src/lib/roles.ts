@@ -64,6 +64,12 @@ export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 
  */
 export const HIDDEN_ROLES: StaffRole[] = ['developer', 'admin'];
 export const isDevRole = (r: StaffRole | string | undefined): boolean => !!r && (HIDDEN_ROLES as string[]).includes(r);
+/**
+ * Kayıtlara yazılan yazar adı (byName, createdByName, reviewedByName …).
+ * Geliştirici hiç iz bırakmaz: adı boş yazılır, ekranlar boş adı göstermez.
+ */
+export const authorName = (role: StaffRole | string | undefined, name: string | undefined): string =>
+  isDevRole(role) ? '' : (name || '');
 /** Bu kişinin listelerde görebileceği ekip rolleri (sorgu filtresi; kurallar bunu şart koşar). */
 export const visibleStaffRoles = (me: StaffRole | undefined): StaffRole[] =>
   isDevRole(me) ? STAFF_ROLES : STAFF_ROLES.filter((r) => !isDevRole(r));

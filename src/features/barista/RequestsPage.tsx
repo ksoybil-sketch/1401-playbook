@@ -8,7 +8,7 @@ import { useBaristaSession } from './useBaristaData';
 import { RequestSummary, RequestThread } from '../shared/Requests';
 import { MediaInput } from '../staff/MediaInput';
 import { Icon } from '../../ui/Icon';
-import { Page, PageTitle, Section, Sheet, Empty, ErrorText, Spinner, toast } from '../../ui/kit';
+import { Page, PageTitle, Section, Sheet, Empty, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { RequestCategory, RequestPriority, StoreRequest } from '../../../shared/types';
 
@@ -80,7 +80,17 @@ export const RequestsPage: React.FC = () => {
         {current && (
           <>
             <RequestSummary r={current} />
-            <RequestThread r={current} side="store" me={{ uid: s.uid, name: s.name }} />
+            {/* Kapanmış talebe mağaza yazamaz (kural da reddeder): yazışma
+                salt okunur, yeni konu için yeni talep açılır. */}
+            <RequestThread r={current} side="store" me={{ uid: s.uid, name: s.name }} readOnly={isClosed(current.status)} />
+            {isClosed(current.status) && (
+              <div className="flex flex-col gap-2.5 border-t border-line pt-3">
+                <p className="text-[13px] text-fg-2 leading-relaxed">Bu talep kapandı. Yeni bir konu için yeni talep aç.</p>
+                <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd} self-start`} onClick={() => { setOpenId(null); setCreating(true); }}>
+                  <Icon name="plus" size={15} /> Yeni talep
+                </button>
+              </div>
+            )}
           </>
         )}
       </Sheet>
@@ -109,12 +119,14 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
     if (category === 'ariza' && !equipment) return setError('Hangi ekipman arızalı?');
     setBusy(true);
     try {
-      await createRequest({
+      // Çevrimdışıyken yazım yerel kuyruğa alınır; pencere sonsuza kadar
+      // "gönderiliyor"da kalmasın (bkz. kit.tsx sendOrQueue).
+      const r = await sendOrQueue(createRequest({
         storeId: s.storeId, storeName: s.storeName, category, priority, title, detail,
         imageUrl: imageUrl || undefined, equipment: category === 'ariza' ? equipment : undefined,
         by: { uid: s.uid, name: s.name }
-      });
-      toast('Talep Kahve Operasyonu\'na iletildi.', 'positive');
+      }));
+      toast(r === 'queued' ? QUEUED_TEXT : 'Talep Kahve Operasyonu\'na iletildi.', 'positive');
       reset();
       onClose();
     } catch (e) {

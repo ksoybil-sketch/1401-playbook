@@ -1,0 +1,25 @@
+/** Madde 18 ek: önceki dönemde sınav olsun; toplama sorgusu iptal (voided) denemeleri sayıyor mu? */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { client } from './lib/istemci.mjs';
+process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
+const { initializeApp } = await import('firebase-admin/app');
+const { getFirestore } = await import('firebase-admin/firestore');
+initializeApp({ projectId: 'demo-playbook' });
+const adb = getFirestore();
+const H = JSON.parse(readFileSync(new URL('./out/hesaplar.json', import.meta.url), 'utf8'));
+const DAY = 86400000; const now = Date.now();
+const b = H.baristas.find((x) => x.pin);
+const t = (d) => now - d * DAY;
+const batch = adb.batch();
+for (let i = 0; i < 20; i++) batch.set(adb.collection('attempts').doc(`kurul-onceki-${i}`), { baristaId: b.id, baristaName: b.name, storeId: b.storeId, moduleId: 'hos-geldin', moduleTitle: 'x', passScore: 80, lessonId: null, startedAt: t(40) + i, submittedAt: t(40) + i + 1000, total: 10, correct: 5, score: 50, passed: i < 4, questionIds: [], answers: {}, mistakes: [] });
+for (let i = 0; i < 3; i++) batch.set(adb.collection('attempts').doc(`kurul-onceki-iptal-${i}`), { baristaId: b.id, storeId: b.storeId, moduleId: 'hos-geldin', lessonId: null, startedAt: t(41) + i, submittedAt: t(41) + i + 1000, voided: true, total: 10, questionIds: [], answers: {} });
+await batch.commit();
+const s = H.staff.find((x) => x.role === 'board');
+const c = await client('kurul-ek'); await c.signIn(s.email, s.password); await c.asStaff(s);
+const sd = await c.m('features/staff/staffData.ts');
+const agg = await sd.loadExamAgg(t(60), t(30));
+const docs = (await sd.loadExamsSince(t(60))).filter((a) => a.submittedAt <= t(30));
+const r = { toplama: agg, belgelerden: { tumu: docs.length, iptalHaric: docs.filter((a) => !a.voided && !a.lessonId).length } };
+console.log(JSON.stringify(r));
+writeFileSync(new URL('./out/kurul-ek.json', import.meta.url), JSON.stringify(r, null, 1));
+process.exit(0);

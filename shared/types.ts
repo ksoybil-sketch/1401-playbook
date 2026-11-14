@@ -98,6 +98,10 @@ export interface Barista {
 
 export interface Track {
   id: string;
+  /** Son yazım zamanı: eşzamanlı düzenleme ve eski öneri uyarısı için (changes.ts). */
+  updatedAt?: number;
+  /** 'panel': panelde açıldı; "Müfredatı güncelle" silmez (publishCurriculum.ts). */
+  kaynak?: 'panel';
   title: string;
   description: string;
   order: number;
@@ -108,6 +112,10 @@ export interface Track {
 
 export interface Module {
   id: string;
+  /** Son yazım zamanı: eşzamanlı düzenleme ve eski öneri uyarısı için (changes.ts). */
+  updatedAt?: number;
+  /** 'panel': panelde açıldı; "Müfredatı güncelle" silmez (publishCurriculum.ts). */
+  kaynak?: 'panel';
   trackId: string;
   title: string;
   description: string;
@@ -183,6 +191,8 @@ export type LessonBlock =
 
 export interface Lesson {
   id: string;
+  /** Son yazım zamanı: eşzamanlı düzenleme ve eski öneri uyarısı için (changes.ts). */
+  updatedAt?: number;
   moduleId: string;
   title: string;
   order: number;
@@ -210,6 +220,8 @@ export type QuestionKind =
 
 export interface Question {
   id: string;
+  /** Son yazım zamanı: eşzamanlı düzenleme ve eski öneri uyarısı için (changes.ts). */
+  updatedAt?: number;
   moduleId: string;
   type: QuestionType;
   prompt: string;
@@ -317,6 +329,8 @@ export type BulletinKind = 'duyuru' | 'kampanya' | 'liderlik';
  */
 export interface Bulletin {
   id: string;
+  /** Son yazım zamanı: eşzamanlı düzenleme ve eski öneri uyarısı için (changes.ts). */
+  updatedAt?: number;
   kind: BulletinKind;
   title: string;
   /** **kalın** ve "- " madde işaretlerini destekler (RichText ile aynı). */
@@ -417,6 +431,8 @@ export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
  */
 export interface Proposal {
   id: string;
+  /** Öneri yazılırken hedef belgelerin updatedAt değerleri (belge kimliği → zaman). */
+  baseUpdatedAt?: Record<string, number | null>;
   kind: ProposalKind;
   title: string;
   /** "Ders düzenlendi", "Yeni soru" gibi kısa açıklama. */

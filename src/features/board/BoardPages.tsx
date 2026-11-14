@@ -3,12 +3,17 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
-import { useStaffData } from '../staff/staffData';
+import {
+  aggOfDocs, dayStart, examBaristaIds, fetchOnce, loadExamAgg, loadExamStats, loadExamsSince, loadRequestsSince, loadReviewedSince, useFetched, useHistory, useStaffData,
+  type ExamAgg, type ExamStats
+} from '../staff/staffData';
 import { useStaffSession } from '../staff/StaffLayout';
 import { useBadgeConfig } from '../../store/badgeConfig';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { badgeReport, fromBarista, TITLE_IDS } from '../../lib/badges';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from '../../lib/progress';
+import { taskInvalidReason, taskTargets } from '../../lib/taskValidity';
+import { localDay } from '../../lib/day';
 import { closedOf, fmtDur, requestStats } from '../../lib/requestStats';
 import {
   attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
@@ -24,18 +29,92 @@ import * as t from '../../ui/tokens';
 import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import type { Bulletin, BoardTopic, StoreRequest } from '../../../shared/types';
 import { IS_ANDROID_APP } from '../../lib/backButton';
+import { errorText } from '../../api/backend';
 
 /* ------------------------------------------------------------------ */
 /* Ortak                                                               */
 /* ------------------------------------------------------------------ */
 
-function useBoardCtx(): BoardCtx {
-  const { stores, modules, lessons } = useContent();
-  const { baristas, progress, attempts, assignments, requests, proposals } = useStaffData();
-  // Personel talepleri (davet kodu, PIN, vardiya) kurulun işi değil: hiçbir kurul ekranına girmez.
-  const boardRequests = useMemo(() => requests.filter(forBoard), [requests]);
-  return { stores, modules, lessons, baristas, progress, attempts, assignments, requests: boardRequests, proposals };
+/**
+ * Kurulun dönem verisi TEK SEFERLİK okunur (10 dakika saklanır). Sınav
+ * göstergeleri (toplam, mağaza, modül, barista başına) toplama sorgusuyla
+ * gelir (useBoardCtx exams: true); sınav belgeleri okunmaz (eskiden dönemin
+ * bütün sınavları: "Bu yıl" aralıkta ~25.000 okuma). Belge gereken tek yer
+ * Excel tabloları: düğmeye basınca okunur. Talepler ve sonuçlanan öneriler
+ * önceki dönem ve 12 haftalık grafik aralığıyla (küçük koleksiyonlar).
+ * Önceki dönemin ve haftaların sınav sayıları da toplama sorgusuyla gelir
+ * (useExamTrend). Açık talepler ve bekleyen öneriler canlı listeden eklenir.
+ */
+const WEEKS = 12;
+const DAY_MS = 86400000;
+const mondayOf = (now = Date.now()) => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime(); };
+function rangeFrom(period: Period): number {
+  return dayStart(Math.min(previousOf(period).from, mondayOf() - (WEEKS - 1) * 7 * DAY_MS));
 }
+/** Dönemin üst sınırı: bugüne kadar süren dönemlerde yok (null). */
+const periodTo = (p: Period) => (p.id === 'gecen-ay' ? p.to : null);
+const statsKey = (p: Period) => `board-stats:${p.id}:${dayStart(p.from)}`;
+
+function useBoardCtx(period: Period, opts: { exams?: boolean } = {}): BoardCtx & { loading: boolean; error: string | null } {
+  const { stores, modules, lessons, tracks } = useContent();
+  const { baristas, progress, assignments, requests: liveRequests, proposals: liveProposals } = useStaffData();
+  const from = rangeFrom(period);
+  // Yalnızca dönemde sınava girebilecek baristalar (dönemden önce ayrılanlar hariç).
+  const ids = useMemo(() => ({
+    stores: stores.filter((s) => s.active).map((s) => s.id),
+    modules: modules.map((m) => m.id),
+    baristas: examBaristaIds(baristas, period.from)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [stores, modules, baristas, dayStart(period.from)]);
+  const ready = stores.length > 0 && baristas.length > 0;
+  const ex = useFetched<ExamStats>(opts.exams && ready ? statsKey(period) : null,
+    () => loadExamStats(period.from, periodTo(period), ids));
+  const rq = useFetched(`board-requests:${from}`, () => loadRequestsSince(from));
+  const pr = useFetched(`board-proposals:${from}`, () => loadReviewedSince(from));
+  // Personel talepleri (davet kodu, PIN, vardiya) kurulun işi değil: hiçbir kurul ekranına girmez.
+  const requests = useMemo(() => {
+    const m = new Map((rq.data || []).map((r) => [r.id, r]));
+    liveRequests.forEach((r) => m.set(r.id, r));
+    return [...m.values()].filter(forBoard);
+  }, [rq.data, liveRequests]);
+  const proposals = useMemo(() => {
+    const m = new Map((pr.data || []).map((p) => [p.id, p]));
+    liveProposals.forEach((p) => m.set(p.id, p));
+    return [...m.values()];
+  }, [pr.data, liveProposals]);
+  return {
+    stores, modules, lessons, tracks, baristas, progress, attempts: ex.data?.docs || [], examStats: ex.data, assignments, requests, proposals,
+    loading: !!opts.exams && !ex.data && !ex.error, error: ex.error || rq.error || pr.error
+  };
+}
+
+/** Excel tabloları için dönemin sınav belgeleri (düğmeye basınca, 10 dakika saklanır). */
+const loadPeriodExams = (p: Period) => fetchOnce(`board-exams:${p.id}:${dayStart(p.from)}`, () => loadExamsSince(dayStart(p.from)));
+
+/**
+ * Önceki dönemin ve son 12 haftanın sınav özeti (toplama sorgusu, ~25 okuma).
+ * Bileşik dizin henüz yoksa aralığın belgeleri bir kez okunup hesaplanır.
+ */
+interface Trend { prev: ExamAgg; weeks: (ExamAgg & { from: number })[] }
+function useExamTrend(period: Period) {
+  const prevP = previousOf(period);
+  const monday = mondayOf();
+  const weeks = Array.from({ length: WEEKS }, (_, i) => monday - (WEEKS - 1 - i) * 7 * DAY_MS);
+  return useFetched<Trend>(`board-trend:${dayStart(prevP.from)}:${dayStart(period.from)}:${monday}`, async () => {
+    try {
+      const [prev, ...ws] = await Promise.all([loadExamAgg(prevP.from, prevP.to), ...weeks.map((w) => loadExamAgg(w, w + 7 * DAY_MS - 1))]);
+      return { prev, weeks: ws.map((x, i) => ({ ...x, from: weeks[i] })) };
+    } catch (e) {
+      console.warn('[kurul] toplama sorgusu olmadı (dizin?), belgelerden hesaplanıyor', e);
+      const docs = (await loadExamsSince(Math.min(prevP.from, weeks[0]))).filter((a) => !a.voided && !a.lessonId);
+      const agg = (f: number, t: number): ExamAgg => aggOfDocs(docs.filter((a) => (a.submittedAt || 0) >= f && (a.submittedAt || 0) <= t));
+      return { prev: agg(prevP.from, prevP.to), weeks: weeks.map((w) => ({ ...agg(w, w + 7 * DAY_MS - 1), from: w })) };
+    }
+  });
+}
+/** summary()'nin sınav alanlarını toplama sonucuyla değiştirir (önceki dönem belgeleri okunmadı). */
+const withExams = <T extends { exams: number; passRate: number | null; avgScore: number | null }>(s: T, a: ExamAgg | undefined): T =>
+  a ? { ...s, exams: a.exams, passRate: a.exams ? Math.round((a.passed / a.exams) * 100) : null, avgScore: a.avgScore } : s;
 
 /** Dönem adres çubuğunda (?donem=90) tutulur: sayfalar arasında aynı kalır. */
 function usePeriod(): [Period, (id: PeriodId) => void] {
@@ -86,8 +165,9 @@ function useAsk() {
  */
 function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
   const me = useStaffSession();
-  const ctx = useBoardCtx();
   const [params, setParams] = useSearchParams();
+  // Sınav göstergeleri yalnızca mağaza penceresi açıkken (Gidişat ve Mağazalar zaten okumuştur).
+  const ctx = useBoardCtx(period, { exams: !!params.get('magaza') });
   const set = (key: 'magaza' | 'talep', id: string | null) => {
     const p = new URLSearchParams(params);
     if (id) p.set(key, id); else p.delete(key);
@@ -196,29 +276,39 @@ const WeekBars: React.FC<{ weeks: number[]; series: BarSeries[]; tip: (i: number
 /* ------------------------------------------------------------------ */
 
 export const BoardOverviewPage: React.FC = () => {
-  const ctx = useBoardCtx();
+  const [period, setPeriod] = usePeriod();
+  const ctx = useBoardCtx(period, { exams: true });
   // Kartlar yalnızca açık olan ekranlara gider (kapalı ekran sessizce ana sayfaya atıyordu).
   const allowFn = useAllow();
   const meB = useStaffSession();
   const go = (perm: Parameters<typeof allowFn>[1], to: string) => (allowFn(meB.role, perm) ? to : undefined);
   const { tracks } = useContent();
   const badgeConfig = useBadgeConfig((x) => x.config);
-  const [period, setPeriod] = usePeriod();
   const { ask, sheet } = useAsk();
   const navigate = useNavigate();
+  const trend = useExamTrend(period);
   const s = useMemo(() => summary(ctx, period), [ctx, period]);
-  const prev = useMemo(() => summary(ctx, previousOf(period)), [ctx, period]);
+  const prev = useMemo(() => withExams(summary(ctx, previousOf(period)), trend.data?.prev), [ctx, period, trend.data]);
   const att = useMemo(() => attention(ctx), [ctx]);
-  const weeks = useMemo(() => weekly(ctx, 12), [ctx]);
+  const weeks = useMemo(() => weekly(ctx, WEEKS).map((w, i) => {
+    const t = trend.data?.weeks[i];
+    return t && t.from === w.from ? { ...w, exams: t.exams, passed: t.passed } : w;
+  }), [ctx, trend.data]);
   const mods = useMemo(() => modulePerformance(ctx, period).filter((m) => m.exams >= 2).slice(0, 5), [ctx, period]);
 
   // Yetkinlik dağılımı: her aktif barista şartını sağladığı en yüksek seviyede.
+  // Rozetler bütün sınav geçmişini ister (dönem verisi yetmez, kesik veriyle
+  // yanlış çıkıyordu); geçmiş pahalı olduğu için istek üzerine okunur.
+  const [wantLevels, setWantLevels] = useState(false);
+  const history = useHistory(wantLevels);
   const levels = useMemo(() => {
+    if (!history.data) return null;
+    const h = history.data;
     const active = ctx.baristas.filter((b) => b.active);
     const reports = active.map((b) => badgeReport({
       tracks, modules: ctx.modules, lessons: ctx.lessons, progress: ctx.progress[b.id] || EMPTY_PROGRESS,
-      attempts: ctx.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
-      assignments: ctx.assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
+      attempts: h.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
+      assignments: h.assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
       config: badgeConfig, ...fromBarista(b)
     }));
     const label = (id: string) => reports[0]?.titles.find((x) => x.id === id)?.label || id;
@@ -226,8 +316,8 @@ export const BoardOverviewPage: React.FC = () => {
       { id: 'none', label: 'Henüz seviye yok', n: reports.filter((r) => !r.qualified).length },
       ...TITLE_IDS.map((id) => ({ id, label: label(id), n: reports.filter((r) => r.qualified?.id === id).length }))
     ];
-  }, [ctx, tracks, badgeConfig]);
-  const totalLevels = levels.reduce((x, l) => x + l.n, 0);
+  }, [ctx, tracks, badgeConfig, history.data]);
+  const totalLevels = levels ? levels.reduce((x, l) => x + l.n, 0) : 0;
 
   const me = useStaffSession();
   const { openStore, openReq, sheets } = useDetailSheets(period, ask);
@@ -248,7 +338,7 @@ export const BoardOverviewPage: React.FC = () => {
     ? <>Mağazalardan gelen <B>{s.requestsSolved} talep</B> ortalama <B>{fmtDur(s.avgResolve)}</B> içinde çözüldü; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>
     : <>Bu dönemde çözülen talep yok; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>);
   // Katılan sayılmaz: sistem ilk kurulunca bütün baristalar "yeni" görünür. Yalnızca ayrılan.
-  if (s.left) story.push(<>Bu dönemde <B>{s.left} barista</B> ayrıldı (ayrılma oranı %{s.turnover}).</>);
+  if (s.left) story.push(<>Bu dönemde <B>{s.left} barista</B> ayrıldı{s.turnover !== null ? <> (ayrılma oranı %{s.turnover})</> : null}.</>);
 
   return (
     <Page wide>
@@ -264,6 +354,8 @@ export const BoardOverviewPage: React.FC = () => {
           </ul>
         </div>
         <PeriodPicker value={period} onChange={setPeriod} />
+        {ctx.loading && <span className="text-[13px] text-fg-3">Dönem verisi yükleniyor…</span>}
+        {ctx.error && <span className="text-[13px] text-negative">{ctx.error}</span>}
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3">
@@ -355,7 +447,13 @@ export const BoardOverviewPage: React.FC = () => {
       <div className="grid lg:grid-cols-2 gap-5">
         <Section label="Yetkinlik dağılımı (önlük rozeti seviyeleri)">
           <div className={`${t.card} p-4 flex flex-col gap-3`}>
-            {levels.map((l) => (
+            {!levels && (
+              history.error ? <span className="text-[13px] text-negative">{history.error}</span>
+                : <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`} disabled={history.loading && wantLevels} onClick={() => setWantLevels(true)}>
+                  {history.loading && wantLevels ? 'Hesaplanıyor…' : 'Dağılımı göster'}
+                </button>
+            )}
+            {levels?.map((l) => (
               <div key={l.id} className="flex items-center gap-3">
                 <span className="w-36 text-[13px] text-fg-2 truncate">{l.label}</span>
                 <ProgressBar value={totalLevels ? (l.n / totalLevels) * 100 : 0} tone={l.id === 'none' ? 'neutral' : 'positive'} className="flex-1" />
@@ -394,8 +492,8 @@ export const BoardOverviewPage: React.FC = () => {
 type SortKey = 'name' | 'progress' | 'passRate' | 'openRequests' | 'avgResolve' | 'overdueTasks';
 
 export const BoardStoresPage: React.FC = () => {
-  const ctx = useBoardCtx();
   const [period, setPeriod] = usePeriod();
+  const ctx = useBoardCtx(period, { exams: true });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'progress', dir: -1 });
   const { ask, sheet } = useAsk();
   const rows = useMemo(() => scorecard(ctx, period), [ctx, period]);
@@ -447,9 +545,9 @@ export const BoardStoresPage: React.FC = () => {
 };
 
 const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void; onOpenReq: (id: string) => void }> = ({ row, period, onAsk, onOpenReq }) => {
-  const ctx = useBoardCtx();
+  const ctx = useBoardCtx(period);
   const team = ctx.baristas.filter((b) => b.active && b.storeId === row.store.id)
-    .map((b) => ({ b, pct: overallPercent(ctx.modules, ctx.lessons, ctx.progress[b.id] || EMPTY_PROGRESS) }))
+    .map((b) => ({ b, pct: overallPercent(ctx.modules, ctx.lessons, ctx.progress[b.id] || EMPTY_PROGRESS, ctx.tracks) }))
     .sort((a, b) => b.pct - a.pct);
   const open = ctx.requests.filter((r) => r.storeId === row.store.id && !closedOf(r));
   return (
@@ -496,10 +594,12 @@ const StoreDetail: React.FC<{ row: ScoreRow; period: Period; onAsk: () => void; 
 /** Talepte kim ilgileniyor, kim onayladı / onayı kim bekliyor. */
 function requestPeople(r: StoreRequest) {
   const notes = [...r.notes].sort((a, b) => a.at - b.at);
-  const ops = notes.filter((n) => n.side === 'ops');
+  // Yalnızca açıp bakmak ("Görüldü" notu) ilgilenmek sayılmaz; adı boş yazılmış
+  // (uygulama geliştiricisi) notlar da kişi olarak gösterilmez.
+  const ops = notes.filter((n) => n.side === 'ops' && n.byName && (n.text || (n.status && n.status !== 'seen')));
   let status = 'open', approver: string | null = null;
   for (const n of notes) {
-    if (n.status && status === 'approval' && n.status !== 'approval' && n.status !== 'rejected') approver = n.byName;
+    if (n.status && status === 'approval' && n.status !== 'approval' && n.status !== 'rejected' && n.byName) approver = n.byName;
     if (n.status) status = n.status;
   }
   // İlgilenen: operasyondan son yazan / durumu değiştiren; onaylayan dışındaki kişi öncelikli.
@@ -533,7 +633,7 @@ const BoardRequestCard: React.FC<{ r: StoreRequest; people: OpsPeople; onOpen: (
           <span className="text-[19px] font-semibold leading-snug">{r.title}</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-          <Fact label="Açan">{r.createdByName}</Fact>
+          <Fact label="Açan">{r.createdByName || '—'}</Fact>
           <Fact label="İlgilenen">{handler || <span className="text-caution">Henüz kimse</span>}</Fact>
           {r.status === 'approval'
             ? <Fact label="Onay bekliyor">{[people.director, people.opsmanager].filter(Boolean).join(' / ') || 'Yönetici onayı'}</Fact>
@@ -542,7 +642,7 @@ const BoardRequestCard: React.FC<{ r: StoreRequest; people: OpsPeople; onOpen: (
         </div>
         {last && (
           <div className="border-l-2 border-line-2 pl-3 text-[14px] text-fg-2 leading-relaxed line-clamp-2">
-            <b className="font-medium text-crema">{last.byName}:</b> {last.text}
+            {last.byName && <b className="font-medium text-crema">{last.byName}:</b>} {last.text}
           </div>
         )}
       </div>
@@ -556,7 +656,7 @@ const BULLETIN_KIND = { duyuru: 'Duyuru', kampanya: 'Kampanya', liderlik: 'Lider
 const PROPOSAL_KIND = { lesson: 'Ders', module: 'Modül', track: 'Eğitim yolu', question: 'Soru', bulletin: 'Bülten', order: 'Sıralama', product: 'Yeni ürün' } as const;
 
 export const BoardWorkPage: React.FC = () => {
-  const ctx = useBoardCtx();
+  const ctx = useBoardCtx(periodOf('30'));
   const [params, setParams] = useSearchParams();
   const tab = (params.get('sekme') || 'talep') as WorkTab;
   const setTab = (x: WorkTab) => setParams(x === 'talep' ? {} : { sekme: x }, { replace: true });
@@ -571,8 +671,8 @@ export const BoardWorkPage: React.FC = () => {
     .sort((a, b) => (b.closedAt || b.updatedAt) - (a.closedAt || a.updatedAt));
   const pending = ctx.proposals.filter((p) => p.status === 'pending');
   const approvalReqs = open.filter((r) => r.status === 'approval');
-  const tasks = useMemo(() => ctx.assignments.map((a) => {
-    const team = ctx.baristas.filter((b) => b.active && b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
+  const tasks = useMemo(() => ctx.assignments.filter((a) => !taskInvalidReason(a, { modules: ctx.modules, lessons: ctx.lessons, tracks: ctx.tracks, baristas: ctx.baristas })).map((a) => {
+    const team = taskTargets(a, ctx.baristas);
     const done = team.filter((b) => assignmentDone(a, ctx.progress[b.id])).length;
     const overdue = team.filter((b) => isOverdue(a, assignmentDone(a, ctx.progress[b.id]))).length;
     return { a, team: team.length, done, overdue };
@@ -631,7 +731,7 @@ export const BoardWorkPage: React.FC = () => {
                       <div className="text-[12.5px] font-semibold uppercase tracking-[0.06em] text-caution">{PROPOSAL_KIND[p.kind] || 'Öneri'}</div>
                       <div className="text-[17px] font-semibold leading-snug">{p.title}</div>
                       <div className="text-[14px] text-fg-2">{p.summary}</div>
-                      <div className="text-[13px] text-fg-3">Öneren: <b className="font-medium text-fg-2">{p.createdByName}</b> · Onay bekliyor: <b className="font-medium text-fg-2">{[people.director, people.opsmanager].filter(Boolean).join(' / ') || 'yetkili yönetici'}</b> · {Math.round((now - p.createdAt) / 86400000) ? `${Math.round((now - p.createdAt) / 86400000)} gündür` : 'bugün geldi'}</div>
+                      <div className="text-[13px] text-fg-3">{p.createdByName && <>Öneren: <b className="font-medium text-fg-2">{p.createdByName}</b> · </>}Onay bekliyor: <b className="font-medium text-fg-2">{[people.director, people.opsmanager].filter(Boolean).join(' / ') || 'yetkili yönetici'}</b> · {Math.round((now - p.createdAt) / 86400000) ? `${Math.round((now - p.createdAt) / 86400000)} gündür` : 'bugün geldi'}</div>
                     </div>
                     <AskBtn onClick={() => ask({ kind: 'proposal', id: p.id, title: `${PROPOSAL_KIND[p.kind] || 'Öneri'}: ${p.title}` })} />
                   </div>
@@ -649,7 +749,7 @@ export const BoardWorkPage: React.FC = () => {
               <div className="flex-1 min-w-0 flex flex-col gap-1">
                 <div className="text-[15px] font-semibold text-fg-2 flex items-center gap-1.5"><Icon name="store" size={14} /> {storeName(a.storeId)}</div>
                 <div className="text-[17px] font-semibold leading-snug">{a.title}</div>
-                <div className="text-[13px] text-fg-3">Atayan: <b className="font-medium text-fg-2">{a.createdByName}</b>{a.dueAt ? ` · son gün ${fmtDate(a.dueAt)}` : ''}</div>
+                <div className="text-[13px] text-fg-3">{a.createdByName && <>Atayan: <b className="font-medium text-fg-2">{a.createdByName}</b></>}{a.dueAt ? `${a.createdByName ? ' · ' : ''}son gün ${fmtDate(a.dueAt)}` : ''}</div>
                 <div className="flex items-center gap-2 mt-1"><ProgressBar value={(done / team) * 100} className="flex-1 max-w-56" /><span className="text-[14px] tnum text-fg-2">{done}/{team} barista tamamladı</span></div>
               </div>
               {overdue > 0 && <Badge tone="negative">{overdue} gecikmiş</Badge>}
@@ -663,7 +763,7 @@ export const BoardWorkPage: React.FC = () => {
         <div className="flex flex-col gap-2">
           {live.map((b) => (
             <div key={b.id} className={`${t.card} p-4 flex flex-col gap-1.5`}>
-              <div className="flex items-center gap-2"><Badge>{BULLETIN_KIND[b.kind] || 'Bülten'}</Badge><span className="text-[11px] text-fg-3 ml-auto">{fmtDate(b.createdAt)} · {b.createdByName}</span></div>
+              <div className="flex items-center gap-2"><Badge>{BULLETIN_KIND[b.kind] || 'Bülten'}</Badge><span className="text-[11px] text-fg-3 ml-auto">{fmtDate(b.createdAt)}{b.createdByName ? ` · ${b.createdByName}` : ''}</span></div>
               <div className="text-[15px] font-semibold">{b.title}</div>
               <p className="text-[13px] text-fg-2 leading-relaxed whitespace-pre-wrap line-clamp-4">{b.body.replace(/\*\*/g, '')}</p>
               <div className="text-[11.5px] text-fg-3">{b.storeIds?.length ? b.storeIds.map(storeName).join(', ') : 'Tüm mağazalar'}{b.expiresAt ? ` · ${fmtDate(b.expiresAt)} tarihine kadar` : ''}</div>
@@ -682,48 +782,70 @@ export const BoardWorkPage: React.FC = () => {
 /* Raporlar                                                             */
 /* ------------------------------------------------------------------ */
 
-const fileDate = () => new Date().toISOString().slice(0, 10);
+const fileDate = () => localDay();
 
 export const BoardReportsPage: React.FC = () => {
-  const ctx = useBoardCtx();
   const [period, setPeriod] = usePeriod();
+  const ctx = useBoardCtx(period);
+  // Tablolar düğmeye basınca hazırlanır: karne toplama sorgusuyla, barista ve
+  // sınav tabloları dönemin sınav belgeleriyle (ekran açılınca okunmaz).
+  const [busy, setBusy] = useState<string | null>(null);
+  const ids = () => ({
+    stores: ctx.stores.filter((s) => s.active).map((s) => s.id),
+    modules: ctx.modules.map((m) => m.id),
+    baristas: examBaristaIds(ctx.baristas, period.from)
+  });
+  const run = (key: string, f: () => Promise<void>) => async () => {
+    if (busy) return;
+    setBusy(key);
+    try { await f(); } catch (e) { alert(errorText(e)); } finally { setBusy(null); }
+  };
   const storeName = (id: string) => ctx.stores.find((s) => s.id === id)?.name || '';
   const inP = (x?: number | null) => !!x && x >= period.from && x <= period.to;
   const slug = `${period.id}-${fileDate()}`;
 
   const csv = {
-    karne: () => downloadCsv(`magaza-karnesi-${slug}`, [
+    karne: run('karne', async () => {
+      const examStats = await fetchOnce(statsKey(period), () => loadExamStats(period.from, periodTo(period), ids()));
+      downloadCsv(`magaza-karnesi-${slug}`, [
       ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Ayrılan'],
-      ...scorecard(ctx, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
+      ...scorecard({ ...ctx, examStats }, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
         r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.left])
-    ]),
-    barista: () => downloadCsv(`barista-egitim-${slug}`, [
+      ]);
+    }),
+    barista: run('barista', async () => {
+      const attempts = await loadPeriodExams(period);
+      downloadCsv(`barista-egitim-${slug}`, [
       ['Barista', 'Mağaza', 'Rol', 'Durum', 'İlerleme %', 'Geçilen modül', 'Dönemde sınav', 'Dönemde geçti', 'İşe başlama'],
       ...ctx.baristas.map((b) => {
         const p = ctx.progress[b.id] || EMPTY_PROGRESS;
-        const ex = ctx.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided && inP(a.submittedAt));
-        return [b.name, storeName(b.storeId), BARISTA_ROLE_LABEL[b.role], b.active ? 'Aktif' : 'Ayrıldı', overallPercent(ctx.modules, ctx.lessons, p),
+        const ex = attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided && inP(a.submittedAt));
+        return [b.name, storeName(b.storeId), BARISTA_ROLE_LABEL[b.role], b.active ? 'Aktif' : 'Ayrıldı', overallPercent(ctx.modules, ctx.lessons, p, ctx.tracks),
           Object.keys(p.modules || {}).length, ex.length, ex.filter((a) => a.passed).length, b.startedAt ? fmtDate(new Date(b.startedAt).getTime()) : fmtDate(b.createdAt)];
       })
-    ]),
+      ]);
+    }),
     talep: () => downloadCsv(`talepler-${slug}`, [
       ['Açılış', 'Mağaza', 'Tür', 'Öncelik', 'Başlık', 'Durum', 'Bekleme nedeni', 'Kapanış', 'Süre (saat)', 'Açan'],
       ...ctx.requests.filter((r) => inP(r.createdAt) || !closedOf(r)).sort((a, b) => a.createdAt - b.createdAt).map((r) => [
         fmtDateTime(r.createdAt), r.storeName, catOf(r.category).label, r.priority === 'urgent' ? 'Acil' : 'Normal', r.title, STATUS[r.status].label,
         r.waitReason ? reasonLabel(r.waitReason) : '', r.closedAt ? fmtDateTime(r.closedAt) : '',
-        Math.round(((r.closedAt || Date.now()) - r.createdAt) / 3600000), r.createdByName])
+        Math.round(((r.closedAt || Date.now()) - r.createdAt) / 3600000), r.createdByName || ''])
     ]),
-    sinav: () => downloadCsv(`sinavlar-${slug}`, [
+    sinav: run('sinav', async () => {
+      const attempts = await loadPeriodExams(period);
+      downloadCsv(`sinavlar-${slug}`, [
       ['Tarih', 'Barista', 'Mağaza', 'Modül', 'Tür', 'Puan %', 'Sonuç', 'Doğru', 'Soru'],
-      ...ctx.attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0)).map((a) => [
+      ...attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0)).map((a) => [
         fmtDateTime(a.submittedAt), a.baristaName, storeName(a.storeId), a.moduleTitle, a.lessonId ? 'Mini sınav' : 'Modül sınavı', a.score, a.passed ? 'Geçti' : 'Kaldı', a.correct, a.total])
-    ])
+      ]);
+    })
   };
 
-  const Item: React.FC<{ icon: 'download' | 'store' | 'users' | 'wrench' | 'clipboard'; title: string; text: string; onClick: () => void }> = ({ icon, title, text, onClick }) => (
-    <button onClick={onClick} className={`${t.cardInteractive} p-4 text-left flex items-start gap-3`}>
+  const Item: React.FC<{ icon: 'download' | 'store' | 'users' | 'wrench' | 'clipboard'; title: string; text: string; onClick: () => void; loading?: boolean }> = ({ icon, title, text, onClick, loading }) => (
+    <button onClick={onClick} disabled={loading} className={`${t.cardInteractive} p-4 text-left flex items-start gap-3`}>
       <span className={t.iconChip('neutral')}><Icon name={icon} size={16} /></span>
-      <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold">{title}</span><span className="block text-[12.5px] text-fg-3 leading-relaxed mt-0.5">{text}</span></span>
+      <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold">{title}</span><span className="block text-[12.5px] text-fg-3 leading-relaxed mt-0.5">{loading ? 'Hazırlanıyor…' : text}</span></span>
       <Icon name="download" size={16} className="text-fg-3 mt-1" />
     </button>
   );
@@ -744,10 +866,10 @@ export const BoardReportsPage: React.FC = () => {
           düğmeler yalnızca tarayıcıda görünür. */}
       {!IS_ANDROID_APP && <Section label="Excel tabloları (CSV)">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Item icon="store" title="Mağaza karnesi" text="Her mağaza için ilerleme, sınav başarısı, talepler, gecikmiş görevler, ekip hareketi." onClick={csv.karne} />
-          <Item icon="users" title="Barista eğitim durumu" text="Her baristanın ilerlemesi, geçtiği modüller ve dönemdeki sınavları." onClick={csv.barista} />
+          <Item icon="store" title="Mağaza karnesi" text="Her mağaza için ilerleme, sınav başarısı, talepler, gecikmiş görevler, ekip hareketi." onClick={csv.karne} loading={busy === 'karne'} />
+          <Item icon="users" title="Barista eğitim durumu" text="Her baristanın ilerlemesi, geçtiği modüller ve dönemdeki sınavları." onClick={csv.barista} loading={busy === 'barista'} />
           <Item icon="wrench" title="Talepler" text="Dönemde açılan ve hâlâ açık olan talepler, durumları ve süreleri." onClick={csv.talep} />
-          <Item icon="clipboard" title="Sınav sonuçları" text="Dönemdeki bütün sınavlar: barista, modül, puan, sonuç." onClick={csv.sinav} />
+          <Item icon="clipboard" title="Sınav sonuçları" text="Dönemdeki bütün sınavlar: barista, modül, puan, sonuç." onClick={csv.sinav} loading={busy === 'sinav'} />
         </div>
       </Section>}
     </Page>
@@ -756,11 +878,12 @@ export const BoardReportsPage: React.FC = () => {
 
 /** Yazdırılabilir yönetim raporu. Tarayıcının "Yazdır → PDF olarak kaydet"i ile dosyaya dönüşür. */
 export const BoardPrintReport: React.FC = () => {
-  const ctx = useBoardCtx();
-  const me = useStaffSession();
   const [period] = usePeriod();
+  const ctx = useBoardCtx(period, { exams: true });
+  const me = useStaffSession();
+  const trend = useExamTrend(period);
   const s = useMemo(() => summary(ctx, period), [ctx, period]);
-  const prev = useMemo(() => summary(ctx, previousOf(period)), [ctx, period]);
+  const prev = useMemo(() => withExams(summary(ctx, previousOf(period)), trend.data?.prev), [ctx, period, trend.data]);
   const card = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const mods = useMemo(() => modulePerformance(ctx, period), [ctx, period]);
   const rq = useMemo(() => requestStats(ctx.requests.filter((r) => r.createdAt <= period.to), period.from), [ctx, period]);

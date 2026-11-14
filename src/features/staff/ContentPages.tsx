@@ -4,12 +4,15 @@ import { collection, query, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
 import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
-import { commitChange, canPublishNow, lastProposalId, newId, resultText } from '../../api/changes';
+import { commitChange, canPublishNow, lastProposalId, newId, resultText, StaleError, versionKey, verOf } from '../../api/changes';
+import { errorText } from '../../api/backend';
+import { allowed, domainOf } from '../../lib/permissions';
+import { useQuestionCounts } from './staffData';
 import { useStaffSession } from './StaffLayout';
-import { can } from '../../lib/roles';
+import { authorName, can } from '../../lib/roles';
 import { getAiKey, setAiKey } from '../../lib/aiKey';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast } from '../../ui/kit';
+import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { ImportLessonSheet } from './ImportLessonSheet';
 import { MediaInput } from './MediaInput';
@@ -24,11 +27,32 @@ const TRACK_ICONS: IconName[] = ['coffee', 'book', 'users', 'store', 'shield', '
 
 /** Listedeki iki öğenin sırasını değiştirir (yetkisi yoksa öneri olarak). */
 async function swapOrder(col: 'tracks' | 'modules' | 'lessons', a: { id: string; order: number; title: string }, b: { id: string; order: number; title: string }) {
-  const r = await commitChange([
-    { op: 'update', col, id: a.id, data: { order: b.order } },
-    { op: 'update', col, id: b.id, data: { order: a.order } }
-  ], { kind: 'order', title: `${a.title} ↔ ${b.title}`, summary: 'Sıralama değişikliği' });
-  if (r === 'proposed') toast(resultText(r));
+  try {
+    const r = await commitChange([
+      { op: 'update', col, id: a.id, data: { order: b.order } },
+      { op: 'update', col, id: b.id, data: { order: a.order } }
+    ], { kind: 'order', title: `${a.title} ↔ ${b.title}`, summary: 'Sıralama değişikliği' });
+    if (r === 'proposed') toast(resultText(r));
+  } catch (e) {
+    // Hata yutuluyordu: yetki hatası ne ekranda ne kayıtta görünüyordu.
+    toast(errorText(e), 'negative');
+  }
+}
+
+/**
+ * Pencere kaydı: yazım kuyruğa alındıysa (çevrimdışı) pencere yine kapanır.
+ * Hata olursa kullanıcıya Türkçe söylenir, pencere açık kalır.
+ */
+async function saveChange(run: () => Promise<'applied' | 'proposed'>, okText: string, onDone: () => void, onError?: (msg: string) => void) {
+  try {
+    let result: 'applied' | 'proposed' | null = null;
+    const q = await sendOrQueue(run().then((r) => { result = r; }));
+    toast(q === 'queued' ? QUEUED_TEXT : resultText(result!, okText), 'positive');
+    onDone();
+  } catch (e) {
+    const msg = errorText(e);
+    if (onError) onError(msg); else toast(msg, 'negative');
+  }
 }
 
 const PublishBadge: React.FC<{ on: boolean }> = ({ on }) => <Badge tone={on ? 'positive' : 'neutral'}>{on ? 'Yayında' : 'Taslak'}</Badge>;
@@ -41,6 +65,9 @@ export const ContentPage: React.FC = () => {
   const navigate = useNavigate();
   const me = useStaffSession();
   const { tracks, modules, lessons } = useContent();
+  // Soru sayısı modül belgesindeki sayaçtan değil bankadan (toplama sorgusu,
+  // modül başına 1 okuma): soru eklenip silinince sayaç güncellenmiyordu.
+  const qCounts = useQuestionCounts(modules.map((m) => m.id));
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null);
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
@@ -54,7 +81,9 @@ export const ContentPage: React.FC = () => {
           <div className="flex gap-2 flex-wrap justify-end">
             {/* Toplu müfredat yüklemesi yüzlerce belgeyi birden değiştirir;
                 öneri olarak taşınamayacak kadar büyük, yalnızca müdür yapar. */}
-            {can(me.role, 'publishCurriculum') && (
+            {/* Yetki baştan denetlenir: içerik yayınlama yetkisi kapalıysa ya da
+                alanı sınırlıysa toplu yazım yarıda reddedilip müfredatı yarım bırakıyordu. */}
+            {can(me.role, 'publishCurriculum') && allowed(me.role, 'icerikYayin') && !domainOf(me.role) && (
               <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
                 <Icon name="refresh" size={15} /> Müfredatı güncelle
               </button>
@@ -76,7 +105,7 @@ export const ContentPage: React.FC = () => {
         } />
 
       <CurriculumSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
-      <AiKeySheet open={aiOpen} onClose={() => setAiOpen(false)} by={me.name} />
+      <AiKeySheet open={aiOpen} onClose={() => setAiOpen(false)} by={authorName(me.role, me.name)} />
       <ImportLessonSheet
         open={importing}
         onClose={() => setImporting(false)}
@@ -110,7 +139,7 @@ export const ContentPage: React.FC = () => {
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium truncate">{m.title}</div>
                       <div className="text-[12px] text-fg-3">
-                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {m.questionCount ?? 0} soru · geçme notu {m.passScore}
+                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {qCounts.data?.[m.id] ?? m.questionCount ?? 0} soru · geçme notu {m.passScore}
                         {m.prerequisiteId ? ' · Kilitli' : ''}
                       </div>
                     </div>
@@ -146,11 +175,13 @@ const COL_LABELS: Record<string, string> = {
 const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
   const [plan, setPlan] = useState<PublishPlan | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<PublishProgress | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (!open) { setPlan(null); setErr(''); setProgress(null); return; }
+    if (!open) { if (!applying) { setPlan(null); setErr(''); setProgress(null); } return; }
+    if (applying) return;
     let alive = true;
     setBusy(true);
     (async () => {
@@ -159,48 +190,67 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
         const p = await planCurriculum(file);
         if (alive) setPlan(p);
       } catch (e) {
-        if (alive) setErr(e instanceof Error ? e.message : 'Müfredat okunamadı.');
+        if (alive) setErr(errorText(e));
       } finally {
         if (alive) setBusy(false);
       }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const apply = async () => {
+    setApplying(true);
     setBusy(true);
     setErr('');
     try {
       const file = await loadCurriculumFile();
-      const res = await publishCurriculum(file, setProgress);
-      toast(`${res.written} belge yazıldı, ${res.removed} belge silindi`, 'positive');
+      // Planın okuduğu veri yeniden okunmaz; yalnızca değişen belgeler yazılır.
+      const res = await publishCurriculum(file, setProgress, plan);
+      toast(`Müfredat güncellendi: ${res.written} belge yazıldı, ${res.removed} belge silindi`, 'positive');
       onClose();
+      setPlan(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Yükleme başarısız.');
+      setErr(errorText(e));
+      toast('Müfredat güncellemesi yarıda kaldı. Pencereyi yeniden açıp tekrar uygula.', 'negative');
     } finally {
       setBusy(false);
+      setApplying(false);
       setProgress(null);
     }
   };
 
+  /**
+   * Hesaplanırken kapatılabilir (okuma iptal olur). Yazarken de kapatılabilir:
+   * güncelleme arka planda sürer, bitince bildirim çıkar (çevrimdışıyken
+   * pencere sonsuza kadar açık kalıyordu).
+   */
+  const close = () => {
+    if (applying && !confirm('Güncelleme arka planda sürecek; bu sekmeyi kapatma. Bitince bildirim çıkar. Pencere kapansın mı?')) return;
+    onClose();
+  };
+
   const pct = progress ? Math.round((progress.done / Math.max(progress.total, 1)) * 100) : 0;
+  const removeOf = (c: keyof PublishPlan['counts']) => plan?.counts[c].remove || 0;
   const totalRemove = plan ? Object.values(plan.counts).reduce((s, c) => s + c.remove, 0) : 0;
+  const kept = plan ? Object.values(plan.counts).reduce((s, c) => s + c.kept, 0) : 0;
 
   return (
-    <Sheet open={open} title="Müfredatı güncelle" onClose={busy ? () => {} : onClose}
+    <Sheet open={open} title="Müfredatı güncelle" onClose={close}
       footer={
         <>
-          <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={onClose} disabled={busy}>Vazgeç</button>
-          <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={apply} disabled={busy || !plan}>
-            {busy && progress ? 'Yükleniyor…' : 'Uygula'}
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={close}>{applying ? 'Kapat' : 'Vazgeç'}</button>
+          <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={apply} disabled={busy || !plan || plan.totalWrites === 0}>
+            {applying ? 'Yükleniyor…' : plan && plan.totalWrites === 0 ? 'Değişiklik yok' : 'Uygula'}
           </button>
         </>
       }>
       <p className="text-[13px] text-fg-2 leading-relaxed">
-        Uygulamanın içindeki hazır müfredatı veritabanına yazar. Menüden çıkmış dersler ve
-        sorular silinir. Panelden eklediğin soru fotoğrafları, yayın/taslak durumları ve
-        <strong className="text-crema"> elle düzelttiğin reçete ölçüleri</strong> korunur,
-        ancak <strong className="text-crema">ders metinlerinde elle yaptığın değişiklikler üzerine yazılır</strong>.
+        Uygulamanın içindeki hazır müfredatı veritabanına yazar. Yalnızca değişen belgeler yazılır;
+        müfredat dosyasından çıkmış dersler, modüller ve sorular silinir. <strong className="text-crema">Panelde eklediğin
+        içerik korunur</strong> (Dosyadan ders, Ders ekle, Yeni ürün, yeni soru, yeni modül ve yol). Soru fotoğrafları,
+        yayın/taslak durumları ve <strong className="text-crema">elle düzelttiğin reçete ölçüleri</strong> de korunur,
+        ancak <strong className="text-crema">müfredattan gelen ders metinlerinde elle yaptığın değişiklikler üzerine yazılır</strong>.
       </p>
 
       {busy && !progress && <div className="flex justify-center py-4"><Spinner /></div>}
@@ -227,9 +277,9 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
             {Object.entries(plan.counts).map(([col, c]) => (
               <div key={col} className={`${t.listRow} cursor-default`}>
                 <div className="flex-1 text-[13px] font-medium">{COL_LABELS[col] || col}</div>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 flex-wrap justify-end">
                   {c.add > 0 && <Badge tone="positive">+{c.add} yeni</Badge>}
-                  {c.update > 0 && <Badge tone="neutral">{c.update} güncellenecek</Badge>}
+                  {c.update > 0 && <Badge tone="neutral">{c.update} değişecek</Badge>}
                   {c.remove > 0 && <Badge tone="negative">−{c.remove} silinecek</Badge>}
                   {c.add + c.update + c.remove === 0 && <span className="text-[12px] text-fg-3">değişiklik yok</span>}
                 </div>
@@ -237,12 +287,17 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
             ))}
           </div>
 
-          {totalRemove > 0 && plan.removedTitles.length > 0 && (
-            <div className={t.field}>
-              <span className={t.label}>Silinecek ders ve modüller</span>
-              <div className="text-[12px] text-fg-3 leading-relaxed">{plan.removedTitles.join(' · ')}</div>
+          {totalRemove > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-xl border border-negative-line bg-negative-bg p-3">
+              <span className="text-[13px] font-semibold text-negative">
+                Silinecek: {[removeOf('tracks') && `${removeOf('tracks')} eğitim yolu`, removeOf('modules') && `${removeOf('modules')} modül`,
+                  removeOf('lessons') && `${removeOf('lessons')} ders`, plan.removedQuestions && `${plan.removedQuestions} soru`].filter(Boolean).join(', ')}
+              </span>
+              {plan.removedTitles.length > 0 && <div className="text-[12px] text-fg-2 leading-relaxed">{plan.removedTitles.join(' · ')}</div>}
+              <span className="text-[11.5px] text-fg-3">Silinen derse bağlı görevler "Geçersiz" olur.</span>
             </div>
           )}
+          {kept > 0 && <p className="text-[12px] text-fg-3">Panelde eklenen {kept} kayıt dosyada yok; korunacak.</p>}
         </>
       )}
 
@@ -253,25 +308,29 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
 
 export const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () => void; nextOrder: number; proposalId?: string | null }> = ({ value, onClose, nextOrder, proposalId }) => {
   const [f, setF] = useState<Partial<Track>>({});
-  useEffect(() => setF(value ? { icon: 'book', published: false, ...value } : {}), [value]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setF(value ? { icon: 'book', published: false, ...value } : {}); setError(null); }, [value]);
   const save = async () => {
-    if (!f.title?.trim()) return;
+    // Başlıksız kayıt hiçbir şey söylemeden duruyordu.
+    if (!f.title?.trim()) return setError('Başlık yaz.');
     const data = { title: f.title.trim(), description: f.description?.trim() || '', icon: f.icon || 'book', published: !!f.published };
-    const r = await commitChange(
-      [f.id ? { op: 'update', col: 'tracks', id: f.id, data } : { op: 'set', col: 'tracks', id: newId('tracks'), data: { ...data, order: f.order ?? nextOrder } }],
-      { kind: 'track', title: data.title, summary: f.id ? 'Eğitim yolu düzenlendi' : 'Yeni eğitim yolu' }, proposalId);
-    toast(resultText(r), 'positive');
-    onClose();
+    setBusy(true);
+    // kaynak 'panel': panelde açılan yol "Müfredatı güncelle"de silinmez.
+    await saveChange(() => commitChange(
+      [f.id ? { op: 'update', col: 'tracks', id: f.id, data } : { op: 'set', col: 'tracks', id: newId('tracks'), data: { ...data, order: f.order ?? nextOrder, kaynak: 'panel' } }],
+      { kind: 'track', title: data.title, summary: f.id ? 'Eğitim yolu düzenlendi' : 'Yeni eğitim yolu' }, proposalId), 'Kaydedildi', onClose, setError);
+    setBusy(false);
   };
   const remove = async () => {
     if (!f.id || !confirm('Eğitim yolu silinsin mi? İçindeki modüller silinmez ama baristalara görünmez olur.')) return;
-    const r = await commitChange([{ op: 'delete', col: 'tracks', id: f.id }], { kind: 'track', title: f.title || 'Eğitim yolu', summary: 'Silme' }, proposalId);
-    toast(resultText(r, 'Silindi'));
-    onClose();
+    setBusy(true);
+    await saveChange(() => commitChange([{ op: 'delete', col: 'tracks', id: f.id! }], { kind: 'track', title: f.title || 'Eğitim yolu', summary: 'Silme' }, proposalId), 'Silindi', onClose, setError);
+    setBusy(false);
   };
   return (
     <Sheet open={!!value} title={f.id ? 'Eğitim yolunu düzenle' : 'Yeni eğitim yolu'} onClose={onClose}
-      footer={<>{f.id && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} onClick={remove}>Sil</button>}<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save}>Kaydet</button></>}>
+      footer={<>{f.id && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} disabled={busy} onClick={remove}>Sil</button>}<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={save}>{busy ? <Spinner size={14} /> : 'Kaydet'}</button></>}>
       <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
       <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
       <div className={t.field}><span className={t.label}>İkon</span>
@@ -282,6 +341,7 @@ export const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () =>
         </div>
       </div>
       <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" checked={!!f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Baristalara yayınla</label>
+      <ErrorText>{error}</ErrorText>
     </Sheet>
   );
 };
@@ -289,10 +349,13 @@ export const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () =>
 export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () => void; proposalId?: string | null }> = ({ value, onClose, proposalId }) => {
   const { modules, tracks } = useContent();
   const [f, setF] = useState<Partial<Module>>({});
-  useEffect(() => setF(value ? { passScore: 80, examSize: 10, published: false, prerequisiteId: null, ...value } : {}), [value]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setF(value ? { passScore: 80, examSize: 10, published: false, prerequisiteId: null, ...value } : {}); setError(null); }, [value]);
   const siblings = modules.filter((m) => m.id !== f.id);
   const save = async () => {
-    if (!f.title?.trim() || !f.trackId) return;
+    if (!f.title?.trim()) return setError('Başlık yaz.');
+    if (!f.trackId) return setError('Eğitim yolu seç.');
     const data = {
       title: f.title.trim(), description: f.description?.trim() || '', trackId: f.trackId,
       passScore: Math.min(100, Math.max(1, Number(f.passScore) || 80)),
@@ -300,16 +363,17 @@ export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () 
       prerequisiteId: f.prerequisiteId || null, published: !!f.published
     };
     const inTrack = modules.filter((m) => m.trackId === f.trackId);
-    const r = await commitChange(
+    setBusy(true);
+    // kaynak 'panel': panelde açılan modül "Müfredatı güncelle"de silinmez.
+    await saveChange(() => commitChange(
       [f.id ? { op: 'update', col: 'modules', id: f.id, data }
-        : { op: 'set', col: 'modules', id: newId('modules'), data: { ...data, order: f.order ?? (inTrack.length ? Math.max(...inTrack.map((m) => m.order)) + 1 : 1), questionCount: 0 } }],
-      { kind: 'module', title: data.title, summary: f.id ? 'Modül ayarları değişti' : 'Yeni modül' }, proposalId);
-    toast(resultText(r), 'positive');
-    onClose();
+        : { op: 'set', col: 'modules', id: newId('modules'), data: { ...data, order: f.order ?? (inTrack.length ? Math.max(...inTrack.map((m) => m.order)) + 1 : 1), questionCount: 0, kaynak: 'panel' } }],
+      { kind: 'module', title: data.title, summary: f.id ? 'Modül ayarları değişti' : 'Yeni modül' }, proposalId), 'Kaydedildi', onClose, setError);
+    setBusy(false);
   };
   return (
     <Sheet open={!!value} title={f.id ? 'Modül ayarları' : 'Yeni modül'} onClose={onClose}
-      footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save}>Kaydet</button>}>
+      footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={save}>{busy ? <Spinner size={14} /> : 'Kaydet'}</button>}>
       <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
       <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
       <label className={t.field}><span className={t.label}>Eğitim yolu</span>
@@ -328,6 +392,7 @@ export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () 
         </select>
       </label>
       <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" checked={!!f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Baristalara yayınla</label>
+      <ErrorText>{error}</ErrorText>
     </Sheet>
   );
 };
@@ -353,11 +418,14 @@ export const ModuleEditorPage: React.FC = () => {
 
   const addLesson = async () => {
     const id = newId('lessons');
-    const r = await commitChange([{ op: 'set', col: 'lessons', id, data: {
-      moduleId: mod.id, title: 'Yeni ders', order: ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1,
-      durationMin: 3, blocks: [{ type: 'text', text: '' }], published: false
-    } }], { kind: 'lesson', title: 'Yeni ders', summary: `Yeni ders · ${mod.title}` });
-    navigate(r === 'applied' ? `/icerik/ders/${id}` : `/icerik/ders/${id}?oneri=${lastProposalId}`);
+    try {
+      // kaynak 'panel': panelde eklenen ders "Müfredatı güncelle"de silinmez.
+      const r = await commitChange([{ op: 'set', col: 'lessons', id, data: {
+        moduleId: mod.id, title: 'Yeni ders', order: ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1,
+        durationMin: 3, blocks: [{ type: 'text', text: '' }], published: false, kaynak: 'panel'
+      } }], { kind: 'lesson', title: 'Yeni ders', summary: `Yeni ders · ${mod.title}` });
+      navigate(r === 'applied' ? `/icerik/ders/${id}` : `/icerik/ders/${id}?oneri=${lastProposalId}`);
+    } catch (e) { toast(errorText(e), 'negative'); }
   };
 
   return (
@@ -437,6 +505,7 @@ export const ModuleEditorPage: React.FC = () => {
 export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose: () => void; proposalId?: string | null }> = ({ value, onClose, proposalId }) => {
   const [f, setF] = useState<Partial<Question>>({});
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => { setF(value || {}); setError(null); }, [value]);
   const opts = f.options || [];
   const setType = (type: Question['type']) =>
@@ -453,23 +522,23 @@ export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose:
     // eklenen yeni soru güncellemede silinmez.
     const data = { moduleId: f.moduleId!, type: f.type || 'single', prompt: f.prompt.trim(), options, answer, explanation: f.explanation?.trim() || '', imageUrl: f.imageUrl || '', ...(f.kind ? { kind: f.kind } : {}),
       ...(f.lessonId ? { lessonId: f.lessonId } : {}), ...(f.id ? { edited: true } : { kaynak: 'panel' }) };
-    const r = await commitChange(
+    setBusy(true);
+    await saveChange(() => commitChange(
       [f.id ? { op: 'update', col: 'questions', id: f.id, data } : { op: 'set', col: 'questions', id: newId('questions'), data }],
-      { kind: 'question', title: data.prompt.slice(0, 90), summary: f.id ? 'Soru düzenlendi' : 'Yeni soru' }, proposalId);
-    toast(resultText(r, 'Soru kaydedildi'), 'positive');
-    onClose();
+      { kind: 'question', title: data.prompt.slice(0, 90), summary: f.id ? 'Soru düzenlendi' : 'Yeni soru' }, proposalId), 'Soru kaydedildi', onClose, setError);
+    setBusy(false);
   };
   const remove = async () => {
     if (!f.id || !confirm('Soru silinsin mi?')) return;
+    setBusy(true);
     // moduleId: silmenin yetki alanı denetimi için (silmede belgeye yazılmaz).
-    const r = await commitChange([{ op: 'delete', col: 'questions', id: f.id, data: { moduleId: f.moduleId } }], { kind: 'question', title: (f.prompt || '').slice(0, 90), summary: 'Soru silme' }, proposalId);
-    toast(resultText(r, 'Silindi'));
-    onClose();
+    await saveChange(() => commitChange([{ op: 'delete', col: 'questions', id: f.id!, data: { moduleId: f.moduleId } }], { kind: 'question', title: (f.prompt || '').slice(0, 90), summary: 'Soru silme' }, proposalId), 'Silindi', onClose, setError);
+    setBusy(false);
   };
 
   return (
     <Sheet open={!!value} title={f.id ? 'Soruyu düzenle' : 'Yeni soru'} onClose={onClose}
-      footer={<>{f.id && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} onClick={remove}>Sil</button>}<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save}>Kaydet</button></>}>
+      footer={<>{f.id && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} disabled={busy} onClick={remove}>Sil</button>}<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={save}>{busy ? <Spinner size={14} /> : 'Kaydet'}</button></>}>
       <div className={t.segment}>
         <button className={`${t.segmentItem} ${f.type !== 'truefalse' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setType('single')}>Çoktan seçmeli</button>
         <button className={`${t.segmentItem} ${f.type === 'truefalse' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setType('truefalse')}>Doğru / Yanlış</button>
@@ -547,14 +616,26 @@ export const LessonEditorPage: React.FC = () => {
   // Kaydedilmemiş düzenleme geri okuna/geri tuşuna/menüye dokununca uyarısız gidiyordu.
   useUnsavedGuard(dirty && !saving);
 
-  useEffect(() => { if (lesson && !dirty) setDraft(lesson); }, [lesson, dirty]);
+  // Açılıştaki sürüm: kaydederken ders o andan beri değiştiyse (başkası kaydetti,
+  // müfredat güncellendi) sessizce ezilmez (B17).
+  const [base, setBase] = useState<number | null>(null);
+  useEffect(() => {
+    if (lesson && !dirty) { setDraft(lesson); setBase(verOf(published as unknown as Record<string, unknown> | undefined)); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson, dirty]);
   if (proposalId && pLoading) return <Page wide><Spinner /></Page>;
   if (!lesson || !draft) return <Page wide><PageTitle title="Ders bulunamadı" back="/icerik" /></Page>;
   const mod = modules.find((m) => m.id === lesson.moduleId);
   const publisher = canPublishNow({ op: 'set', col: 'lessons', id: lesson.id, data: { moduleId: lesson.moduleId } });
+  // Başkasının önerisini yalnızca "Önerileri onayla" yetkisi olan yayınlar
+  // (içerik yetkisi açık, onay yetkisi kapalı olan kişide ders yayınlanıp
+  // öneri "bekliyor" kalıyordu).
+  const approver = allowed(me.role, 'oneriOnay');
+  const ownProposal = !!proposal && proposal.createdBy === me.uid;
   // Bekleyen öneri üzerinde: müdür onaylayarak, öneri sahibi güncelleyerek çalışır.
-  const livePid = proposal && proposal.status === 'pending' && (publisher || proposal.createdBy === me.uid) ? proposal.id : null;
-  const saveLabel = publisher ? (livePid ? 'Onayla ve yayınla' : 'Kaydet') : livePid ? 'Öneriyi güncelle' : 'Onaya gönder';
+  const livePid = proposal && proposal.status === 'pending' && ((publisher && approver) || ownProposal) ? proposal.id : null;
+  const saveLabel = publisher ? (livePid ? (ownProposal ? 'Yayınla' : 'Onayla ve yayınla') : 'Kaydet') : livePid ? 'Öneriyi güncelle' : 'Onaya gönder';
+  const remoteChanged = dirty && !!published && base !== null && verOf(published as unknown as Record<string, unknown>) !== base;
 
   const patch = (p: Partial<Lesson>) => { setDraft({ ...draft, ...p }); setDirty(true); };
   const setBlock = (i: number, b: LessonBlock) => patch({ blocks: draft.blocks.map((x, j) => (j === i ? b : x)) });
@@ -564,7 +645,7 @@ export const LessonEditorPage: React.FC = () => {
     patch({ blocks: n });
   };
 
-  const save = async () => {
+  const save = async (force = false) => {
     setSaving(true);
     const { id, ...rest } = draft;
     const data = { ...rest, title: rest.title.trim() || 'Adsız ders', durationMin: Number(rest.durationMin) || 1 };
@@ -573,13 +654,22 @@ export const LessonEditorPage: React.FC = () => {
       const mine = { op: 'set' as const, col: 'lessons' as const, id, data };
       const others = livePid && proposal ? proposal.ops.filter((o) => !(o.col === 'lessons' && o.id === id)) : [];
       const r = await commitChange([mine, ...others],
-        { kind: 'lesson', title: data.title, summary: `${published ? 'Ders düzenlendi' : 'Yeni ders'} · ${mod?.title || ''}` }, livePid);
+        { kind: 'lesson', title: data.title, summary: `${published ? 'Ders düzenlendi' : 'Yeni ders'} · ${mod?.title || ''}` }, livePid,
+        { base: { [versionKey('lessons', id)]: base }, force });
       setDirty(false);
       toast(resultText(r, 'Ders kaydedildi'), 'positive');
       if (r === 'proposed' && !livePid && lastProposalId) setParams({ oneri: lastProposalId }, { replace: true });
       if (r === 'applied' && proposalId) navigate(`/icerik/ders/${id}`, { replace: true });
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Kaydedilemedi', 'negative');
+      if (e instanceof StaleError) {
+        setSaving(false);
+        const text = proposal && livePid && !ownProposal
+          ? 'Bu ders öneriden sonra değişti. Öneriyi yayınlarsan sonraki değişiklikler gider. Farkı "Bekleyen onaylar → Ne değişiyor"da görebilirsin.\n\nYine de yayınlansın mı?'
+          : 'Bu ders sen düzenlerken başka biri tarafından kaydedildi. Kaydedersen onun değişiklikleri gider.\n\nYine de kaydedilsin mi? (Vazgeçersen "Son hâlini yükle" ile güncel hâli açabilirsin.)';
+        if (confirm(text)) return save(true);
+        return;
+      }
+      toast(errorText(e), 'negative');
     } finally {
       setSaving(false);
     }
@@ -587,9 +677,11 @@ export const LessonEditorPage: React.FC = () => {
 
   const remove = async () => {
     if (!confirm(publisher ? 'Ders silinsin mi?' : 'Dersin silinmesi onaya gönderilsin mi?')) return;
-    const r = await commitChange([{ op: 'delete', col: 'lessons', id: draft.id }], { kind: 'lesson', title: draft.title, summary: 'Ders silme' });
-    toast(resultText(r, 'Ders silindi'));
-    navigate(`/icerik/modul/${lesson.moduleId}`);
+    try {
+      const r = await commitChange([{ op: 'delete', col: 'lessons', id: draft.id }], { kind: 'lesson', title: draft.title, summary: 'Ders silme' });
+      toast(resultText(r, 'Ders silindi'));
+      navigate(`/icerik/modul/${lesson.moduleId}`);
+    } catch (e) { toast(errorText(e), 'negative'); }
   };
 
   return (
@@ -598,19 +690,27 @@ export const LessonEditorPage: React.FC = () => {
         action={
           <div className="flex gap-2">
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setPreview(!preview)}><Icon name={preview ? 'edit' : 'phone'} size={15} /> {preview ? 'Düzenle' : 'Önizle'}</button>
-            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={(!dirty && !(publisher && livePid)) || saving}>{saving ? <Spinner size={14} /> : dirty || (publisher && livePid) ? saveLabel : 'Kaydedildi'}</button>
+            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => save()} disabled={(!dirty && !(publisher && livePid)) || saving}>{saving ? <Spinner size={14} /> : dirty || (publisher && livePid) ? saveLabel : 'Kaydedildi'}</button>
           </div>
         } />
+
+      {remoteChanged && (
+        <div className="flex flex-wrap gap-3 p-4 rounded-xl border text-[13px] bg-caution-bg border-caution-line items-center">
+          <Icon name="alert" size={18} className="text-caution shrink-0" />
+          <span className="leading-relaxed flex-1 min-w-[200px]">Bu ders sen düzenlerken başka biri tarafından kaydedildi. Kaydedersen onun değişiklikleri gider.</span>
+          <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => confirm('Yaptığın değişiklikler silinip dersin son hâli açılsın mı?') && setDirty(false)}>Son hâlini yükle</button>
+        </div>
+      )}
 
       {proposal && (
         <div className={`flex gap-3 p-4 rounded-xl border text-[13px] ${proposal.status === 'pending' ? 'bg-caution-bg border-caution-line' : 'bg-panel border-line'}`}>
           <Icon name="clipboard" size={18} className="text-caution shrink-0" />
           <span className="leading-relaxed">
             {proposal.status === 'pending'
-              ? publisher
-                ? <><strong>{proposal.createdByName}</strong> bu dersi öneriyor. İstediğin yeri düzeltip “Onayla ve yayınla” de; baristalar yalnızca yayınlanan hâlini görür.</>
-                : <>Bu ders onay bekliyor. Kahve Operasyon Direktörü yayınlayana kadar baristalar eski hâlini görür.</>
-              : proposal.status === 'approved' ? <>Bu öneri {proposal.reviewedByName} tarafından yayınlandı.</>
+              ? livePid && publisher && !ownProposal
+                ? <>{proposal.createdByName ? <><strong>{proposal.createdByName}</strong> bu dersi öneriyor.</> : 'Bu ders için bir öneri var.'} İstediğin yeri düzeltip “Onayla ve yayınla” de; baristalar yalnızca yayınlanan hâlini görür.</>
+                : <>Bu ders onay bekliyor. Yetkili yönetici yayınlayana kadar baristalar eski hâlini görür.</>
+              : proposal.status === 'approved' ? <>Bu öneri {proposal.reviewedByName ? `${proposal.reviewedByName} tarafından ` : ''}yayınlandı.</>
               : proposal.status === 'rejected' ? <>Bu öneri reddedildi{proposal.reviewNote ? `: “${proposal.reviewNote}”` : '.'} Düzenleyip yeniden gönderebilirsin.</>
               : <>Bu öneri geri çekildi.</>}
           </span>
@@ -839,9 +939,11 @@ const AiKeySheet: React.FC<{ open: boolean; onClose: () => void; by: string }> =
   }, [open]);
   const save = async (value: string) => {
     if (value && !value.trim().startsWith('sk-ant-')) { setErr('Anthropic anahtarı "sk-ant-" ile başlar.'); return; }
-    await setAiKey(value, by);
-    toast(value ? 'Anahtar kaydedildi' : 'Anahtar kaldırıldı', 'positive');
-    onClose();
+    try {
+      await setAiKey(value, by);
+      toast(value ? 'Anahtar kaydedildi' : 'Anahtar kaldırıldı', 'positive');
+      onClose();
+    } catch (e) { setErr(errorText(e)); }
   };
   return (
     <Sheet open={open} title="Yapay zekâ ile ders üretimi" onClose={onClose}

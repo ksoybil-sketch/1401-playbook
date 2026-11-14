@@ -60,7 +60,7 @@ export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; un
         </div>
         <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{r.title}</div>
         <div className="text-[12px] text-fg-3 mt-0.5">
-          {showStore ? `${r.storeName} · ` : ''}{r.createdByName} · {fmtDateTime(r.createdAt)}
+          {showStore ? `${r.storeName} · ` : ''}{r.createdByName ? `${r.createdByName} · ` : ''}{fmtDateTime(r.createdAt)}
           {r.notes.length ? ` · ${r.notes.filter((n) => n.text).length} mesaj` : ''}
         </div>
       </div>
@@ -134,6 +134,10 @@ export const RequestThread: React.FC<{
 
   const notes = r.notes.filter((n) => n.text || n.status);
   const closed = isClosed(r.status);
+  // Yazabilir mi: kural operasyonda talepYanit ya da servisOnay ister (ör. Kahve
+  // Operasyonu rolünde ikisi de yok: kutu görünüyor, gönderim reddediliyordu);
+  // mağaza kapanmış talebe yazamaz (14.11.2026 kararı, kural da reddeder).
+  const canWrite = !readOnly && (side === 'ops' ? !!(canChange || canApprove) : !closed);
 
   return (
     <div className="flex flex-col gap-3">
@@ -145,15 +149,15 @@ export const RequestThread: React.FC<{
           {notes.map((n, i) => (
             n.text ? (
               <div key={i} className={`flex gap-2 ${n.side === side ? 'flex-row-reverse text-right' : ''}`}>
-                <Avatar name={n.byName} size={26} />
+                {n.byName ? <Avatar name={n.byName} size={26} /> : <span className="w-[26px] shrink-0" />}
                 <div className={`max-w-[80%] rounded-xl px-3 py-2 ${n.side === 'ops' ? 'bg-panel-3' : 'bg-panel'} border border-line`}>
-                  <div className="text-[11px] text-fg-3">{n.byName} · {fmtDateTime(n.at)}{n.status ? ` · ${STATUS[n.status].label}` : ''}{n.reason ? ` · ${reasonLabel(n.reason)}` : ''}</div>
+                  <div className="text-[11px] text-fg-3">{n.byName ? `${n.byName} · ` : n.side === 'ops' ? 'Kahve Operasyonu · ' : ''}{fmtDateTime(n.at)}{n.status ? ` · ${STATUS[n.status].label}` : ''}{n.reason ? ` · ${reasonLabel(n.reason)}` : ''}</div>
                   <div className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-left">{n.text}</div>
                 </div>
               </div>
             ) : (
               <div key={i} className="text-[11.5px] text-fg-3 text-center">
-                {n.byName} · {n.status ? STATUS[n.status].label : 'Neden'}{n.reason ? `: ${reasonLabel(n.reason)}` : ''} · {fmtDateTime(n.at)}
+                {n.byName ? `${n.byName} · ` : ''}{n.status ? STATUS[n.status].label : 'Neden'}{n.reason ? `: ${reasonLabel(n.reason)}` : ''} · {fmtDateTime(n.at)}
               </div>
             )
           ))}
@@ -180,9 +184,12 @@ export const RequestThread: React.FC<{
         </label>
       )}
 
-      {!readOnly && <div className="flex flex-col gap-2">
+      {side === 'store' && closed && (
+        <p className="text-[13px] text-fg-3 bg-panel border border-line rounded-lg px-3 py-2.5">Bu talep kapandı. Yeni bir konu için yeni talep aç.</p>
+      )}
+      {canWrite && <div className="flex flex-col gap-2">
         <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
-          placeholder={side === 'ops' ? 'Mağazaya yanıt: servis yarın 10:00\'da geliyor…' : closed ? 'Talep kapandı. Yeniden açılması için yaz…' : 'Ek bilgi yaz…'} />
+          placeholder={side === 'ops' ? 'Mağazaya yanıt: servis yarın 10:00\'da geliyor…' : 'Ek bilgi yaz…'} />
         <div className="flex flex-wrap gap-2 justify-end">
           {/* Onay bekleyen talep: onay yetkisi olmayan yalnızca mesaj yazar
               (eskiden "İşleme al" ile onayı atlayabiliyordu). Onaylayıcıda

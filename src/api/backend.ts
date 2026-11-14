@@ -23,6 +23,11 @@ import {
 } from 'firebase/firestore';
 import { auth, db, secondaryAuth } from './firebase';
 import type { Barista, BaristaRole, StaffRole } from '../../shared/types';
+import { authorName } from '../lib/roles';
+import { localDay } from '../lib/day';
+// Döngüsel içe aktarım (session.ts de bu dosyayı içe aktarır): useSession
+// yalnızca işlevlerin içinde, çalışma anında okunur; modül yüklenirken değil.
+import { useSession } from '../store/session';
 
 /* ------------------------------------------------------------------ */
 /* Sabitler ve yardımcılar                                             */
@@ -55,6 +60,24 @@ function randomToken(len = 32): string {
 export class AppError extends Error {
   constructor(message: string, public code?: string, public data?: unknown) { super(message); }
 }
+
+/**
+ * Kayda yazılacak yazar adı: oturumdaki kişi uygulama geliştiricisiyse boş
+ * (bkz. roles.ts authorName). Çağıran yalnızca adı veriyor; rol oturumdan okunur.
+ */
+function signedName(name?: string): string {
+  const s = useSession.getState().session;
+  return authorName(s.kind === 'staff' ? s.role : undefined, name);
+}
+
+/** Firestore/Auth hatası ağ kaynaklı mı (sunucuya ulaşılamadı)? */
+export function isNetworkError(e: unknown): boolean {
+  const err = e as { code?: string; message?: string };
+  return err?.code === 'unavailable' || err?.code === 'deadline-exceeded'
+    || err?.code === 'auth/network-request-failed' || err?.code === 'auth/timeout'
+    || /offline|network/i.test(err?.message || '');
+}
+const NETWORK_MSG = 'İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar dene.';
 
 /** Yöneticinin oturumunu etkilemeden yeni bir Auth hesabı açar, uid döner. */
 async function createAccount(email: string, password: string): Promise<string> {
@@ -100,24 +123,41 @@ async function createPairingCode(storeId: string, storeName: string): Promise<{ 
 
 /** [Telefon] Kodu kullanır, telefonu mağaza hesabıyla oturum açtırır. */
 async function pairDevice(code: string, label: string): Promise<DeviceCreds> {
-  const snap = await getDoc(doc(db, 'pairingCodes', code)).catch(() => null);
-  const p = snap?.data();
+  // Ağ hatası "kod geçersiz" diye gösterilmesin: barista boşuna yeni kod istiyordu.
+  let p: Record<string, any> | undefined;
+  try {
+    p = (await getDoc(doc(db, 'pairingCodes', code))).data();
+  } catch (e) {
+    if (isNetworkError(e)) throw new AppError(NETWORK_MSG, 'unavailable');
+    p = undefined;
+  }
   if (!p || p.expiresAt < Date.now()) throw new AppError('Kod geçersiz ya da süresi dolmuş.');
   await signInWithEmailAndPassword(auth, p.email, p.password);
-  await updateDoc(doc(db, 'users', p.uid), { paired: true, label, lastSeenAt: Date.now() });
+  const creds: DeviceCreds = { uid: p.uid, email: p.email, password: p.password, storeId: p.storeId, storeName: p.storeName };
+  // Oturum açıldıktan sonrası telefonun eşleşmesini engellememeli (beklenmez):
+  // buradaki bir ağ hatası eskiden kimliğin hiç kaydedilmemesine yol açıyordu
+  // (telefon ilk barista çıkışında "eşleşmemiş" ekrana düşüyordu). Yazımlar
+  // kuyruğa girer; "paired" yazılamazsa sonraki her girişte deviceSignIn yazar.
+  updateDoc(doc(db, 'users', p.uid), { paired: true, label, lastSeenAt: Date.now() }).catch(() => {});
   // Canlıda kod tek kullanımlıktır: kullanıldığı anda silinir.
   // Demoda sabit kod (140114) ekranda yazılıdır ve birden fazla kişi kendi
   // tarayıcısında denemek ister; silinirse ilk denemeden sonra demo kilitlenir.
-  if (!DEMO) await deleteDoc(doc(db, 'pairingCodes', code));
-  return { uid: p.uid, email: p.email, password: p.password, storeId: p.storeId, storeName: p.storeName };
+  // Silinemezse 30 dakikada kendiliğinden geçersizleşir.
+  if (!DEMO) deleteDoc(doc(db, 'pairingCodes', code)).catch(() => {});
+  return creds;
 }
 
 async function deviceSignIn(d: DeviceCreds): Promise<void> {
   await signInWithEmailAndPassword(auth, d.email, d.password);
-  updateDoc(doc(db, 'users', d.uid), { lastSeenAt: Date.now() }).catch(() => {});
+  updateDoc(doc(db, 'users', d.uid), { lastSeenAt: Date.now(), paired: true }).catch(() => {});
 }
 
-/** [Yönetici] Telefonun bağlantısını kaldırır — hesap pasifleşir, kurallar her şeyi reddeder. */
+/**
+ * [Yönetici] Telefonun bağlantısını kaldırır: hesap pasifleşir. Kurallar
+ * (firestore.rules isActive) pasif hesabın bütün okuma ve yazmalarını
+ * reddeder; telefondaki uygulama da kendi users belgesini dinlediği için
+ * açık oturumu kapatıp eşleşmeyi siler (bkz. store/session.ts).
+ */
 async function revokeDevice(uid: string): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { active: false, revokedAt: Date.now() });
 }
@@ -140,8 +180,8 @@ async function deleteInvites(baristaId: string, batch: ReturnType<typeof writeBa
   old.forEach((d) => batch.delete(d.ref));
 }
 
-/** İşe başlama tarihi (YYYY-AA-GG): kıdem rozetleri buna bakar. Yoksa bugün. */
-const validDay = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= new Date().toISOString().slice(0, 10) ? d : null);
+/** İşe başlama tarihi (YYYY-AA-GG): kıdem rozetleri buna bakar. Yoksa bugün (yerel gün). */
+const validDay = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= localDay() ? d : null);
 
 async function createBarista(input: { name: string; storeId: string; role: BaristaRole; phone?: string; startedAt?: string; createdByName?: string }) {
   const name = input.name.trim();
@@ -154,8 +194,8 @@ async function createBarista(input: { name: string; storeId: string; role: Baris
   batch.set(ref, {
     name, storeId: input.storeId, role: input.role, phone: input.phone?.trim() || '',
     active: true, pinPending: true, uid: acc.uid, authEmail: acc.email, accountSeq: 1,
-    startedAt: validDay(input.startedAt) || new Date().toISOString().slice(0, 10), createdAt: now,
-    inviteExpiresAt: acc.expiresAt, codeIssuedByName: input.createdByName || ''
+    startedAt: validDay(input.startedAt) || localDay(), createdAt: now,
+    inviteExpiresAt: acc.expiresAt, codeIssuedByName: signedName(input.createdByName)
   });
   batch.set(doc(db, 'users', acc.uid), { role: input.role, baristaId: ref.id, storeId: input.storeId, active: true, createdAt: now });
   batch.set(doc(db, 'progress', ref.id), { baristaId: ref.id, storeId: input.storeId, lessons: {}, modules: {}, updatedAt: now });
@@ -172,7 +212,7 @@ async function resetBaristaPin(b: Barista, issuedBy?: string) {
   await deleteInvites(b.id, batch);
   if (b.uid) batch.update(doc(db, 'users', b.uid), { active: false });
   batch.set(doc(db, 'users', acc.uid), { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: Date.now() });
-  batch.update(doc(db, 'baristas', b.id), { uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, deactivatedAt: null, inviteExpiresAt: acc.expiresAt, ...(issuedBy ? { codeIssuedByName: issuedBy } : {}) });
+  batch.update(doc(db, 'baristas', b.id), { uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, deactivatedAt: null, inviteExpiresAt: acc.expiresAt, ...(issuedBy !== undefined ? { codeIssuedByName: signedName(issuedBy) } : {}) });
   batch.set(doc(db, 'invites', acc.code), acc.invite);
   await batch.commit();
   return { code: acc.code, expiresAt: acc.expiresAt };
@@ -205,6 +245,12 @@ async function updateBarista(b: Barista, patch: { name?: string; storeId?: strin
     batch.update(doc(db, 'users', b.uid), { ...(patch.role ? { role: patch.role } : {}), ...(patch.storeId ? { storeId: patch.storeId } : {}) });
   }
   if (patch.storeId) batch.update(doc(db, 'progress', b.id), { storeId: patch.storeId });
+  // Bekleyen davet kodu da yeni mağazaya taşınır: redeemInvite mağazayı
+  // denetlediği için eski mağaza kimliğiyle kalan kod yeni mağazada çalışmıyordu.
+  if (patch.storeId && patch.storeId !== b.storeId) {
+    const inv = await getDocs(query(collection(db, 'invites'), where('baristaId', '==', b.id)));
+    inv.forEach((d) => batch.update(d.ref, { storeId: patch.storeId }));
+  }
   await batch.commit();
 }
 
@@ -247,8 +293,13 @@ async function redeemInvite(code: string, pin: string, storeId: string): Promise
   if (weakPin(pin)) {
     throw new AppError('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'weak-pin');
   }
-  const snap = await getDoc(doc(db, 'invites', code)).catch(() => null);
-  const inv = snap?.data();
+  let inv: Record<string, any> | undefined;
+  try {
+    inv = (await getDoc(doc(db, 'invites', code))).data();
+  } catch (e) {
+    if (isNetworkError(e)) throw new AppError(NETWORK_MSG, 'unavailable');
+    inv = undefined;
+  }
   if (!inv || inv.expiresAt < Date.now()) throw new AppError('Davet kodu geçersiz ya da süresi dolmuş. Yöneticinden yeni kod iste.');
   if (inv.storeId !== storeId) throw new AppError('Bu davet başka bir mağaza için. Kendi mağazanın telefonunu kullan.');
   await signInWithEmailAndPassword(auth, inv.email, invitePassword(code));
@@ -315,15 +366,23 @@ export const backend = {
 /** Kullanıcıya gösterilecek hata mesajı. */
 export function errorText(e: unknown): string {
   const err = e as { code?: string; message?: string };
-  if (err?.code === 'unavailable' || err?.code === 'auth/network-request-failed' || err?.message?.includes('network')) {
-    return 'İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar dene.';
-  }
+  if (e instanceof AppError) return e.message;
+  if (isNetworkError(e)) return NETWORK_MSG;
   if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') return 'E-posta veya şifre hatalı.';
   if (err?.code === 'auth/email-already-in-use') return 'Bu e-posta ile zaten bir hesap var.';
   if (err?.code === 'auth/weak-password') return 'Şifre en az 6 karakter olmalı.';
   if (err?.code === 'auth/invalid-email') return 'E-posta adresi geçersiz.';
   if (err?.code === 'auth/too-many-requests') return 'Çok fazla deneme yapıldı. Biraz sonra tekrar dene.';
   if (err?.code === 'auth/operation-not-allowed') return 'E-posta ile giriş Firebase konsolunda henüz açılmamış.';
+  if (err?.code === 'auth/user-disabled') return 'Bu hesap kapatılmış.';
+  if (err?.code === 'auth/internal-error') return 'Giriş şu an yapılamadı. Biraz sonra tekrar dene.';
   if (err?.code === 'permission-denied') return 'Bu işlem için yetkin yok.';
+  // Firestore'un ham İngilizce mesajları ekrana çıkmasın.
+  if (err?.code === 'resource-exhausted') return 'Günlük kullanım sınırına ulaşıldı. Biraz sonra tekrar dene.';
+  if (err?.code === 'already-exists') return 'Bu kayıt zaten var. Sayfayı yenileyip tekrar bak.';
+  if (err?.code === 'aborted' || err?.code === 'failed-precondition') return 'İşlem başka bir değişiklikle çakıştı. Tekrar dene.';
+  if (err?.code === 'not-found') return 'Kayıt bulunamadı.';
+  if (err?.code === 'invalid-argument') return 'Kayıt kaydedilemedi: içerik geçersiz ya da çok büyük.';
+  if (err?.code === 'internal' || err?.code === 'unknown' || err?.code === 'cancelled') return 'Beklenmeyen bir hata oluştu. Tekrar dene.';
   return err?.message || 'Beklenmeyen bir hata oluştu.';
 }

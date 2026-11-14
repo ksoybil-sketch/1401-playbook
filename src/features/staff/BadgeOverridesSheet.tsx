@@ -66,7 +66,7 @@ export const BadgeOverridesSheet: React.FC<{ open: boolean; onClose: () => void;
           <div className="flex items-start gap-3 p-3 rounded-lg bg-negative-bg border border-negative-line">
             <div className="flex-1 text-[13px] leading-relaxed">
               <b>{label(ov.titleCap.from)}</b> ve üstü geri alındı: {ov.titleCap.reason}
-              <div className="text-[12px] text-fg-3">{ov.titleCap.byName} · {fmtDate(ov.titleCap.at)}{ov.titleCap.until ? ` · ${fmtDate(ov.titleCap.until)} tarihine kadar` : ' · süresiz'}</div>
+              <div className="text-[12px] text-fg-3">{ov.titleCap.byName ? `${ov.titleCap.byName} · ` : ''}{fmtDate(ov.titleCap.at)}{ov.titleCap.until ? ` · ${fmtDate(ov.titleCap.until)} tarihine kadar` : ' · süresiz'}</div>
             </div>
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} disabled={!!busy}
               onClick={() => write('cap', { ...ov, titleCap: null }, 'Rozet kısıtı kaldırıldı')}>
@@ -106,7 +106,7 @@ export const BadgeOverridesSheet: React.FC<{ open: boolean; onClose: () => void;
                   {x.granted && <Badge tone="positive">Elle verildi</Badge>}
                   {!x.revoked && !x.granted && x.earned && <Badge tone="positive">Kazandı</Badge>}
                 </div>
-                {(x.revoked || x.granted) && <div className="text-[11.5px] text-fg-3">{(x.revoked || x.granted)!.reason} · {(x.revoked || x.granted)!.byName}</div>}
+                {(x.revoked || x.granted) && <div className="text-[11.5px] text-fg-3">{(x.revoked || x.granted)!.reason}{(x.revoked || x.granted)!.byName ? ` · ${(x.revoked || x.granted)!.byName}` : ''}</div>}
               </div>
               {x.revoked ? (
                 <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} disabled={!!busy}

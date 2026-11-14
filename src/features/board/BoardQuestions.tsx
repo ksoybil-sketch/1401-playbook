@@ -13,6 +13,8 @@ import { forBoard } from '../../lib/boardStats';
 import { closedOf } from '../../lib/requestStats';
 import { catOf, STATUS } from '../../api/requests';
 import type { BoardQuestion, BoardTopic, StaffRole } from '../../../shared/types';
+import { useAllow } from '../../lib/permissions';
+import { useSession } from '../../store/session';
 
 /**
  * Yönetim Kurulu soruları — iki taraf aynı bileşeni kullanır:
@@ -153,6 +155,11 @@ export const QuestionThread: React.FC<{ q: BoardQuestion; side: 'board' | 'ops';
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => setText(''), [q.id]);
   const link = side === 'ops' ? topicLink(q.topic) : null;
+  // Yanıt kutusu yalnızca kuralın izin verdiği kişide: "Kurul soruları" ekranı
+  // açık ama "Kurul sorularını yanıtla" kapalıysa gönderim reddediliyordu.
+  const allow = useAllow();
+  const role = useSession((x) => (x.session.kind === 'staff' ? x.session.role : undefined));
+  const canReply = side === 'board' || allow(role, 'kurulYanit');
 
   const reply = async () => {
     if (!text.trim()) return;
@@ -180,14 +187,15 @@ export const QuestionThread: React.FC<{ q: BoardQuestion; side: 'board' | 'ops';
       <div className="flex flex-col gap-2">
         {q.messages.map((m, i) => (
           <div key={i} className={`flex gap-2 ${m.side === side ? 'flex-row-reverse text-right' : ''}`}>
-            <Avatar name={m.byName} size={26} />
+            {m.byName ? <Avatar name={m.byName} size={26} /> : <span className="w-[26px] shrink-0" />}
             <div className={`max-w-[85%] rounded-xl px-3 py-2 border border-line ${m.side === 'ops' ? 'bg-panel-3' : 'bg-panel'}`}>
-              <div className="text-[11px] text-fg-3">{m.byName} · {fmtDateTime(m.at)}</div>
+              <div className="text-[11px] text-fg-3">{m.byName ? `${m.byName} · ` : m.side === 'ops' ? 'Kahve Operasyonu · ' : ''}{fmtDateTime(m.at)}</div>
               <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-left">{m.text}</div>
             </div>
           </div>
         ))}
       </div>
+      {canReply ? <>
       <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
         placeholder={side === 'ops' ? 'Kurula yanıt: durum, sonraki adım, tarih…' : q.status === 'closed' ? 'Soru kapandı. Yeniden sormak için yaz…' : 'Ek soru ya da not yaz…'} />
       <div className="flex flex-wrap gap-2 justify-end">
@@ -200,6 +208,7 @@ export const QuestionThread: React.FC<{ q: BoardQuestion; side: 'board' | 'ops';
           {busy === 'send' ? <Spinner size={13} /> : <><Icon name="send" size={13} /> {side === 'ops' ? 'Yanıtla' : 'Gönder'}</>}
         </button>
       </div>
+      </> : <p className="text-[12.5px] text-fg-3">Kurul sorularını yanıtlama yetkin yok; yalnızca okuyabilirsin.</p>}
     </div>
   );
 };
@@ -216,7 +225,7 @@ const Row: React.FC<{ q: BoardQuestion; side: 'board' | 'ops'; onOpen: () => voi
         <span className="ml-auto text-[11px] text-fg-3">{fmtDateTime(q.updatedAt)}</span>
       </div>
       <div className="text-[17px] font-semibold leading-snug">{q.topic.title}</div>
-      <div className="text-[14px] text-fg-2 leading-relaxed line-clamp-2"><b className="font-medium text-crema">{last.byName}:</b> {last.text}</div>
+      <div className="text-[14px] text-fg-2 leading-relaxed line-clamp-2">{last.byName && <b className="font-medium text-crema">{last.byName}:</b>} {last.text}</div>
       <div className="text-[13px] text-fg-3">{q.createdByName} sordu · {TO_LABEL[q.to]} · {q.messages.length} mesaj</div>
     </button>
   );

@@ -12,6 +12,7 @@ import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { EXAMS_PER_WEEK } from '../../api/exam';
 import type { Attempt, Module } from '../../../shared/types';
+import { useExamSize } from './useExamSize';
 
 /* ------------------------------------------------------------------ */
 /* Eğitim yolları                                                      */
@@ -71,7 +72,7 @@ export const TrackPage: React.FC = () => {
       <PageTitle title={track.title} subtitle={track.description} back="/akademi" />
       <div className={t.listGroup}>
         {mods.map((m, i) => {
-          const st = moduleState(m, lessons, progress);
+          const st = moduleState(m, lessons, progress, { modules, tracks });
           const content = (
             <>
               <span className={`w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold shrink-0 border tnum ${
@@ -127,16 +128,20 @@ export function nextModuleAfter(mod: Module, modules: Module[]): Module | undefi
 
 export const ModulePage: React.FC = () => {
   const { moduleId } = useParams();
-  const { modules, lessons } = useContent();
+  const { tracks, modules, lessons } = useContent();
   const { progress } = useMyProgress();
   const { items: attempts } = useMyAttempts(50);
   const mod = modules.find((m) => m.id === moduleId);
+  // Gerçekte sorulacak soru sayısı (bkz. useExamSize).
+  const real = useExamSize(mod);
 
   const { left, nextSlotAt, openAttempt } = useMemo(() => examSlots(attempts, moduleId || ''), [attempts, moduleId]);
-  const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt && !a.voided);
+  // Yalnızca modül sınavları: aynı modüldeki reçetelerin mini sınavları
+  // (lessonId dolu) puan rozetlerine karışıyordu.
+  const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
-  const st = moduleState(mod, lessons, progress);
+  const st = moduleState(mod, lessons, progress, { modules, tracks });
   const prereq = st.locked ? modules.find((m) => m.id === mod.prerequisiteId) : undefined;
   const canStart = !st.locked && (left > 0 || !!openAttempt);
 
@@ -183,7 +188,7 @@ export const ModulePage: React.FC = () => {
             <div className="flex-1">
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
-                {mod.examSize} soru · Geçme notu {mod.passScore} · {left > 0
+                {real.empty ? 'Bu modülde şu an soru yok' : `${real.size} soru`} · Geçme notu {mod.passScore} · {left > 0
                   ? `Bu hafta ${EXAMS_PER_WEEK} hakkından ${left} tanesi kaldı`
                   : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · yenisi ${fmtDateTime(nextSlotAt)} tarihinde açılır` : ''}`}
               </div>
@@ -217,7 +222,7 @@ export const LessonPage: React.FC = () => {
   const { lessonId } = useParams();
   const navigate = useNavigate();
   const s = useBaristaSession();
-  const { modules, lessons } = useContent();
+  const { tracks, modules, lessons } = useContent();
   const { progress } = useMyProgress();
   const { items: attempts } = useMyAttempts(50);
   const lesson = lessons.find((l) => l.id === lessonId);
@@ -232,7 +237,7 @@ export const LessonPage: React.FC = () => {
   // Son ders: bu dersle bütün dersler bitiyor ve sınav açıksa (kilitli değil,
   // geçilmemiş, hak var) doğrudan sınavın giriş ekranına geçilir. Sınav yine
   // "Başla" ile başlar.
-  const st = mod ? moduleState(mod, lessons, progress) : null;
+  const st = mod ? moduleState(mod, lessons, progress, { modules, tracks }) : null;
   const allDoneAfter = !!st && st.lessons.every((l) => l.id === lesson.id || !!progress.lessons?.[l.id]);
   const toExam = !next && !!mod && !!st && allDoneAfter && !st.locked && !st.passed && mod.examSize > 0
     && examSlots(attempts, mod.id).canStart;

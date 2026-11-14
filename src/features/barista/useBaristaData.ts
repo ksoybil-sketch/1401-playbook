@@ -67,13 +67,22 @@ export async function markBulletinRead(baristaId: string, bulletinId: string, al
   }).catch(() => {});
 }
 
-export function useMyAttempts(max = 30): { items: Attempt[]; loading: boolean } {
+/**
+ * Baristanın denemeleri. Bütün ekranlar AYNI sorguyu dinler (son
+ * ATTEMPTS_LIMIT deneme): Firestore aynı sorguyu tek hedef olarak dinleyip
+ * bir kez faturalar. Eskiden ana sayfa 300'lük, sınav/akademi 50'lik ayrı
+ * sorgu açıyordu; her deneme değişikliği iki kez okunuyordu. `max` yalnızca
+ * dönen listeyi kısaltır.
+ */
+const ATTEMPTS_LIMIT = 300;
+export function useMyAttempts(max = ATTEMPTS_LIMIT): { items: Attempt[]; loading: boolean } {
   const s = useBaristaSession();
   const { data, loading } = useQueryLive<Attempt>(
-    query(collection(db, 'attempts'), where('baristaId', '==', s.baristaId), orderBy('startedAt', 'desc'), limit(max)),
-    `att-${s.baristaId}-${max}`
+    query(collection(db, 'attempts'), where('baristaId', '==', s.baristaId), orderBy('startedAt', 'desc'), limit(ATTEMPTS_LIMIT)),
+    `att-${s.baristaId}`
   );
-  return { items: data, loading };
+  const items = useMemo(() => (max >= data.length ? data : data.slice(0, max)), [data, max]);
+  return { items, loading };
 }
 
 /**
@@ -85,7 +94,7 @@ export function useMyBadgeReport(): { report: BadgeReport; attempts: Attempt[]; 
   const { tracks, modules, lessons } = useContent();
   const { progress } = useMyProgress();
   const { items: assignments } = useMyAssignments();
-  const { items: all, loading } = useMyAttempts(300);
+  const { items: all, loading } = useMyAttempts();
   const { data: me } = useDocLive<Barista>(`baristas/${s.baristaId}`);
   const attempts = useMemo(() => all.filter((a) => a.submittedAt && !a.voided), [all]);
   const config = useBadgeConfig((x) => x.config);

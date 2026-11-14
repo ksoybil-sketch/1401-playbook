@@ -61,3 +61,8 @@ ok(!dirty && !pending,
   `Bu bilgisayarda yayına girmemiş değişiklik var:${pending ? '\n      ' + pending.split('\n').join('\n      ') : ''}${dirty ? '\n      (commit edilmemiş dosyalar: git status)' : ''}`);
 console.log('\nİçerik (dersler, sorular) kodla gelir. Canlı veritabanına "Akademi → Müfredatı güncelle" ile yüklenir;');
 console.log('o pencere "değişiklik yok" diyorsa canlıdaki içerik bu sürümle aynıdır.\n');
+// Kota (Spark: günde 50.000 okuma). Kullanım bilgisi giriş istediği için burada
+// okunmaz; bağlantı yazdırılır. Aşılırsa o günün geri kalanında bütün okumalar
+// reddedilir (barista giriş yapamaz); sayaç Türkiye saatiyle 10:00/11:00'de sıfırlanır.
+console.log('Günlük okuma kotası (Spark: 50.000 okuma/gün) — yayından sonraki ilk günlerde göz at:');
+console.log('  https://console.firebase.google.com/project/playbook-1401/firestore/usage\n');
