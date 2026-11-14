@@ -12,6 +12,7 @@ import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { EXAMS_PER_WEEK } from '../../api/exam';
 import type { Attempt, Module } from '../../../shared/types';
+import { useExamSize } from './useExamSize';
 
 /* ------------------------------------------------------------------ */
 /* Eğitim yolları                                                      */
@@ -131,6 +132,8 @@ export const ModulePage: React.FC = () => {
   const { progress } = useMyProgress();
   const { items: attempts } = useMyAttempts(50);
   const mod = modules.find((m) => m.id === moduleId);
+  // Gerçekte sorulacak soru sayısı (bkz. useExamSize).
+  const real = useExamSize(mod);
 
   const { left, nextSlotAt, openAttempt } = useMemo(() => examSlots(attempts, moduleId || ''), [attempts, moduleId]);
   // Yalnızca modül sınavları: aynı modüldeki reçetelerin mini sınavları
@@ -185,7 +188,7 @@ export const ModulePage: React.FC = () => {
             <div className="flex-1">
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
-                {mod.examSize} soru · Geçme notu {mod.passScore} · {left > 0
+                {real.empty ? 'Bu modülde şu an soru yok' : `${real.size} soru`} · Geçme notu {mod.passScore} · {left > 0
                   ? `Bu hafta ${EXAMS_PER_WEEK} hakkından ${left} tanesi kaldı`
                   : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · yenisi ${fmtDateTime(nextSlotAt)} tarihinde açılır` : ''}`}
               </div>

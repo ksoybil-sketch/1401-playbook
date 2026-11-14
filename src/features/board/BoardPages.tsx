@@ -3,7 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
-import { dayStart, loadExamAgg, loadExamsSince, loadRequestsSince, loadReviewedSince, useFetched, useHistory, useStaffData, type ExamAgg } from '../staff/staffData';
+import {
+  aggOfDocs, dayStart, examBaristaIds, fetchOnce, loadExamAgg, loadExamStats, loadExamsSince, loadRequestsSince, loadReviewedSince, useFetched, useHistory, useStaffData,
+  type ExamAgg, type ExamStats
+} from '../staff/staffData';
 import { useStaffSession } from '../staff/StaffLayout';
 import { useBadgeConfig } from '../../store/badgeConfig';
 import { useQueryLive } from '../../hooks/useFirestore';
@@ -26,17 +29,21 @@ import * as t from '../../ui/tokens';
 import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import type { Bulletin, BoardTopic, StoreRequest } from '../../../shared/types';
 import { IS_ANDROID_APP } from '../../lib/backButton';
+import { errorText } from '../../api/backend';
 
 /* ------------------------------------------------------------------ */
 /* Ortak                                                               */
 /* ------------------------------------------------------------------ */
 
 /**
- * Kurulun dönem verisi TEK SEFERLİK okunur (10 dakika saklanır): seçilen
- * dönemin sınav belgeleri; talepler ve sonuçlanan öneriler önceki dönem ve 12
- * haftalık grafik aralığıyla (küçük koleksiyonlar). Önceki dönemin ve haftaların
- * sınav sayıları toplama sorgusuyla gelir (useExamTrend). Açık talepler ve
- * bekleyen öneriler canlı listeden eklenir.
+ * Kurulun dönem verisi TEK SEFERLİK okunur (10 dakika saklanır). Sınav
+ * göstergeleri (toplam, mağaza, modül, barista başına) toplama sorgusuyla
+ * gelir (useBoardCtx exams: true); sınav belgeleri okunmaz (eskiden dönemin
+ * bütün sınavları: "Bu yıl" aralıkta ~25.000 okuma). Belge gereken tek yer
+ * Excel tabloları: düğmeye basınca okunur. Talepler ve sonuçlanan öneriler
+ * önceki dönem ve 12 haftalık grafik aralığıyla (küçük koleksiyonlar).
+ * Önceki dönemin ve haftaların sınav sayıları da toplama sorgusuyla gelir
+ * (useExamTrend). Açık talepler ve bekleyen öneriler canlı listeden eklenir.
  */
 const WEEKS = 12;
 const DAY_MS = 86400000;
@@ -44,13 +51,24 @@ const mondayOf = (now = Date.now()) => { const d = new Date(now); return new Dat
 function rangeFrom(period: Period): number {
   return dayStart(Math.min(previousOf(period).from, mondayOf() - (WEEKS - 1) * 7 * DAY_MS));
 }
+/** Dönemin üst sınırı: bugüne kadar süren dönemlerde yok (null). */
+const periodTo = (p: Period) => (p.id === 'gecen-ay' ? p.to : null);
+const statsKey = (p: Period) => `board-stats:${p.id}:${dayStart(p.from)}`;
 
-function useBoardCtx(period: Period): BoardCtx & { loading: boolean; error: string | null } {
+function useBoardCtx(period: Period, opts: { exams?: boolean } = {}): BoardCtx & { loading: boolean; error: string | null } {
   const { stores, modules, lessons, tracks } = useContent();
   const { baristas, progress, assignments, requests: liveRequests, proposals: liveProposals } = useStaffData();
   const from = rangeFrom(period);
-  const examFrom = dayStart(period.from);
-  const ex = useFetched(`board-exams:${examFrom}`, () => loadExamsSince(examFrom));
+  // Yalnızca dönemde sınava girebilecek baristalar (dönemden önce ayrılanlar hariç).
+  const ids = useMemo(() => ({
+    stores: stores.filter((s) => s.active).map((s) => s.id),
+    modules: modules.map((m) => m.id),
+    baristas: examBaristaIds(baristas, period.from)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [stores, modules, baristas, dayStart(period.from)]);
+  const ready = stores.length > 0 && baristas.length > 0;
+  const ex = useFetched<ExamStats>(opts.exams && ready ? statsKey(period) : null,
+    () => loadExamStats(period.from, periodTo(period), ids));
   const rq = useFetched(`board-requests:${from}`, () => loadRequestsSince(from));
   const pr = useFetched(`board-proposals:${from}`, () => loadReviewedSince(from));
   // Personel talepleri (davet kodu, PIN, vardiya) kurulun işi değil: hiçbir kurul ekranına girmez.
@@ -65,10 +83,13 @@ function useBoardCtx(period: Period): BoardCtx & { loading: boolean; error: stri
     return [...m.values()];
   }, [pr.data, liveProposals]);
   return {
-    stores, modules, lessons, tracks, baristas, progress, attempts: ex.data || [], assignments, requests, proposals,
-    loading: ex.loading && !ex.data, error: ex.error || rq.error || pr.error
+    stores, modules, lessons, tracks, baristas, progress, attempts: ex.data?.docs || [], examStats: ex.data, assignments, requests, proposals,
+    loading: !!opts.exams && !ex.data && !ex.error, error: ex.error || rq.error || pr.error
   };
 }
+
+/** Excel tabloları için dönemin sınav belgeleri (düğmeye basınca, 10 dakika saklanır). */
+const loadPeriodExams = (p: Period) => fetchOnce(`board-exams:${p.id}:${dayStart(p.from)}`, () => loadExamsSince(dayStart(p.from)));
 
 /**
  * Önceki dönemin ve son 12 haftanın sınav özeti (toplama sorgusu, ~25 okuma).
@@ -86,10 +107,7 @@ function useExamTrend(period: Period) {
     } catch (e) {
       console.warn('[kurul] toplama sorgusu olmadı (dizin?), belgelerden hesaplanıyor', e);
       const docs = (await loadExamsSince(Math.min(prevP.from, weeks[0]))).filter((a) => !a.voided && !a.lessonId);
-      const agg = (f: number, t: number): ExamAgg => {
-        const xs = docs.filter((a) => (a.submittedAt || 0) >= f && (a.submittedAt || 0) <= t);
-        return { exams: xs.length, passed: xs.filter((a) => a.passed).length, avgScore: xs.length ? Math.round(xs.reduce((s, a) => s + (a.score || 0), 0) / xs.length) : null };
-      };
+      const agg = (f: number, t: number): ExamAgg => aggOfDocs(docs.filter((a) => (a.submittedAt || 0) >= f && (a.submittedAt || 0) <= t));
       return { prev: agg(prevP.from, prevP.to), weeks: weeks.map((w) => ({ ...agg(w, w + 7 * DAY_MS - 1), from: w })) };
     }
   });
@@ -147,8 +165,9 @@ function useAsk() {
  */
 function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
   const me = useStaffSession();
-  const ctx = useBoardCtx(period);
   const [params, setParams] = useSearchParams();
+  // Sınav göstergeleri yalnızca mağaza penceresi açıkken (Gidişat ve Mağazalar zaten okumuştur).
+  const ctx = useBoardCtx(period, { exams: !!params.get('magaza') });
   const set = (key: 'magaza' | 'talep', id: string | null) => {
     const p = new URLSearchParams(params);
     if (id) p.set(key, id); else p.delete(key);
@@ -258,7 +277,7 @@ const WeekBars: React.FC<{ weeks: number[]; series: BarSeries[]; tip: (i: number
 
 export const BoardOverviewPage: React.FC = () => {
   const [period, setPeriod] = usePeriod();
-  const ctx = useBoardCtx(period);
+  const ctx = useBoardCtx(period, { exams: true });
   // Kartlar yalnızca açık olan ekranlara gider (kapalı ekran sessizce ana sayfaya atıyordu).
   const allowFn = useAllow();
   const meB = useStaffSession();
@@ -319,7 +338,7 @@ export const BoardOverviewPage: React.FC = () => {
     ? <>Mağazalardan gelen <B>{s.requestsSolved} talep</B> ortalama <B>{fmtDur(s.avgResolve)}</B> içinde çözüldü; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>
     : <>Bu dönemde çözülen talep yok; şu an <B>{s.openNow} açık talep</B> var{s.urgentNow ? <> ({s.urgentNow} acil)</> : null}.</>);
   // Katılan sayılmaz: sistem ilk kurulunca bütün baristalar "yeni" görünür. Yalnızca ayrılan.
-  if (s.left) story.push(<>Bu dönemde <B>{s.left} barista</B> ayrıldı (ayrılma oranı %{s.turnover}).</>);
+  if (s.left) story.push(<>Bu dönemde <B>{s.left} barista</B> ayrıldı{s.turnover !== null ? <> (ayrılma oranı %{s.turnover})</> : null}.</>);
 
   return (
     <Page wide>
@@ -474,7 +493,7 @@ type SortKey = 'name' | 'progress' | 'passRate' | 'openRequests' | 'avgResolve' 
 
 export const BoardStoresPage: React.FC = () => {
   const [period, setPeriod] = usePeriod();
-  const ctx = useBoardCtx(period);
+  const ctx = useBoardCtx(period, { exams: true });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'progress', dir: -1 });
   const { ask, sheet } = useAsk();
   const rows = useMemo(() => scorecard(ctx, period), [ctx, period]);
@@ -768,25 +787,44 @@ const fileDate = () => localDay();
 export const BoardReportsPage: React.FC = () => {
   const [period, setPeriod] = usePeriod();
   const ctx = useBoardCtx(period);
+  // Tablolar düğmeye basınca hazırlanır: karne toplama sorgusuyla, barista ve
+  // sınav tabloları dönemin sınav belgeleriyle (ekran açılınca okunmaz).
+  const [busy, setBusy] = useState<string | null>(null);
+  const ids = () => ({
+    stores: ctx.stores.filter((s) => s.active).map((s) => s.id),
+    modules: ctx.modules.map((m) => m.id),
+    baristas: examBaristaIds(ctx.baristas, period.from)
+  });
+  const run = (key: string, f: () => Promise<void>) => async () => {
+    if (busy) return;
+    setBusy(key);
+    try { await f(); } catch (e) { alert(errorText(e)); } finally { setBusy(null); }
+  };
   const storeName = (id: string) => ctx.stores.find((s) => s.id === id)?.name || '';
   const inP = (x?: number | null) => !!x && x >= period.from && x <= period.to;
   const slug = `${period.id}-${fileDate()}`;
 
   const csv = {
-    karne: () => downloadCsv(`magaza-karnesi-${slug}`, [
+    karne: run('karne', async () => {
+      const examStats = await fetchOnce(statsKey(period), () => loadExamStats(period.from, periodTo(period), ids()));
+      downloadCsv(`magaza-karnesi-${slug}`, [
       ['Mağaza', 'Barista', 'İlerleme %', 'Sınav', 'Geçme %', 'Ort. puan', 'Açılan talep', 'Açık talep', 'Acil açık', 'Ortalama çözüm (saat)', 'Gecikmiş görev', 'Ayrılan'],
-      ...scorecard(ctx, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
+      ...scorecard({ ...ctx, examStats }, period).map((r) => [r.store.name, r.baristas, r.progress, r.exams, r.passRate, r.avgScore, r.requests, r.openRequests, r.urgentOpen,
         r.avgResolve !== null ? Math.round(r.avgResolve / 3600000) : null, r.overdueTasks, r.left])
-    ]),
-    barista: () => downloadCsv(`barista-egitim-${slug}`, [
+      ]);
+    }),
+    barista: run('barista', async () => {
+      const attempts = await loadPeriodExams(period);
+      downloadCsv(`barista-egitim-${slug}`, [
       ['Barista', 'Mağaza', 'Rol', 'Durum', 'İlerleme %', 'Geçilen modül', 'Dönemde sınav', 'Dönemde geçti', 'İşe başlama'],
       ...ctx.baristas.map((b) => {
         const p = ctx.progress[b.id] || EMPTY_PROGRESS;
-        const ex = ctx.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided && inP(a.submittedAt));
+        const ex = attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided && inP(a.submittedAt));
         return [b.name, storeName(b.storeId), BARISTA_ROLE_LABEL[b.role], b.active ? 'Aktif' : 'Ayrıldı', overallPercent(ctx.modules, ctx.lessons, p, ctx.tracks),
           Object.keys(p.modules || {}).length, ex.length, ex.filter((a) => a.passed).length, b.startedAt ? fmtDate(new Date(b.startedAt).getTime()) : fmtDate(b.createdAt)];
       })
-    ]),
+      ]);
+    }),
     talep: () => downloadCsv(`talepler-${slug}`, [
       ['Açılış', 'Mağaza', 'Tür', 'Öncelik', 'Başlık', 'Durum', 'Bekleme nedeni', 'Kapanış', 'Süre (saat)', 'Açan'],
       ...ctx.requests.filter((r) => inP(r.createdAt) || !closedOf(r)).sort((a, b) => a.createdAt - b.createdAt).map((r) => [
@@ -794,17 +832,20 @@ export const BoardReportsPage: React.FC = () => {
         r.waitReason ? reasonLabel(r.waitReason) : '', r.closedAt ? fmtDateTime(r.closedAt) : '',
         Math.round(((r.closedAt || Date.now()) - r.createdAt) / 3600000), r.createdByName || ''])
     ]),
-    sinav: () => downloadCsv(`sinavlar-${slug}`, [
+    sinav: run('sinav', async () => {
+      const attempts = await loadPeriodExams(period);
+      downloadCsv(`sinavlar-${slug}`, [
       ['Tarih', 'Barista', 'Mağaza', 'Modül', 'Tür', 'Puan %', 'Sonuç', 'Doğru', 'Soru'],
-      ...ctx.attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0)).map((a) => [
+      ...attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0)).map((a) => [
         fmtDateTime(a.submittedAt), a.baristaName, storeName(a.storeId), a.moduleTitle, a.lessonId ? 'Mini sınav' : 'Modül sınavı', a.score, a.passed ? 'Geçti' : 'Kaldı', a.correct, a.total])
-    ])
+      ]);
+    })
   };
 
-  const Item: React.FC<{ icon: 'download' | 'store' | 'users' | 'wrench' | 'clipboard'; title: string; text: string; onClick: () => void }> = ({ icon, title, text, onClick }) => (
-    <button onClick={onClick} className={`${t.cardInteractive} p-4 text-left flex items-start gap-3`}>
+  const Item: React.FC<{ icon: 'download' | 'store' | 'users' | 'wrench' | 'clipboard'; title: string; text: string; onClick: () => void; loading?: boolean }> = ({ icon, title, text, onClick, loading }) => (
+    <button onClick={onClick} disabled={loading} className={`${t.cardInteractive} p-4 text-left flex items-start gap-3`}>
       <span className={t.iconChip('neutral')}><Icon name={icon} size={16} /></span>
-      <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold">{title}</span><span className="block text-[12.5px] text-fg-3 leading-relaxed mt-0.5">{text}</span></span>
+      <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold">{title}</span><span className="block text-[12.5px] text-fg-3 leading-relaxed mt-0.5">{loading ? 'Hazırlanıyor…' : text}</span></span>
       <Icon name="download" size={16} className="text-fg-3 mt-1" />
     </button>
   );
@@ -825,10 +866,10 @@ export const BoardReportsPage: React.FC = () => {
           düğmeler yalnızca tarayıcıda görünür. */}
       {!IS_ANDROID_APP && <Section label="Excel tabloları (CSV)">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Item icon="store" title="Mağaza karnesi" text="Her mağaza için ilerleme, sınav başarısı, talepler, gecikmiş görevler, ekip hareketi." onClick={csv.karne} />
-          <Item icon="users" title="Barista eğitim durumu" text="Her baristanın ilerlemesi, geçtiği modüller ve dönemdeki sınavları." onClick={csv.barista} />
+          <Item icon="store" title="Mağaza karnesi" text="Her mağaza için ilerleme, sınav başarısı, talepler, gecikmiş görevler, ekip hareketi." onClick={csv.karne} loading={busy === 'karne'} />
+          <Item icon="users" title="Barista eğitim durumu" text="Her baristanın ilerlemesi, geçtiği modüller ve dönemdeki sınavları." onClick={csv.barista} loading={busy === 'barista'} />
           <Item icon="wrench" title="Talepler" text="Dönemde açılan ve hâlâ açık olan talepler, durumları ve süreleri." onClick={csv.talep} />
-          <Item icon="clipboard" title="Sınav sonuçları" text="Dönemdeki bütün sınavlar: barista, modül, puan, sonuç." onClick={csv.sinav} />
+          <Item icon="clipboard" title="Sınav sonuçları" text="Dönemdeki bütün sınavlar: barista, modül, puan, sonuç." onClick={csv.sinav} loading={busy === 'sinav'} />
         </div>
       </Section>}
     </Page>
@@ -838,7 +879,7 @@ export const BoardReportsPage: React.FC = () => {
 /** Yazdırılabilir yönetim raporu. Tarayıcının "Yazdır → PDF olarak kaydet"i ile dosyaya dönüşür. */
 export const BoardPrintReport: React.FC = () => {
   const [period] = usePeriod();
-  const ctx = useBoardCtx(period);
+  const ctx = useBoardCtx(period, { exams: true });
   const me = useStaffSession();
   const trend = useExamTrend(period);
   const s = useMemo(() => summary(ctx, period), [ctx, period]);

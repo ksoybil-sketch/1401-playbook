@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import {
-  average, collection, count, getAggregateFromServer, getCountFromServer, getDocs, limit, onSnapshot, orderBy, query, where,
-  type DocumentData, type Query
+  collection, count, getAggregateFromServer, getCountFromServer, getDocs, limit, onSnapshot, orderBy, query, sum, where,
+  type DocumentData, type Query, type QueryFieldFilterConstraint
 } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import type { Assignment, Attempt, Barista, Progress, Proposal, StoreRequest } from '../../../shared/types';
+import { DELETED_MODULES, type ExamAgg, type ExamStats } from '../../lib/boardStats';
+export type { ExamAgg, ExamStats } from '../../lib/boardStats';
 
 /**
  * Yönetici paneli (ve Yönetim Kurulu) verisi.
@@ -169,6 +171,9 @@ export function useFetched<T>(key: string | null, loader: () => Promise<T>, ttlM
   };
 }
 
+/** Bu anahtar bu oturumda okunmuş mu (yeniden okumadan). */
+export const isFetched = (key: string) => useFetchStore.getState().m[key]?.data !== undefined;
+
 /** Bir anahtarın (ya da öneki tutanların) önbelleğini boşaltır: yazımdan sonra yeniden okunsun. */
 export function invalidate(prefix: string) {
   useFetchStore.setState((s) => ({ m: Object.fromEntries(Object.entries(s.m).filter(([k]) => !k.startsWith(prefix))) }));
@@ -187,9 +192,10 @@ export const loadExamsSince = (from: number) =>
  * Son `days` günün teslim edilmiş sınavları (Genel bakış sayıları, en çok
  * yanlış yapılan sorular). Kesin sayı; canlı değil, 10 dakikada bir tazelenir.
  */
-export function useExamsSince(days: number) {
+export const examsSinceKey = (days: number) => `exams:${dayStart(Date.now() - (days - 1) * DAY)}`;
+export function useExamsSince(days: number, enabled = true) {
   const from = dayStart(Date.now() - (days - 1) * DAY);
-  return useFetched<Attempt[]>(`exams:${from}`, () => loadExamsSince(from));
+  return useFetched<Attempt[]>(enabled ? examsSinceKey(days) : null, () => loadExamsSince(from));
 }
 
 /** Bir baristanın BÜTÜN denemeleri (barista ayrıntısı, rozet/önlük kararı). */
@@ -257,23 +263,119 @@ export function useQuestionCounts(moduleIds: string[]) {
   }, 5 * 60 * 1000);
 }
 
-/** Modül sınavı özeti (mini sınavlar hariç): sayı, geçen, ortalama puan. */
-export interface ExamAgg { exams: number; passed: number; avgScore: number | null }
+
+const aggOf = (exams: number, passed: number, total: number): ExamAgg =>
+  ({ exams, passed, sum: total, avgScore: exams ? Math.round(total / exams) : null });
+
+/** Belgelerden aynı özet (dizin yoksa yedek yol). İptal ve mini sınav hariç. */
+export function aggOfDocs(list: Attempt[]): ExamAgg {
+  const xs = list.filter((a) => a.submittedAt && !a.voided && !a.lessonId);
+  return aggOf(xs.length, xs.filter((a) => a.passed).length, xs.reduce((s, a) => s + (a.score || 0), 0));
+}
 
 /**
  * Bir aralığın modül sınavı özeti TOPLAMA sorgusuyla (1000 belge başına 1
- * okuma): kurulun "önceki dönem" karşılaştırması ve 12 haftalık grafik için
- * belgeleri okumaya gerek yok. Bileşik dizin ister (attempts: lessonId +
- * submittedAt, lessonId + passed + submittedAt); dizin yoksa hata verir,
- * çağıran belgelerden hesaplar.
+ * okuma). `extra`: ek eşitlik süzgeci (mağaza, modül, barista).
+ *
+ * İptal edilen denemeler sayılmaz: bu denemelerde `score` ve `passed` yok;
+ * aynı sorguda count() ile sum('score') birlikte istenince Firestore yalnızca
+ * bütün alanları taşıyan belgeleri sayar. Bileşik dizin ister (bkz.
+ * firestore.indexes.json: attempts lessonId [+ storeId/moduleId/baristaId]
+ * [+ passed] + submittedAt); dizin yoksa hata verir, çağıran belgelerden hesaplar.
+ * to null: üst sınır yok (dönem bugüne kadar).
  */
-export async function loadExamAgg(from: number, to: number): Promise<ExamAgg> {
-  const base = query(collection(db, 'attempts'), where('lessonId', '==', null), where('submittedAt', '>=', from), where('submittedAt', '<=', to));
+async function examAggWhere(extra: QueryFieldFilterConstraint[], from: number, to: number | null, withPassed = true): Promise<ExamAgg> {
+  const base = query(collection(db, 'attempts'), where('lessonId', '==', null), ...extra,
+    where('submittedAt', '>=', from), ...(to !== null ? [where('submittedAt', '<=', to)] : []));
   const [a, p] = await Promise.all([
-    getAggregateFromServer(base, { n: count(), avg: average('score') }),
-    getCountFromServer(query(base, where('passed', '==', true)))
+    getAggregateFromServer(base, { n: count(), s: sum('score') }),
+    withPassed ? getCountFromServer(query(base, where('passed', '==', true))) : Promise.resolve(null)
   ]);
-  const n = a.data().n;
-  const avg = a.data().avg;
-  return { exams: n, passed: p.data().count, avgScore: n && avg !== null ? Math.round(avg) : null };
+  return aggOf(a.data().n, p ? p.data().count : 0, a.data().s ?? 0);
+}
+
+/** Bir aralığın modül sınavı özeti (kurulun önceki dönemi ve 12 haftalık grafik). */
+export const loadExamAgg = (from: number, to: number | null) => examAggWhere([], from, to);
+
+/**
+ * Genel bakış: son günlerin sınav sayısı, ortalaması, mini sınav sayısı ve
+ * mağaza başına sayı/geçme. Toplama sorgularıyla (mağaza sayısı × 2 + 3
+ * okuma); eskiden aralığın bütün sınav belgeleri okunuyordu (haftada ~450).
+ */
+export interface OverviewExams { total: ExamAgg; mini: number; byStore: Record<string, ExamAgg> }
+export async function loadOverviewExams(from: number, storeIds: string[]): Promise<OverviewExams> {
+  try {
+    const [total, all, ...stores] = await Promise.all([
+      examAggWhere([], from, null),
+      // Mini sınavlar dahil, iptaller hariç (sum('score') iptali dışarıda bırakır).
+      getAggregateFromServer(query(collection(db, 'attempts'), where('submittedAt', '>=', from)), { n: count(), s: sum('score') }),
+      ...storeIds.map((id) => examAggWhere([where('storeId', '==', id)], from, null))
+    ]);
+    return { total, mini: Math.max(0, all.data().n - total.exams), byStore: Object.fromEntries(storeIds.map((id, i) => [id, stores[i]])) };
+  } catch (e) {
+    console.warn('[genel bakış] toplama sorgusu olmadı (dizin?), belgelerden hesaplanıyor', e);
+    const docs = (await loadExamsSince(from)).filter((a) => !a.voided);
+    return {
+      total: aggOfDocs(docs),
+      mini: docs.filter((a) => !!a.lessonId).length,
+      byStore: Object.fromEntries(storeIds.map((id) => [id, aggOfDocs(docs.filter((a) => a.storeId === id))]))
+    };
+  }
+}
+
+/**
+ * Kurul dönemi sınav göstergeleri (modül sınavları): toplam, mağaza, modül ve
+ * barista başına özet. Toplama sorgularıyla ~(2 + 2×mağaza + 2×modül + barista)
+ * okuma; eskiden dönemin bütün sınav belgeleri okunuyordu ("Bu yıl" aralıkta
+ * ~25.000 okuma).
+ *
+ * Kesinlik denetimi: modül ve barista toplamları genel toplamla tutmuyorsa
+ * (ör. dönemde sınavı olan bir modül sonradan silindi) kısa aralıkta (≤ 92 gün)
+ * belgeler okunup her şey belgelerden hesaplanır; uzun aralıkta silinmiş
+ * modüllerin farkı tek satırda gösterilir.
+ */
+const SMALL_RANGE_MS = 92 * DAY;
+
+/** Dönemde sınava girmiş olabilecek baristalar: dönemden önce ayrıldığı bilinenler hariç. */
+export const examBaristaIds = (list: Barista[], from: number) =>
+  list.filter((b) => b.active || !b.deactivatedAt || b.deactivatedAt >= from).map((b) => b.id);
+
+function statsFromDocs(from: number, to: number | null, list: Attempt[]): ExamStats {
+  const xs = list.filter((a) => a.submittedAt && !a.voided && !a.lessonId && a.submittedAt >= from && (to === null || a.submittedAt <= to));
+  const group = (key: (a: Attempt) => string) => {
+    const m = new Map<string, Attempt[]>();
+    xs.forEach((a) => m.set(key(a), [...(m.get(key(a)) || []), a]));
+    return Object.fromEntries([...m.entries()].map(([k, v]) => [k, aggOfDocs(v)]));
+  };
+  return { from, to, total: aggOfDocs(xs), byStore: group((a) => a.storeId), byModule: group((a) => a.moduleId), byBarista: group((a) => a.baristaId), docs: xs };
+}
+
+export async function loadExamStats(from: number, to: number | null, ids: { stores: string[]; modules: string[]; baristas: string[] }): Promise<ExamStats> {
+  const docsPath = async () => statsFromDocs(from, to, to === null ? await loadExamsSince(from)
+    : await read<Attempt>(query(collection(db, 'attempts'), where('submittedAt', '>=', from), where('submittedAt', '<=', to))));
+  let res: ExamAgg[];
+  try {
+    res = await Promise.all([
+      examAggWhere([], from, to),
+      ...ids.stores.map((id) => examAggWhere([where('storeId', '==', id)], from, to)),
+      ...ids.modules.map((id) => examAggWhere([where('moduleId', '==', id)], from, to)),
+      // Barista başına yalnızca sayı ve ortalama (dönemin baristası, sınava giren sayısı).
+      ...ids.baristas.map((id) => examAggWhere([where('baristaId', '==', id)], from, to, false))
+    ]);
+  } catch (e) {
+    console.warn('[kurul] toplama sorgusu olmadı (dizin?), belgelerden hesaplanıyor', e);
+    return docsPath();
+  }
+  const [total, ...rest] = res;
+  const take = <T,>(list: string[], off: number) => Object.fromEntries(list.map((id, i) => [id, rest[off + i]])) as Record<string, T>;
+  const byStore = take<ExamAgg>(ids.stores, 0);
+  const byModule = take<ExamAgg>(ids.modules, ids.stores.length);
+  const byBarista = take<ExamAgg>(ids.baristas, ids.stores.length + ids.modules.length);
+  const sumOf = (r: Record<string, ExamAgg>) => Object.values(r).reduce((a, x) => ({ n: a.n + x.exams, p: a.p + x.passed, s: a.s + x.sum }), { n: 0, p: 0, s: 0 });
+  const m = sumOf(byModule);
+  const b = sumOf(byBarista);
+  const range = (to ?? Date.now()) - from;
+  if ((m.n !== total.exams || b.n !== total.exams) && range <= SMALL_RANGE_MS) return docsPath();
+  if (m.n < total.exams) byModule[DELETED_MODULES] = aggOf(total.exams - m.n, Math.max(0, total.passed - m.p), total.sum - m.s);
+  return { from, to, total, byStore, byModule, byBarista };
 }

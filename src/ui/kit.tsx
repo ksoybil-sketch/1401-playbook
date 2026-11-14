@@ -5,6 +5,7 @@ import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 import { useBackHandler } from '../lib/backButton';
 import { confirmLeave } from '../lib/unsaved';
+import { whenPrepared } from '../lib/writeGate';
 
 /* ------------------------------------------------------------------ */
 /* Sayfa iskeleti                                                      */
@@ -220,7 +221,9 @@ export async function sendOrQueue(p: Promise<unknown>, opts: { ms?: number; onLa
   let settled = false;
   const tracked = p.then(() => { settled = true; return 'sent' as const; }, (e) => { settled = true; throw e; });
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-  const timer = new Promise<'queued'>((res) => setTimeout(() => res('queued'), offline ? 1500 : opts.ms ?? 8000));
+  // Süre dolsa da yazım öncesi okuma (sürüm denetimi) sürüyorsa yazım henüz
+  // kuyruğa girmemiştir: "kuyruğa alındı" ancak yazım gönderilince denir (bkz. lib/writeGate).
+  const timer = new Promise<'queued'>((res) => setTimeout(res, offline ? 1500 : opts.ms ?? 8000)).then(() => whenPrepared()).then(() => 'queued' as const);
   const r = await Promise.race([tracked, timer]);
   if (r === 'queued' && !settled) {
     tracked.catch((e) => (opts.onLateError ? opts.onLateError(e) : toast('Gönderilemedi: bağlantı geldiğinde sunucu kabul etmedi.', 'negative')));

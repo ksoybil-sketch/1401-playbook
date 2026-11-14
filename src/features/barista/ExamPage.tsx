@@ -7,6 +7,7 @@ import {
 import { useContent } from '../../store/content';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { examSlots, nextModuleAfter } from './Academy';
+import { useExamSize } from './useExamSize';
 import { moduleState } from '../../lib/progress';
 import { Icon } from '../../ui/Icon';
 import { useBackHandler } from '../../lib/backButton';
@@ -59,6 +60,8 @@ export const ExamPage: React.FC = () => {
   // dinleyicisinden (ek okuma yok). Varsa "Başla" yerine "Devam et". Soru
   // havuzu artık ekran açılınca değil, "Başla"da okunur (kota).
   const resumable = mod ? activeAttemptIn(myAttempts, mod.id, lesson?.id) : null;
+  // Gerçekte sorulacak soru sayısı: min(examSize, etkin soru) (toplama sorgusu, 2 okuma).
+  const real = useExamSize(mod, lesson);
 
   // Cevap kaydı: her işaretleme denemeye yazılırsa açık her panel/kurul
   // ekranına bir okuma olarak yansıyor. Cevaplar biriktirilip birkaç cevapta
@@ -143,7 +146,9 @@ export const ExamPage: React.FC = () => {
 
   if (!mod) return <Page><p className="text-fg-3">Modül bulunamadı.</p></Page>;
 
-  const size = lesson ? lesson.quiz || 3 : mod.examSize;
+  // Yarım kalan denemede o denemenin soru sayısı; yoksa havuzdaki gerçek sayı.
+  const size = resumable?.total || real.size;
+  const empty = real.empty && !resumable;
   const minutes = Math.ceil((size * SECONDS_PER_QUESTION) / 60);
 
   const start = async () => {
@@ -191,8 +196,8 @@ export const ExamPage: React.FC = () => {
           <h1 className="text-[22px] font-bold">{lesson ? lesson.title : mod.title}</h1>
           <div className={`${t.listGroup} w-full text-left`}>
             {[
-              ['Soru sayısı', `${size}`],
-              ['Süre', `${minutes} dakika`],
+              ['Soru sayısı', empty ? '—' : `${size}`],
+              ['Süre', empty ? '—' : `${minutes} dakika`],
               ['Geçme notu', `${lesson ? QUIZ_PASS : mod.passScore} puan`]
             ].map(([a, b]) => (
               <div key={a} className={`${t.listRowStatic} justify-between`}>
@@ -206,8 +211,11 @@ export const ExamPage: React.FC = () => {
               Yarım kalan sınavın var · kalan süre <b className="tnum">{fmtClock(left)}</b>
             </p>
           ) : null}
+          {empty && (
+            <p className="text-[13px] text-fg-2 bg-panel-2 border border-line rounded-lg px-3 py-2.5 leading-relaxed w-full text-left">Bu modülde şu an soru yok.</p>
+          )}
           <div className="w-full"><ErrorText>{error}</ErrorText></div>
-          <button onClick={start} disabled={phase.k === 'loading'} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
+          <button onClick={start} disabled={phase.k === 'loading' || empty} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
             {phase.k === 'loading' ? <Spinner size={16} /> : resumable && left > 0 ? 'Kaldığım yerden devam et' : 'Başla'}
           </button>
         </div>

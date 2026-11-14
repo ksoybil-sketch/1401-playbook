@@ -262,11 +262,15 @@ async function staffClient(s) {
     const p30 = sd.dayStart(now - 29 * DAY);
     const d = new Date(now); const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
     const from = sd.dayStart(Math.min(p30 - 30 * DAY, monday - 11 * 7 * DAY));
-    await Promise.all([sd.loadExamsSince(p30), sd.loadRequestsSince(from), sd.loadReviewedSince(from),
+    // Kota düzeltmesi (K3): dönem sınav belgeleri değil, toplama sorguları (mağaza/modül/barista başına).
+    const ids = { stores: (await adb.collection('stores').get()).docs.map((x) => x.id), modules: CUR.modules.map((m) => m.id), baristas: (await adb.collection('baristas').get()).docs.map((x) => x.id) };
+    await Promise.all([sd.loadExamStats(now - 30 * DAY, null, ids), sd.loadRequestsSince(from), sd.loadReviewedSince(from),
       sd.loadExamAgg(p30 - 30 * DAY, p30 - 1), ...Array.from({ length: 12 }, (_, i) => monday - (11 - i) * 7 * DAY).map((w) => sd.loadExamAgg(w, w + 7 * DAY - 1))]).catch((e) => hata(s.role, 'kurul açılış', e));
   } else {
     // Genel bakış: son 7 günün teslim edilmiş sınavları (tek seferlik).
-    await sd.loadExamsSince(sd.dayStart(Date.now() - 6 * 86400000)).catch((e) => hata(s.role, 'genel bakış', e));
+    // Kota düzeltmesi (K2): sayı, ortalama ve mağaza satırları toplama sorgusuyla; "en çok yanlış" istek üzerine.
+    const storeIds = (await adb.collection('stores').get()).docs.map((x) => x.id);
+    await sd.loadOverviewExams(sd.dayStart(Date.now() - 6 * 86400000), storeIds).catch((e) => hata(s.role, 'genel bakış', e));
     c.listen('users(pending-phones)', query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)));
     c.listen('users(staff-team)', query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional', 'ops', 'board'])));
   }

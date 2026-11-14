@@ -12,6 +12,7 @@ import { HUE } from '../../ui/palette';
 import * as t from '../../ui/tokens';
 import type { Lesson } from '../../../shared/types';
 import { useBackHandler } from '../../lib/backButton';
+import { useExamSize } from './useExamSize';
 
 /**
  * Reçeteler — servis sırasında kullanılan ekran.
@@ -237,6 +238,8 @@ export const RecipeDetailPage: React.FC = () => {
   useEffect(() => { if (isRecipe && lessonId) recent.push(lessonId); }, [isRecipe, lessonId]);
   // Android geri tuşu önce büyütülmüş fotoğrafı kapatır.
   useBackHandler(zoom, () => { setZoom(false); return true; });
+  // Mini sınavın gerçek soru sayısı (yalnızca giriş yapmış baristaya gösterilir).
+  const quizSize = useExamSize(recipe && signedInBarista && recipe.quiz ? modules.find((m) => m.id === recipe.moduleId) : null, recipe);
   if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
   const mod = modules.find((m) => m.id === recipe.moduleId);
   // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,
@@ -277,7 +280,7 @@ export const RecipeDetailPage: React.FC = () => {
           <span className={t.iconChip('caution')}><Icon name="clipboard" size={16} /></span>
           <div className="flex-1 min-w-0">
             <div className="text-[14px] font-semibold">Mini sınava gir</div>
-            <div className="text-[12px] text-fg-3 truncate">{recipe.quiz} soru · bu reçeteyi ne kadar bildiğini gör</div>
+            <div className="text-[12px] text-fg-3 truncate">{quizSize.empty ? 'Şu an soru yok' : `${quizSize.size} soru · bu reçeteyi ne kadar bildiğini gör`}</div>
           </div>
           <Icon name="chevronRight" size={16} className={t.rowChevron} />
         </Link>

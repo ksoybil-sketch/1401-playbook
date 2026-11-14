@@ -19,9 +19,12 @@
  * Okuma kotası (Spark: 50.000/gün): soru havuzu yalnızca "Başla"da okunur
  * (eskiden sınav ekranı açılır açılmaz, 60 sn sonra yeniden okunuyordu);
  * seçilen sorular bellekte tutulur, teslimde yeniden okunmaz (bkz. asked).
+ * Havuz cihazın kalıcı önbelleğinden kullanılır ve sunucudan en çok günde bir
+ * kez tazelenir; seçilen sorular sunucudan doğrulanır (bkz. readPool).
  */
 import {
-  collection, doc, documentId, getDoc, getDocFromServer, getDocs, getDocsFromServer, query, runTransaction, updateDoc, where, writeBatch
+  collection, doc, documentId, getCountFromServer, getDoc, getDocFromServer, getDocs, getDocsFromCache, getDocsFromServer, query, runTransaction,
+  updateDoc, where, writeBatch, type Query, type QuerySnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { stopwatch } from '../lib/perf';
@@ -102,15 +105,96 @@ export function pickQuestions<T extends { id: string; kind?: string; prompt?: st
   return shuffle([...missedPick, ...fresh]);
 }
 
-async function loadQuestions(ids: string[]): Promise<Map<string, Question>> {
+async function loadQuestions(ids: string[], fromServer = false): Promise<Map<string, Question>> {
   const out = new Map<string, Question>();
   for (let i = 0; i < ids.length; i += 30) {
     const chunk = ids.slice(i, i + 30);
-    const snap = await getDocs(query(collection(db, 'questions'), where(documentId(), 'in', chunk)));
+    const q = query(collection(db, 'questions'), where(documentId(), 'in', chunk));
+    const snap = await (fromServer ? getDocsFromServer(q) : getDocs(q));
     snap.docs.forEach((d) => out.set(d.id, { id: d.id, ...d.data() } as Question));
   }
   return out;
 }
+
+/**
+ * Bu sorulardan kaçı bankada hâlâ var (toplama sorgusu: 1 okuma). Teslimde
+ * bellekteki sorular kullanılırken bankadan silinenleri bulmak için; sayı
+ * tutmazsa sorular sunucudan yeniden okunur. Bağlantı yoksa / yanıt gecikirse
+ * null (denetlenemedi).
+ */
+async function countExisting(ids: string[]): Promise<number | null> {
+  if (!ids.length) return 0;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+  const run = async () => {
+    let n = 0;
+    for (let i = 0; i < ids.length; i += 30) {
+      n += (await getCountFromServer(query(collection(db, 'questions'), where(documentId(), 'in', ids.slice(i, i + 30))))).data().count;
+    }
+    return n;
+  };
+  return Promise.race([run().catch(() => null), new Promise<null>((res) => setTimeout(() => res(null), 4000))]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Soru havuzu önbelleği                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Havuz (modülün bütün soruları, 50–200 belge) her "Başla"da sunucudan
+ * okunuyordu: günde ~76 sınavla 7–9 bin okuma. Şimdi:
+ *  - havuz cihazın kalıcı Firestore önbelleğinden okunur (getDocsFromCache,
+ *    0 okuma). Tazeleme anı ve o andaki soru sayısı localStorage'da tutulur
+ *    (mağaza telefonunda bütün baristalar aynı önbelleği paylaşır). Her
+ *    "Başla"da modülün soru sayısı sunucudan sayılır (toplama sorgusu, 1
+ *    okuma): sayı değiştiyse (soru eklendi/silindi) havuz hemen sunucudan
+ *    okunur; değişmediyse önbellek kullanılır, en geç POOL_TTL_MS'de bir
+ *    yine de tazelenir;
+ *  - önbellekten seçilen sorular sunucudan okunup doğrulanır (sınav başına
+ *    ~10 okuma). Seçilenlerden biri bu arada iptal edildi (disabled), silindi
+ *    ya da değiştiyse havuz hemen sunucudan yeniden okunur ve seçim yeniden
+ *    yapılır: iptal edilmiş soru sınava girmez, cevap anahtarı güncel olur;
+ *  - sınav sırasında iptal edilen soru her zamanki gibi denemeye
+ *    voidedQuestions olarak düşer (regrade.ts), teslim kuralı değişmez.
+ * Bayatlık riski: aynı anda bir soru silinip bir soru eklenirse (sayı aynı
+ * kalır) yeni soru o cihazda en geç POOL_TTL_MS sonra gelir; silinen soru
+ * seçilirse doğrulamada yakalanır.
+ */
+const POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const poolStampKey = (moduleId: string, quiz: string | null) => `playbook.examPool.v1.${moduleId}.${quiz || 'sinav'}`;
+function storage(): Storage | null {
+  try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; }
+}
+function poolStamp(key: string): { at: number; n: number } | null {
+  try {
+    const v = JSON.parse(storage()?.getItem(key) || 'null');
+    return v && typeof v.at === 'number' && typeof v.n === 'number' ? v : null;
+  } catch { return null; }
+}
+function setPoolStamp(key: string, n: number | null) {
+  try {
+    const st = storage();
+    if (!st) return;
+    if (n === null) st.removeItem(key); else st.setItem(key, JSON.stringify({ at: Date.now(), n }));
+  } catch { /* yok say */ }
+}
+
+interface Pool { snap: QuerySnapshot; cached: boolean }
+async function readPool(q: Query, key: string, force = false): Promise<Pool> {
+  const stamp = force ? null : poolStamp(key);
+  if (stamp && Date.now() - stamp.at < POOL_TTL_MS) {
+    const [c, n] = await Promise.all([
+      getDocsFromCache(q).catch(() => null),
+      getCountFromServer(q).then((x) => x.data().count).catch(() => null)
+    ]);
+    // Sunucudaki sayı tazelemedekiyle aynı ve önbellek eksiksizse (temizlenmemiş) önbellek.
+    if (c && n !== null && n === stamp.n && c.size >= stamp.n && c.size > 0) return { snap: c, cached: true };
+  }
+  const snap = await getDocs(q);
+  if (!snap.metadata.fromCache) setPoolStamp(key, snap.size);
+  return { snap, cached: false };
+}
+const sameQuestion = (a: Question, b: Question) =>
+  a.prompt === b.prompt && a.answer === b.answer && a.type === b.type && JSON.stringify(a.options) === JSON.stringify(b.options);
 
 function toExamQuestions(ids: string[], orders: Record<string, number[]>, qs: Map<string, Question>): ExamQuestion[] {
   return ids
@@ -188,9 +272,12 @@ export async function startExam(
   const sw = stopwatch('Sınav başlatma', { modül: mod.id, mini: !!quiz });
   const t0 = tick();
   const timed = <T>(name: string, p: Promise<T>) => p.then((v) => { sw.note(name, Math.round(tick() - t0)); return v; });
-  const poolQuery = () => getDocs(quiz
+  const poolQ = quiz
     ? query(collection(db, 'questions'), where('moduleId', '==', mod.id), where('lessonId', '==', quiz))
-    : query(collection(db, 'questions'), where('moduleId', '==', mod.id)));
+    : query(collection(db, 'questions'), where('moduleId', '==', mod.id));
+  const stampKey = poolStampKey(mod.id, quiz);
+  // Mini sınav havuzu küçük (3–5 soru) ve sınav hepsini sorar: her zaman sunucudan.
+  const poolQuery = (force = false) => readPool(poolQ, stampKey, force || !!quiz);
 
   // Okumalar aynı anda yapılır (yavaş bağlantıda her biri ayrı bir gidiş-dönüş).
   const [openSnap, modSnap, pSnap, firstPool] = await Promise.all([
@@ -211,8 +298,10 @@ export async function startExam(
 
   // Bu modülde devam eden bir deneme varsa yeni hak harcatmadan ona dön.
   const active = activeAttemptIn(open, mod.id, quiz);
+  // Devam edilen denemede önbellekteki havuz kullanılmaz (iptal bilgisi bayat olabilir).
+  const serverPool = (p: Pool | null) => (p && !p.cached ? p.snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question)) : []);
   if (active) {
-    const s = await resumeExam(active, firstPool ? firstPool.docs.map((d) => ({ id: d.id, ...d.data() } as Question)) : []);
+    const s = await resumeExam(active, serverPool(firstPool));
     sw.done({ devam: true });
     return s;
   }
@@ -231,12 +320,9 @@ export async function startExam(
     throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
   }
   // Ekran açık deneme bekliyordu ama yokmuş (bu arada teslim edildi): havuzu şimdi oku.
-  const qSnap = firstPool ?? await timed('soru havuzu', poolQuery());
-  const all = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
-  // İptal edilen (Soru havuzundan kaldırılan) sorular sınava gelmez.
-  const pool = all.filter((q) => !q.disabled);
-  if (!all.length && qSnap.metadata.fromCache) throw new AppError(OFFLINE_MSG);
-  if (!pool.length) throw new AppError(quiz ? 'Bu reçetenin mini sınavı yok.' : 'Bu modülde henüz soru yok.');
+  let pooled = firstPool ?? await timed('soru havuzu', poolQuery());
+  let all = pooled.snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+  if (!all.length && pooled.snap.metadata.fromCache) throw new AppError(OFFLINE_MSG);
 
   const missed = new Set<string>();
   recent.forEach((a) => (a.mistakes || []).forEach((m) => missed.add(m.questionId)));
@@ -247,9 +333,34 @@ export async function startExam(
     (a.mistakes || []).forEach((m) => seenAt.set(m.questionId, Math.max(seenAt.get(m.questionId) || 0, a.startedAt)));
   });
 
-  const size = quiz ? pool.length : Math.min(mod.examSize || 10, pool.length);
   const passScore = quiz ? QUIZ_PASS : mod.passScore;
-  const picked = pickQuestions(pool, size, missed, seenAt);
+  // İptal edilen (Soru havuzundan kaldırılan) sorular sınava gelmez.
+  let pool = all.filter((q) => !q.disabled);
+  if (pooled.cached && pool.length < (mod.examSize || 10)) {
+    // Önbellekteki havuz sınavı doldurmuyor: belki yeni sorular var; sunucudan
+    // oku (ekranda gösterilen sayı, min(examSize, etkin soru), gerçekle aynı kalsın).
+    pooled = await timed('soru havuzu (tazeleme)', poolQuery(true));
+    all = pooled.snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+    pool = all.filter((q) => !q.disabled);
+  }
+  let size = quiz ? pool.length : Math.min(mod.examSize || 10, pool.length);
+  let picked = pickQuestions(pool, size, missed, seenAt);
+  if (pooled.cached && picked.length) {
+    // Önbellekten seçildi: seçilenleri sunucudan doğrula. Biri iptal edildi,
+    // silindi ya da değiştiyse havuz bayat: sunucudan oku, yeniden seç.
+    const fresh = await timed('seçilenler', loadQuestions(picked.map((q) => q.id), true));
+    const stale = picked.some((q) => { const f = fresh.get(q.id); return !f || !!f.disabled || !sameQuestion(q, f); });
+    if (stale) {
+      pooled = await timed('soru havuzu (tazeleme)', poolQuery(true));
+      all = pooled.snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
+      pool = all.filter((q) => !q.disabled);
+      size = quiz ? pool.length : Math.min(mod.examSize || 10, pool.length);
+      picked = pickQuestions(pool, size, missed, seenAt);
+    } else {
+      picked = picked.map((q) => fresh.get(q.id)!);
+    }
+  }
+  if (!pool.length) throw new AppError(quiz ? 'Bu reçetenin mini sınavı yok.' : 'Bu modülde henüz soru yok.');
 
   const orders: Record<string, number[]> = {};
   picked.forEach((q) => {
@@ -292,7 +403,7 @@ export async function startExam(
     outcome = { resume: again };
   }
   if ('resume' in outcome) {
-    const s = await resumeExam(outcome.resume, all);
+    const s = await resumeExam(outcome.resume, serverPool(pooled));
     sw.done({ devam: true, ikinciCihaz: true });
     return s;
   }
@@ -361,7 +472,8 @@ const resultOf = (a: Attempt): ExamResult => ({
  * voidedQuestions'ta) yeniden puanlamayla aynı kurala uyar: doğru
  * cevaplandıysa doğru sayılır, yanlış/boşsa hesaptan çıkar — kimsenin puanı
  * iptal yüzünden düşmez (bkz. regrade.ts). Bankadan silinen sorular hesaba
- * girmez. `total` puanlanan soru sayısıyla yazılır (eskiden "6/10 doğru ·
+ * girmez: bellekteki sorularla teslimde de var olanlar sayılır (1 okuma),
+ * böylece sonuç cihaz değiştirip değiştirmemeye bağlı değildir. `total` puanlanan soru sayısıyla yazılır (eskiden "6/10 doğru ·
  * 100 puan" gibi tutarsız kayıt kalıyordu). Puanlanacak soru kalmadıysa
  * deneme hak yemeden geçersiz sayılır.
  *
@@ -376,12 +488,19 @@ export async function submitExam(
   const t0 = tick();
   const timed = <T>(name: string, p: Promise<T>) => p.then((v) => { sw.note(name, Math.round(tick() - t0)); return v; });
   const aRef = doc(db, 'attempts', attemptId);
-  const inMemory = asked.get(attemptId);
-  const [aSnap, hinted, hintedProgress] = await Promise.all([
+  let inMemory = asked.get(attemptId);
+  const [aSnap, hinted, hintedProgress, existing] = await Promise.all([
     timed('deneme', getDoc(aRef)),
     !inMemory && opts.questionIds?.length ? timed('sorular', loadQuestions(opts.questionIds)) : Promise.resolve(null),
-    opts.baristaId ? timed('ilerleme', getDoc(doc(db, 'progress', opts.baristaId))) : Promise.resolve(null)
+    opts.baristaId ? timed('ilerleme', getDoc(doc(db, 'progress', opts.baristaId))) : Promise.resolve(null),
+    // Bellekteki sorular varken de bankadan silinenler hesap dışı kalsın (başka
+    // cihazdan devam edende olduğu gibi): var olanları say (1 okuma).
+    inMemory ? timed('soru denetimi', countExisting([...inMemory.keys()])) : Promise.resolve(null)
   ]);
+  if (inMemory && existing !== null && existing < inMemory.size) {
+    // Sınav sırasında soru(lar) bankadan silindi: cevap anahtarı sunucudan; silinenler gelmez.
+    inMemory = await timed('sorular (silinen var)', loadQuestions([...inMemory.keys()], true));
+  }
   sw.lap('okuma');
   if (!aSnap.exists()) throw new AppError('Sınav kaydı bulunamadı.');
   const a = { id: aSnap.id, ...aSnap.data() } as Attempt;
@@ -408,7 +527,7 @@ export async function submitExam(
   const mistakes: AttemptReviewItem[] = [];
   for (const id of ids) {
     const q = qs.get(id);
-    if (!q) continue; // soru bankadan silinmişse sayılmaz
+    if (!q) continue; // soru bankadan silinmişse sayılmaz (bellekte olsa da, bkz. countExisting)
     const order = orders[id] || q.options.map((_, i) => i);
     const shown = given[id];
     const pick = Number.isInteger(shown) && order[shown] !== undefined ? order[shown] : null;

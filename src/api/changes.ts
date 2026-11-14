@@ -1,5 +1,6 @@
-import { addDoc, collection, doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, runTransaction, setDoc, updateDoc, writeBatch, type DocumentReference, type Transaction, type WriteBatch } from 'firebase/firestore';
 import { db } from './firebase';
+import { beginPrepare } from '../lib/writeGate';
 import { useSession } from '../store/session';
 import { useContent } from '../store/content';
 import { allowed, domainOf } from '../lib/permissions';
@@ -139,18 +140,91 @@ function clean<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
-export async function applyOps(ops: ChangeOp[]): Promise<void> {
-  const batch = writeBatch(db);
-  const now = Date.now();
+/** İşlemleri bir toplu yazıma ya da işleme (transaction) ekler. */
+interface Writer {
+  set(ref: DocumentReference, data: Record<string, unknown>): unknown;
+  update(ref: DocumentReference, data: Record<string, unknown>): unknown;
+  delete(ref: DocumentReference): unknown;
+}
+function writeOps(wb: WriteBatch | Transaction, ops: ChangeOp[], now: number) {
+  const w = wb as unknown as Writer;
   for (const o of ops) {
     const ref = doc(db, o.col, o.id);
     // Sürüm: içerik ve bülten belgesi her yazımda updatedAt alır (bkz. StaleError).
     const data = VERSIONED.has(o.col) ? { ...(o.data || {}), updatedAt: now } : (o.data || {});
-    if (o.op === 'delete') batch.delete(ref);
-    else if (o.op === 'update') batch.update(ref, data);
-    else batch.set(ref, data);
+    if (o.op === 'delete') w.delete(ref);
+    else if (o.op === 'update') w.update(ref, data);
+    else w.set(ref, data);
   }
+}
+
+export async function applyOps(ops: ChangeOp[]): Promise<void> {
+  const batch = writeBatch(db);
+  writeOps(batch, ops, Date.now());
   await batch.commit();
+}
+
+/** İşlem (transaction) bu sürede bitmezse bağlantı yok sayılır, toplu yazımla kuyruğa alınır. */
+const TX_TIMEOUT_MS = 10_000;
+const isNetworkError = (e: unknown) => {
+  const code = (e as { code?: string })?.code || '';
+  return code === 'unavailable' || code === 'deadline-exceeded' || code === 'timeout';
+};
+
+/**
+ * Sürüm denetimli yazım (K6). Denetim ve yazım aynı işlemde (runTransaction):
+ * belge açılıştan beri değiştiyse StaleError. Eskiden denetim okuması ile
+ * yazım ayrıydı; milisaniye farkla gelen iki kayıtta ikisi de geçiyor,
+ * sonuncu sessizce kazanıyordu. İşlemde ikinci kayıt çakışır, Firestore
+ * işlemi yeniden dener, yeniden okuyunca belge değişmiş olur → StaleError.
+ *
+ * İşlem çevrimdışı çalışmaz: bağlantı yoksa (ya da işlem bağlantı yüzünden
+ * olmazsa) eski yol: önbellekten denetim + toplu yazım (kuyruğa alınır).
+ * `extra`: aynı yazıma eklenecek öneri güncellemesi (öneri ve içerik birlikte
+ * yazılır; eskiden içerik yazımı onaylanmadan öneri güncellenmiyordu, çevrimdışı
+ * onayda öneri "bekliyor" kalıyordu). `queued`: yazım gönderilince (yerel
+ * kuyruğa girince) çağrılır (bkz. lib/writeGate).
+ */
+async function applyChecked(ops: ChangeOp[], base: Versions | null, extra: { ref: DocumentReference; data: Record<string, unknown> } | null, queued: () => void): Promise<void> {
+  const relevant = base ? [...new Map(ops.filter((o) => VERSIONED.has(o.col) && versionKey(o.col, o.id) in base).map((o) => [versionKey(o.col, o.id), o])).values()] : [];
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  if (relevant.length && online && ops.length < 450) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        runTransaction(db, async (tx) => {
+          const snaps = await Promise.all(relevant.map((o) => tx.get(doc(db, o.col, o.id))));
+          const stale = snaps.map((snap, i) => {
+            const o = relevant[i];
+            const d = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
+            return base![versionKey(o.col, o.id)] !== verOf(d)
+              ? String(d?.title || d?.prompt || o.data?.title || o.data?.prompt || '').slice(0, 60) || 'kayıt' : null;
+          }).filter((x): x is string => !!x);
+          if (stale.length) throw new StaleError(stale);
+          writeOps(tx, ops, Date.now());
+          if (extra) tx.update(extra.ref, extra.data);
+        }),
+        new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), TX_TIMEOUT_MS); })
+      ]);
+      queued();
+      return;
+    } catch (e) {
+      if (e instanceof StaleError || !isNetworkError(e)) throw e;
+      // Bağlantı yok: aşağıdaki yoldan kuyruğa alınır.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (relevant.length) {
+    const stale = await staleTitles(ops, base!);
+    if (stale.length) throw new StaleError(stale);
+  }
+  const batch = writeBatch(db);
+  writeOps(batch, ops, Date.now());
+  if (extra) batch.update(extra.ref, extra.data);
+  const p = batch.commit();
+  queued();
+  await p;
 }
 
 /** Yeni belge için kimlik (yazmadan). */
@@ -170,6 +244,16 @@ export interface CommitOptions {
 }
 
 export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId?: string | null, opts: CommitOptions = {}): Promise<ChangeResult> {
+  // Yazım öncesi okumalar bitip yazım kuyruğa girene kadar "kuyruğa alındı" denmez (B-2).
+  const queued = beginPrepare();
+  try {
+    return await commitChangeInner(ops, meta, proposalId, opts, queued);
+  } finally {
+    queued();
+  }
+}
+
+async function commitChangeInner(ops: ChangeOp[], meta: ChangeMeta, proposalId: string | null | undefined, opts: CommitOptions, queued: () => void): Promise<ChangeResult> {
   const s = staff();
   const data = clean(ops);
   // Öneri üzerinde çalışılıyorsa önce öneriyi oku: kimin, hangi sürüme göre yapıldığı.
@@ -185,35 +269,35 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
     if (proposal && !own && !allowed(s.role, 'oneriOnay')) {
       throw new Error('Önerileri onaylama yetkin yok. Bu öneriyi yetkili yönetici yayınlar.');
     }
-    if (!opts.force) {
-      // Önerinin sürümü önceliklidir: onaylayan editörü sonradan açmış olsa
-      // da öneriden sonraki değişiklik ezilmesin.
-      const base = { ...(opts.base || {}), ...(proposal?.baseUpdatedAt || {}) };
-      const stale = await staleTitles(data, base);
-      if (stale.length) throw new StaleError(stale);
-    }
+    // Önerinin sürümü önceliklidir: onaylayan editörü sonradan açmış olsa
+    // da öneriden sonraki değişiklik ezilmesin.
+    const base = opts.force ? null : { ...(opts.base || {}), ...(proposal?.baseUpdatedAt || {}) };
     // Görev (yeni ürün akışı) onaylanınca yayınlayanın adına yazılır:
     // kurallar görevi yalnızca atayanın kendi kimliğiyle yazmasına izin verir.
     const applied = data.map((o) => (o.col === 'assignments' && o.op === 'set'
       ? { ...o, data: { ...o.data, createdBy: s.uid, createdByName: nameOf(s) } } : o));
-    await applyOps(applied);
+    let extra: { ref: DocumentReference; data: Record<string, unknown> } | null = null;
     if (proposalId && proposal) {
+      const ref = doc(db, 'proposals', proposalId);
       if (own && !allowed(s.role, 'oneriOnay')) {
         // Kendi önerisini (sonradan yetki aldığı için) doğrudan yayınladı: öneri geri çekilmiş sayılır.
-        await updateDoc(doc(db, 'proposals', proposalId), { status: 'withdrawn', updatedAt: Date.now() });
+        extra = { ref, data: { status: 'withdrawn', updatedAt: Date.now() } };
       } else {
         const original = JSON.stringify(proposal.ops || []);
-        await updateDoc(doc(db, 'proposals', proposalId), {
+        extra = { ref, data: {
           status: 'approved', reviewedAt: Date.now(), reviewedBy: s.uid, reviewedByName: nameOf(s),
           editedOnReview: original !== JSON.stringify(data), ops: data
-        });
+        } };
       }
     }
+    await applyChecked(applied, base, extra, queued);
     return 'applied';
   }
   if (proposalId) {
     // Kendi bekleyen önerisini düzenliyor (önerinin ilk sürüm bilgisi korunur).
-    await updateDoc(doc(db, 'proposals', proposalId), { ops: data, title: meta.title, summary: meta.summary, updatedAt: Date.now() });
+    const w = updateDoc(doc(db, 'proposals', proposalId), { ops: data, title: meta.title, summary: meta.summary, updatedAt: Date.now() });
+    queued();
+    await w;
     return 'proposed';
   }
   const p: Omit<ProposalDoc, 'id'> = {
@@ -222,8 +306,12 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
     // Onaylayan, hedef belge bu andan sonra değiştiyse uyarılır (A20).
     baseUpdatedAt: await baseVersions(data, opts.base)
   };
-  const r = await addDoc(collection(db, 'proposals'), p);
-  lastProposalId = r.id;
+  const ref = doc(collection(db, 'proposals'));
+  // Kimlik önceden alınır: çevrimdışıyken de "son öneri" bilinsin.
+  lastProposalId = ref.id;
+  const w = setDoc(ref, p);
+  queued();
+  await w;
   return 'proposed';
 }
 

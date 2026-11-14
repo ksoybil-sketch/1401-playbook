@@ -21,7 +21,8 @@ import { AttemptRow } from '../barista/HomePages';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import {
   useStaffData, useExamsSince, useFetched, useBaristaAttempts, useStoreAssignments, useHistory, useHistoryIfLoaded,
-  loadBaristaAttempts, loadStoreAssignments, loadOlderAssignments, invalidate
+  loadBaristaAttempts, loadStoreAssignments, loadOlderAssignments, invalidate, loadOverviewExams, dayStart, isFetched, examsSinceKey,
+  type OverviewExams
 } from './staffData';
 import { isClosed } from '../../api/requests';
 import { useStaffSession } from './StaffLayout';
@@ -204,14 +205,16 @@ export const OverviewPage: React.FC = () => {
   const activeStores = stores.filter((s) => s.active);
   // Pasif mağazanın baristası "aktif barista" sayılmaz (ipucundaki mağaza sayısı da yalnızca aktifleri sayıyor).
   const active = baristas.filter((b) => b.active && activeStores.some((s) => s.id === b.storeId));
-  // Son 7 günün sınavları: tek seferlik ve kesin (eskiden son 300 denemeden
-  // hesaplanıyordu; yoğun haftada 416 sınav 299 görünüyordu). Mini sınavlar
-  // (Yeni ürün, 3 soru) modül sınavı sayılmaz, ayrıca yazılır.
-  const week = useExamsSince(7);
-  const weekAll = (week.data || []).filter((a) => !a.voided);
-  const weekAttempts = weekAll.filter((a) => !a.lessonId);
-  const weekMini = weekAll.length - weekAttempts.length;
-  const avgScore = weekAttempts.length ? Math.round(weekAttempts.reduce((s, a) => s + (a.score || 0), 0) / weekAttempts.length) : null;
+  // Son 7 günün sınavları: kesin (eskiden son 300 denemeden hesaplanıyordu;
+  // yoğun haftada 416 sınav 299 görünüyordu). Sayı, ortalama ve mağaza
+  // satırları toplama sorgusuyla (~27 okuma; eskiden haftanın bütün sınav
+  // belgeleri, ~450). Mini sınavlar (Yeni ürün, 3 soru) modül sınavı sayılmaz, ayrıca yazılır.
+  const weekFrom = dayStart(Date.now() - 6 * 86400000);
+  const storeIds = activeStores.map((s) => s.id);
+  const week = useFetched<OverviewExams>(storeIds.length ? `ov-exams:${weekFrom}:${storeIds.join(',')}` : null, () => loadOverviewExams(weekFrom, storeIds));
+  const weekCount = week.data?.total.exams ?? 0;
+  const weekMini = week.data?.mini ?? 0;
+  const avgScore = week.data?.total.avgScore ?? null;
   const avgProgress = active.length ? Math.round(active.reduce((s, b) => s + overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks), 0) / active.length) : 0;
 
   // Geçersiz görevler (hedef kalmadı / bağlı içerik silindi) gecikmiş sayılmaz.
@@ -226,8 +229,11 @@ export const OverviewPage: React.FC = () => {
   }, [validTasks, baristas, progress]);
 
   // En çok yanlış yapılan sorular — eğitim içeriğinde neyin anlaşılmadığını gösterir.
+  // Sınav belgelerini ister (aralığın bütün sınavları): istek üzerine okunur,
+  // bu oturumda bir kez açıldıysa açık kalır.
   const [missDays, setMissDays] = useState<7 | 30>(7);
-  const missSrc = useExamsSince(missDays);
+  const [wantMissed, setWantMissed] = useState(() => isFetched(examsSinceKey(7)));
+  const missSrc = useExamsSince(missDays, wantMissed);
   const candidates = useMemo(() => {
     const map = new Map<string, MissedQuestion>();
     (missSrc.data || []).filter((a) => !a.voided).forEach((a) =>
@@ -259,7 +265,7 @@ export const OverviewPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Aktif barista" value={active.length} hint={`${activeStores.length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
         <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to={can('ekran.baristalar') ? '/baristalar?gorunum=tablo' : undefined} />
-        <Stat label="Son 7 günde sınav" value={week.loading && !week.data ? '…' : weekAttempts.length}
+        <Stat label="Son 7 günde sınav" value={week.loading && !week.data ? '…' : weekCount}
           hint={week.error ? week.error : `${avgScore !== null ? `Ortalama ${avgScore} puan` : 'Henüz yok'}${weekMini ? ` · +${weekMini} mini sınav` : ''}`}
           icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to={can('ekran.gorevler') ? '/gorevler?durum=geciken' : undefined} />
@@ -274,8 +280,8 @@ export const OverviewPage: React.FC = () => {
             {activeStores.map((s) => {
               const team = active.filter((b) => b.storeId === s.id);
               const pct = team.length ? Math.round(team.reduce((x, b) => x + overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks), 0) / team.length) : null;
-              const wk = weekAttempts.filter((a) => a.storeId === s.id);
-              const passRate = wk.length ? Math.round((wk.filter((a) => a.passed).length / wk.length) * 100) : null;
+              const wk = week.data?.byStore[s.id];
+              const passRate = wk?.exams ? Math.round((wk.passed / wk.exams) * 100) : null;
               let od = 0;
               validTasks.filter((a) => a.storeId === s.id).forEach((a) =>
                 taskTargets(a, team).forEach((b) => { if (isOverdue(a, assignmentDone(a, progress[b.id]))) od++; }));
@@ -284,7 +290,7 @@ export const OverviewPage: React.FC = () => {
                   <span className="text-[14px] font-medium truncate">{s.name}</span>
                   <span className="text-[13px] tnum text-fg-2">{team.length}</span>
                   <span className="flex items-center gap-2"><ProgressBar value={pct ?? 0} className="flex-1" /><span className="text-[12px] tnum w-9 text-right">{pct === null ? '—' : `%${pct}`}</span></span>
-                  <span className="text-[13px] tnum text-fg-2">{week.data ? `${wk.length}${passRate !== null ? ` · %${passRate} geçti` : ''}` : '…'}</span>
+                  <span className="text-[13px] tnum text-fg-2">{wk ? `${wk.exams}${passRate !== null ? ` · %${passRate} geçti` : ''}` : '…'}</span>
                   <span>{od ? <Badge tone="negative">{od}</Badge> : <span className="text-[13px] text-fg-3">—</span>}</span>
                 </Link>
               );
@@ -302,7 +308,11 @@ export const OverviewPage: React.FC = () => {
               ))}
             </div>
           }>
-          {missSrc.loading && !missSrc.data ? <div className="py-6 flex justify-center"><Spinner /></div>
+          {!wantMissed ? (
+            <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`} onClick={() => setWantMissed(true)}>
+              <Icon name="target" size={14} /> Soruları göster
+            </button>
+          ) : missSrc.loading && !missSrc.data ? <div className="py-6 flex justify-center"><Spinner /></div>
             : missSrc.error ? <ErrorText>{missSrc.error}</ErrorText>
             : missed.length === 0 ? <Empty icon="target" text="Henüz yeterli sınav verisi yok." /> : (
             <div className={t.listGroup}>
@@ -500,7 +510,12 @@ export const ApronBadgesSection: React.FC = () => {
   const badgeConfig = useBadgeConfig((x) => x.config);
   // Önlük kararı kesik veriye dayanmasın: bütün sınav geçmişi ve bütün görevler
   // (eskiden zincirin son 300 sınavı; "önlükten al" haksız yere çıkabiliyordu).
-  const history = useHistory(true);
+  // Geçmiş zincirin bütün sınavları (zamanla büyür): ekran her açılışta okumaz,
+  // "Önlük durumunu hesapla" ile okunur. Bu oturumda (Baristalar → Unvanları
+  // göster, kurul yetkinlik dağılımı) okunduysa hemen hesaplanır.
+  const loadedHistory = useHistoryIfLoaded();
+  const [want, setWant] = useState(false);
+  const history = useHistory(want || !!loadedHistory);
   const rows = useMemo(() => !history.data ? [] : baristas.filter((b) => b.active).map((b) => {
     const report = badgeReport({
       tracks, modules, lessons, progress: progress[b.id] || EMPTY,
@@ -555,7 +570,14 @@ export const ApronBadgesSection: React.FC = () => {
           </div>
         ))}
       </div>
-      {history.loading && !history.data && <div className="py-4 flex justify-center"><Spinner /></div>}
+      {!history.data && !history.error && (
+        <div className="flex flex-col gap-1.5 items-start">
+          <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={history.loading && want} onClick={() => setWant(true)}>
+            {history.loading && want ? <Spinner size={14} /> : <Icon name="medal" size={14} />} Önlük durumunu hesapla
+          </button>
+          <span className="text-[12px] text-fg-3">Teslim bekleyenler ve önlükten alınacaklar bütün sınav geçmişinden hesaplanır.</span>
+        </div>
+      )}
       {history.error && <ErrorText>{history.error}</ErrorText>}
       {due.length > 0 && (
         <div className={t.listGroup}>

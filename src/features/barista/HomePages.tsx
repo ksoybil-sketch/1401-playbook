@@ -23,6 +23,7 @@ import { useStoreRequests } from './RequestsPage';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyAssignments, useMyBadgeReport, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
+import { useExamSize } from './useExamSize';
 import { AssignSheet } from '../shared/AssignSheet';
 import type { Assignment, Attempt, Barista, Progress } from '../../../shared/types';
 
@@ -89,6 +90,8 @@ export const HomePage: React.FC = () => {
     return { ...pick, ready: left === 0, left, assigned: assigned.includes(pick), readyCount: ready.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pubModules, lessons, progress, open, next]);
+  // Hazır sınavın gerçek soru sayısı (bkz. useExamSize).
+  const examSize = useExamSize(exam?.ready ? exam.mod : null);
 
   // En yakın iki rozet: kazanılmamışlar içinde ilerlemesi en yüksek olanlar.
   const nearest = report.badges.filter((b) => !b.earned)
@@ -140,7 +143,7 @@ export const HomePage: React.FC = () => {
           <Tile to={exam.ready ? `/sinav/${exam.mod.id}` : `/modul/${exam.mod.id}`} hue="rose" icon="clipboard"
             label={exam.ready ? 'Sınava hazırsın' : exam.assigned ? 'Atanan sınav' : 'Sıradaki sınav'}
             title={exam.mod.title}
-            hint={exam.ready ? `${exam.mod.examSize} soru · ${Math.ceil(exam.mod.examSize * 1.5)} dk` : `Önce ${exam.left} ders`}
+            hint={exam.ready ? (examSize.empty ? 'Bu modülde şu an soru yok' : `${examSize.size} soru · ${Math.ceil(examSize.size * 1.5)} dk`) : `Önce ${exam.left} ders`}
             badge={exam.readyCount > 1 ? exam.readyCount : undefined} />
         ) : (
           <Tile to="/sonuclarim" hue="rose" icon="medal" label="Sınavlar" title="Bekleyen sınavın yok" />

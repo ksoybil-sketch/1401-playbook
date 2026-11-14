@@ -22,7 +22,7 @@ export const getDocFromServer = (ref) => real.getDocFromServer(ref).then((s) => 
 export const getDocsFromServer = (q) => real.getDocsFromServer(q).then((s) => { add('r', Math.max(1, s.size), whereOf(q)); return s; });
 const aggReads = (n) => Math.max(1, Math.ceil(n / 1000));
 export const getCountFromServer = (q) => real.getCountFromServer(q).then((s) => { add('r', aggReads(s.data().count), whereOf(q) + '[sayım]'); return s; });
-export const getAggregateFromServer = (q, spec) => real.getAggregateFromServer(q, spec).then((s) => { const d = s.data(); const n = Object.values(d).find((v) => Number.isInteger(v)) ?? 0; add('r', aggReads(n), whereOf(q) + '[toplama]'); return s; });
+export const getAggregateFromServer = (q, spec) => real.getAggregateFromServer(q, spec).then((s) => { const d = s.data(); const n = Number.isInteger(d.n) ? d.n : Number.isInteger(d.count) ? d.count : (Object.values(d).find((v) => Number.isInteger(v)) ?? 0); /* sayım alanı (toplam değil) */ add('r', aggReads(n), whereOf(q) + '[toplama]'); return s; });
 export function onSnapshot(target, ...args) {
   let i = 0;
   if (args[0] && typeof args[0] === 'object' && !('next' in args[0])) i = 1;

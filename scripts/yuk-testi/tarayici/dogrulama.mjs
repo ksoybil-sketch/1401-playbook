@@ -569,6 +569,101 @@ if (on('gorev')) {
   save();
 }
 
+// =============================================================== KOTA (K1, K2, K3, B9, A27)
+if (on('kota')) {
+  const dir = await ctx('kota-direktor');
+  const g = await staffLogin(dir, staff('director'));
+  const ana = await text(dir.page);
+  const m7 = ana.match(/Son 7 günde sınav\s*\n?\s*(\d+)/);
+  const from7 = (() => { const d = new Date(Date.now() - 6 * 86400000); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); })();
+  const real7 = (await adb.collection('attempts').where('submittedAt', '>=', from7).get()).docs.filter((d) => !d.get('voided') && !d.get('lessonId')).length;
+  const a0 = await fs(dir.page);
+  await dir.page.getByRole('button', { name: 'Soruları göster' }).click();
+  await settle(dir.page);
+  const a1 = await fs(dir.page);
+  const yanlis = /Doğru:/.test(await text(dir.page));
+  await dir.page.screenshot({ path: `${OUT}ss2/kota-genel-bakis.png` }).catch(() => {});
+  M('K2', 'Genel bakış', { girisOkuma: g.okuma, son7: m7 ? +m7[1] : null, gercek: real7, yanlislarDugmeOkuma: a1.r - a0.r, yanlislarListesi: yanlis });
+  const r = await screen(dir, '/rozetler', 'Rozetler (kota)');
+  const b0 = await fs(dir.page);
+  const hasBtn = await dir.page.getByRole('button', { name: /Önlük durumunu hesapla/ }).count();
+  if (hasBtn) await dir.page.getByRole('button', { name: /Önlük durumunu hesapla/ }).click();
+  await settle(dir.page, 1200, 60000);
+  const b1 = await fs(dir.page);
+  const rt = await text(dir.page);
+  await dir.page.screenshot({ path: `${OUT}ss2/kota-rozetler.png` }).catch(() => {});
+  M('K1', 'Rozetler', { acilisOkuma: r.okuma, dugme: !!hasBtn, hesaplaOkuma: b1.r - b0.r, liste: /Teslim edildi|Önlükten al|teslim bekliyor/.test(rt) || /önlükte/.test(rt) });
+  await dir.c.close();
+
+  const brd = await ctx('kota-kurul');
+  const gk = await staffLogin(brd, staff('board'));
+  const per = {};
+  for (const lab of ['Son 90 gün', 'Bu ay', 'Geçen ay', 'Bu yıl', 'Son 30 gün']) {
+    const a = await fs(brd.page);
+    await brd.page.getByRole('button', { name: lab }).first().click();
+    await settle(brd.page, 900);
+    const b = await fs(brd.page);
+    const t = await text(brd.page);
+    per[lab] = { okuma: b.r - a.r, ozet: (t.match(/Baristalar \d+ sınava[^\n]*/) || [])[0] || (t.match(/Bu dönemde sınav yapılmadı/) || [])[0] || null };
+  }
+  const st = await screen(brd, '/magazalar', 'Kurul mağazalar (kota)');
+  const is = await screen(brd, '/isler', 'Kurul süren işler (kota)');
+  await brd.page.screenshot({ path: `${OUT}ss2/kota-kurul.png` }).catch(() => {});
+  M('K3', 'Kurul', { girisOkuma: gk.okuma, donem: per, magazalarOkuma: st.okuma, islerOkuma: is.okuma });
+  await brd.c.close();
+
+  // B9 + A27: aynı telefonda iki barista aynı modülün sınavına girer (havuz önbellekten)
+  const ph = H.phones.find((p) => p.storeId === 'pendik');
+  const x = await ctx('kota-telefon', PHONE);
+  await pairPhone(x, ph);
+  const bs = H.baristas.filter((b) => b.storeId === 'pendik' && b.pin && !['yb-30', 'yb-45'].includes(b.id));
+  const hasQ = new Set((await adb.collection('questions').select('moduleId').get()).docs.map((d) => d.get('moduleId')));
+  const okFor = async (b, m) => {
+    const mine = (await adb.collection('attempts').where('baristaId', '==', b.id).get()).docs.map((d) => d.data());
+    const prog = (await adb.doc(`progress/${b.id}`).get()).data() || {};
+    return (!m.prerequisiteId || prog.modules?.[m.prerequisiteId]) && mine.filter((a) => a.moduleId === m.id && a.startedAt > Date.now() - 7 * 86400000 && !a.voided).length < 2 && !mine.some((a) => a.moduleId === m.id && !a.submittedAt);
+  };
+  let mod = null; const two = [];
+  for (const m of CUR.modules.filter((m) => m.published && hasQ.has(m.id))) {
+    const ok = []; for (const b of bs) if (await okFor(b, m)) ok.push(b);
+    if (ok.length >= 2) { mod = m; two.push(ok[0], ok[1]); break; }
+  }
+  const runs = [];
+  for (const b of two) {
+    await baristaLogin(x, b);
+    const e0 = await fs(x.page);
+    await x.page.evaluate((h) => (location.hash = h), `/sinav/${mod.id}`); await settle(x.page);
+    const intro = await text(x.page);
+    const e1 = await fs(x.page);
+    await x.page.getByRole('button', { name: /Başla|devam et/ }).click({ timeout: 8000 });
+    await x.page.locator('button.text-left').first().waitFor({ timeout: 30000 });
+    await settle(x.page, 600);
+    const e2 = await fs(x.page);
+    const shown = (await text(x.page)).match(/(\d+)\s*\/\s*(\d+)/);
+    runs.push({ barista: b.id, girisSoruSayisi: (intro.match(/Soru sayısı\s*\n?\s*(\S+)/) || [])[1] || null, ekranOkuma: e1.r - e0.r, baslaOkuma: e2.r - e1.r, sinavdaSoru: shown ? +shown[2] : null, havuzKalemi: sumBy(e1, e2, (k) => k.includes('questions')) });
+    await x.page.evaluate(() => (location.hash = '/'));
+    await x.page.waitForTimeout(600);
+    await baristaLogout(x).catch(() => {});
+  }
+  const active = (await adb.collection('questions').where('moduleId', '==', mod.id).get()).docs.filter((d) => !d.get('disabled')).length;
+  M('B9', 'aynı telefonda iki barista aynı modül', { modul: mod.id, examSize: mod.examSize, etkinSoru: active, runs });
+  // A27: sorusu kalmayan modül: giriş ekranı
+  const zm = CUR.modules.find((m) => m.published && m.id !== mod.id && !m.prerequisiteId);
+  const zq = (await adb.collection('questions').where('moduleId', '==', zm.id).get()).docs;
+  const zb = adb.batch(); zq.forEach((d) => zb.update(d.ref, { disabled: true })); await zb.commit();
+  await baristaLogin(x, bs[bs.length - 1]);
+  await x.page.evaluate((h) => (location.hash = h), `/sinav/${zm.id}`); await settle(x.page, 1200);
+  const zt = await text(x.page);
+  await x.page.screenshot({ path: `${OUT}ss2/kota-sorusuz-modul.png` }).catch(() => {});
+  const startDisabled = await x.page.getByRole('button', { name: /^Başla$/ }).isDisabled().catch(() => null);
+  await x.page.evaluate((h) => (location.hash = h), `/modul/${zm.id}`); await settle(x.page, 900);
+  const mt = await text(x.page);
+  const zb2 = adb.batch(); zq.forEach((d) => zb2.update(d.ref, { disabled: d.get('disabled') ?? false })); await zb2.commit();
+  M('A27', 'sorusuz modül', { modul: zm.id, girisMesaj: /Bu modülde şu an soru yok/.test(zt), soruSayisi: (zt.match(/Soru sayısı\s*\n?\s*(\S+)/) || [])[1] || null, baslaKapali: startDisabled, modulSayfasi: /Bu modülde şu an soru yok/.test(mt) });
+  await x.c.close();
+  save();
+}
+
 R.hatalarKoleksiyonu = (await adb.collection('hatalar').get()).docs.map((d) => ({ kind: d.get('kind'), message: d.get('message'), path: d.get('path'), role: d.get('role') }));
 save();
 await browser.close();
