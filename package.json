@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "emulators": "firebase emulators:start --project demo-playbook --import=./.emulator-data --export-on-exit",
     "seed:emu": "node scripts/seed.mjs --emulator",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "iphone": "zsh scripts/iphone.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
