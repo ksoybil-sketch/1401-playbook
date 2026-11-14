@@ -6,6 +6,27 @@ Bu listedeki her adımı **sen** başlatırsın. Canlıya dağıtım ve canlı i
 
 Komutlar proje klasöründe çalışır: `cd ~/Desktop/Projects/1401\ Playbook`
 
+## Durum: 14.11.2026 Cumartesi akşamı
+
+Yayın, kullanıcının isteğiyle iki gün önce yapıldı. Aşağıdaki adımların çoğu **bitti**:
+
+- [x] Soru bankasına 40 soru eklendi (toplam 1334). PR #5 `master`'a birleştirildi; `master` = canlıdaki kod.
+- [x] Tip denetimi ve derleme temiz.
+- [x] Demo güncellendi: site, kurallar ve müfredat.
+- [x] Canlıya dağıtıldı (site, kurallar, indeksler). Sürüm **1.0.0 · 14.11 17:41**, sekme başlığı "1401 Campus".
+- [x] Canlıda Müfredatı güncelle çalıştırıldı: 4 yol, 14 modül, 96 ders, 1334 soru. Eski kimlikli 311 soru silindi; silinen ders yok.
+- [x] Yetkiler canlıda varsayılan. Demodaki iki elle değişiklik de varsayılan değerinde; ikisi aynı.
+- [x] Canlı duman testi (panel): geri bildirim gönderildi, panelde göründü, Çözüldü yapıldı. Talepler, Görevler, Onaylar ve Mağazalar açılıyor.
+- [x] Firebase konsolu: iki projenin adı "1401 Campus" / "1401 Campus Demo". Canlı uygulamanın takma adı "1401 Campus Web". E-posta şablon dili iki projede Türkçe.
+
+**Kalanlar:**
+- [ ] **E-posta şablon metni:** Firebase bu projede şablon düzenlemeyi kapatmış ("Email template updates are currently unavailable for this project"). Gönderen adı ve konu değiştirilemiyor. E-postadaki `%APP_NAME%` artık proje adından geliyor; bir şifre sıfırlama isteyip gelen e-postaya bak.
+- [ ] **Yapay zekâ anahtarı:** Akademi → Yapay zekâ. Anahtarı yalnızca sen girersin.
+- [ ] **Mağazalar ve ekip:** canlıda yalnızca Moda Cadde, 1 barista ve 1 yönetici (sen) var. Diğer mağazalar, Kahve Operasyonu hesapları ve barista davet kodları gerçek listeyle girilmeli.
+- [ ] **APK bağlantısı:** Spark planı APK'yı sitede barındırmıyor. Herkese açık bir indirme yeri gerekiyor; seçenekler bölüm 5'te.
+- [ ] **Telefonla son kontrol:** gerçek mağaza telefonunda eşleştirme, barista PIN girişi, ders, sınav, PIN'siz reçete. Barista PIN'ini Claude girmez.
+- [ ] **iPhone:** `npm run iphone` için telefonun kabloyla bağlı olması gerekiyor.
+
 ---
 
 ## 0. Bir gün önce (Pazar)
@@ -76,6 +97,10 @@ Bir şey bozuksa **geri al**: Firebase konsolu → Hosting → Sürüm geçmişi
 - [ ] APK'yı mağaza telefonuna aktar (Drive, USB ya da mesaj). "Bilinmeyen kaynaklardan yüklemeye izin ver"i aç ve kur.
 - [ ] Telefonda 1.0 ("1401 Playbook") kuruluysa 1.1 onun üstüne kurulur; kurulmazsa önce eskisini kaldır.
 - [ ] Uygulamayı aç, mağaza eşleştirme kodunu gir, bir barista girişi dene.
+- **İndirme bağlantısı.** Kurulum sayfası hazır: `playbook-1401.web.app/indir/`. Sayfadaki "Uygulamayı indir" düğmesi APK'nın herkese açık adresine gitmeli; Spark planı APK'yı sitede barındırmıyor (`Executable files are forbidden`). Yollar:
+  - **GitHub:** herkese açık ayrı bir depo (ör. `1401-campus-indir`), APK bir sürüm (release) eki olarak. Sabit bağlantı: `…/releases/latest/download/1401-campus.apk`.
+  - **Google Drive:** APK'yı yükle, "Bağlantıya sahip olan herkes" diye paylaş.
+  - Ardından `public/indir/index.html` içindeki düğmenin `href`'ini bu adresle değiştir ve canlıya dağıt.
 - Yeniden derlemek gerekirse `npm run apk` kullan. Demo adresini açan test APK'sı için: `SUNUCU=demo npm run apk`.
 
 **iPhone** (kabloyla, ücretsiz Apple hesabı)
