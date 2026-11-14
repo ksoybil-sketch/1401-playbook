@@ -18,7 +18,9 @@ export const Page: React.FC<{ children: React.ReactNode; wide?: boolean; classNa
 export const PageTitle: React.FC<{ title: string; subtitle?: string; back?: boolean | string; action?: React.ReactNode }> = ({ title, subtitle, back, action }) => {
   const navigate = useNavigate();
   return (
-    <div className="flex items-start gap-3">
+    // flex-wrap: dar ekranda başlığın yanındaki düğmeler sığmazsa alt satıra
+    // iner (eskiden sayfayı yana taşırıyordu).
+    <div className="flex flex-wrap items-start gap-3">
       {back && (
         <button
           onClick={() => (typeof back === 'string' ? navigate(back) : navigate(-1))}
@@ -28,19 +30,19 @@ export const PageTitle: React.FC<{ title: string; subtitle?: string; back?: bool
           <Icon name="chevronLeft" size={18} />
         </button>
       )}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-[12rem]">
         <h1 className={t.screenTitle}>{title}</h1>
         {subtitle && <p className="text-[13px] text-fg-3 mt-1 leading-relaxed">{subtitle}</p>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 max-w-full">{action}</div>}
     </div>
   );
 };
 
 export const Section: React.FC<{ label?: string; action?: React.ReactNode; children: React.ReactNode }> = ({ label, action, children }) => (
-  <section className="flex flex-col gap-2">
+  <section className="flex flex-col gap-2 min-w-0">
     {(label || action) && (
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {label && <span className={t.sectionLabel}>{label}</span>}
         {action}
       </div>
@@ -169,7 +171,8 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
           <h2 className={t.modalTitle}>{title}</h2>
           <button className={t.iconBtn} onClick={onClose} aria-label="Kapat"><Icon name="close" size={16} /></button>
         </div>
-        <div className={`${t.modalBody} flex flex-col gap-4`}>{children}</div>
+        {/* Gövde sınırlı yükseklikte kayıyor; içindeki öğeler dikeyde ezilmesin. */}
+        <div className={`${t.modalBody} flex flex-col gap-4 [&>*]:shrink-0`}>{children}</div>
         {footer && <div className="shrink-0 px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] border-t border-line flex flex-wrap gap-2 justify-end">{footer}</div>}
       </div>
     </div>

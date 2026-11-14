@@ -332,6 +332,23 @@
   *::-webkit-scrollbar { width: 5px; height: 5px; }
   *::-webkit-scrollbar-thumb { background: var(--color-line-2); border-radius: 999px; }
   button { cursor: pointer; }
+
+  /* Telefonda sayfa asla yana kaymasın. Taşan bir öğe sayfayı genişletince
+     iPhone'da açılır pencereler ekrana oturmuyor, taşan kısım dokunmaya
+     yanıt vermiyordu. Kök nedenler ayrıca düzeltildi; bu, emniyet kemeri. */
+  html, body { overflow-x: clip; }
+  /* Izgara hücreleri içeriklerinin en uzun satırına göre genişlemesin
+     (uzun soru metni ya da çubuk grafik sütunu ekran dışına taşırıyordu). */
+  .grid > * { min-width: 0; }
+}
+
+/* iPhone, 16 px'ten küçük yazılı giriş alanına dokununca sayfayı büyütüyor
+   ve geri küçültmüyor: ekran "oturmuyor", pencereler taşıyordu. Dokunmatik
+   ekranda bütün giriş alanları 16 px. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

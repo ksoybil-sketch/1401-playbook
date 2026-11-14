@@ -100,7 +100,7 @@ export const field = 'flex flex-col gap-1.5';
    SEGMENTED CONTROL (iOS) — filtre satırları için
    --------------------------------------------------------------- */
 
-export const segment = 'inline-flex items-center gap-1 p-1 rounded-lg bg-panel border border-line';
+export const segment = 'shrink-0 inline-flex items-center gap-1 p-1 rounded-lg bg-panel border border-line max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 export const segmentItem =
   'px-3 h-9 md:h-7 inline-flex items-center rounded-md text-[12px] font-medium cursor-pointer transition-colors duration-150 whitespace-nowrap';
 export const segmentItemOn = 'bg-panel-3 text-crema';

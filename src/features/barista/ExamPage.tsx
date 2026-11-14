@@ -221,16 +221,6 @@ export const ExamPage: React.FC = () => {
         <span className="text-[12px] text-fg-3 tnum">{idx + 1}/{phase.questions.length}</span>
       </div>
 
-      {/* Soru haritası: emin olunmayan soru boş geçilip sonra dönülebilir. */}
-      <div className="flex flex-wrap gap-1.5" aria-label="Sorular">
-        {phase.questions.map((x, i) => (
-          <button key={x.id} onClick={() => setIdx(i)} aria-label={`Soru ${i + 1}${answers[x.id] === undefined ? ', boş' : ''}`}
-            className={`w-8 h-8 rounded-lg text-[12px] font-semibold tnum border transition-colors ${
-              i === idx ? 'border-crema text-crema bg-panel-3' : answers[x.id] !== undefined ? 'border-line bg-panel-3 text-fg-2' : 'border-line border-dashed text-fg-3'
-            }`}>{i + 1}</button>
-        ))}
-      </div>
-
       <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${left < 60000 ? 'bg-negative-bg border-negative-line text-negative' : left < total * 0.25 ? 'bg-caution-bg border-caution-line text-caution' : 'bg-panel border-line text-fg-2'}`}>
         <span className="flex items-center gap-2 text-[12px] font-medium"><Icon name="clock" size={14} /> Kalan süre</span>
         <span className="text-[15px] font-bold tnum">{fmtClock(left)}</span>
@@ -264,6 +254,7 @@ export const ExamPage: React.FC = () => {
           </button>
           {isLast ? (
             <button
+              disabled={picked === undefined}
               onClick={() => {
                 const blank = phase.questions.length - answeredCount;
                 if (blank > 0 && !confirm(`${blank} soru boş. Yine de gönderilsin mi?`)) return;
@@ -274,8 +265,8 @@ export const ExamPage: React.FC = () => {
               Sınavı bitir
             </button>
           ) : (
-            <button onClick={() => setIdx((i) => i + 1)} className={`${t.btn} ${picked === undefined ? t.btnSecondary : t.btnPrimary} ${t.btnLg} flex-1`}>
-              {picked === undefined ? 'Boş geç' : 'Sonraki'} <Icon name="chevronRight" size={16} />
+            <button disabled={picked === undefined} onClick={() => setIdx((i) => i + 1)} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}>
+              Sonraki <Icon name="chevronRight" size={16} />
             </button>
           )}
         </div>
