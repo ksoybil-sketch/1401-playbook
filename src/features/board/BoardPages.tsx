@@ -197,6 +197,10 @@ const WeekBars: React.FC<{ weeks: number[]; series: BarSeries[]; tip: (i: number
 
 export const BoardOverviewPage: React.FC = () => {
   const ctx = useBoardCtx();
+  // Kartlar yalnızca açık olan ekranlara gider (kapalı ekran sessizce ana sayfaya atıyordu).
+  const allowFn = useAllow();
+  const meB = useStaffSession();
+  const go = (perm: Parameters<typeof allowFn>[1], to: string) => (allowFn(meB.role, perm) ? to : undefined);
   const { tracks } = useContent();
   const badgeConfig = useBadgeConfig((x) => x.config);
   const [period, setPeriod] = usePeriod();
@@ -281,15 +285,15 @@ export const BoardOverviewPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Aktif barista" value={s.activeBaristas} icon="users" to="/magazalar"
+        <Stat label="Aktif barista" value={s.activeBaristas} icon="users" to={go('kurul.magazalar', '/magazalar')}
           hint={`${s.stores} mağaza${s.left ? ` · ${s.left} ayrılan` : ''}`} />
-        <Stat label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} icon="target" tone="positive" to="/magazalar" hint="Aktif baristaların ortalaması" />
+        <Stat label="Eğitim ilerlemesi" value={`%${s.avgProgress}`} icon="target" tone="positive" to={go('kurul.magazalar', '/magazalar')} hint="Aktif baristaların ortalaması" />
         <Stat label="Sınav başarısı" value={pctText(s.passRate)} icon="clipboard" tone="accent"
           hint={delta(s.passRate, prev.passRate) || `${s.exams} sınav`} />
-        <Stat label="Ortalama çözüm süresi" value={fmtDur(s.avgResolve)} icon="wrench" tone={s.urgentNow ? 'negative' : 'neutral'} to="/isler"
+        <Stat label="Ortalama çözüm süresi" value={fmtDur(s.avgResolve)} icon="wrench" tone={s.urgentNow ? 'negative' : 'neutral'} to={go('kurul.isler', '/isler')}
           hint={`${s.openNow} açık talep${s.urgentNow ? ` · ${s.urgentNow} acil` : ''}`} />
-        <Stat label="Onay bekleyen içerik" value={s.pendingProposals} icon="stamp" tone={s.pendingProposals ? 'caution' : 'neutral'} to="/isler?sekme=onay" />
-        <Stat label="Gecikmiş eğitim görevi" value={s.overdueTasks} icon="flag" tone={s.overdueTasks ? 'negative' : 'neutral'} to="/isler?sekme=gorev" />
+        <Stat label="Onay bekleyen içerik" value={s.pendingProposals} icon="stamp" tone={s.pendingProposals ? 'caution' : 'neutral'} to={go('kurul.isler', '/isler?sekme=onay')} />
+        <Stat label="Gecikmiş eğitim görevi" value={s.overdueTasks} icon="flag" tone={s.overdueTasks ? 'negative' : 'neutral'} to={go('kurul.isler', '/isler?sekme=gorev')} />
         <Stat label="Yayınlanan içerik" value={s.published} icon="layers" hint="Ders, ürün ve bülten" />
         <Stat label="Ayrılma oranı" value={pctText(s.turnover)} icon="logout" hint={`${s.left} ayrılan · dönem başı ekibe göre`} />
       </div>

@@ -125,7 +125,7 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
   };
 
   return (
-    <Sheet open={open} title="Yeni talep" onClose={busy ? () => {} : onClose}
+    <Sheet open={open} title="Yeni talep" onClose={busy ? () => {} : onClose} dirty={!busy && !!(title.trim() || detail.trim() || imageUrl)}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`} onClick={save} disabled={busy}>{busy ? <Spinner size={16} /> : 'Gönder'}</button>}>
       <div className={t.field}>
         <span className={t.label}>Konu</span>

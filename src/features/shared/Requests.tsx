@@ -42,6 +42,9 @@ export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; un
   );
 };
 
+/** Gönderilmemiş talep yanıtları (oturum boyunca, talep kimliğine göre). */
+const replyDrafts = new Map<string, string>();
+
 /** Durum geçişleri: operasyonun bir sonraki adımı. */
 const NEXT: Record<RequestStatus, RequestStatus[]> = {
   open: ['in_progress', 'approval', 'done', 'rejected'],
@@ -67,11 +70,14 @@ export const RequestThread: React.FC<{
   /** Yalnızca yazışmayı göster (Yönetim Kurulu): yanıt kutusu ve düğmeler yok. */
   readOnly?: boolean;
 }> = ({ r, side, me, canChange, canApprove, readOnly }) => {
-  const [text, setText] = useState('');
+  // Yazılan yanıt pencere kapanınca gitmesin: talep başına taslak tutulur.
+  const [text, setTextRaw] = useState(() => replyDrafts.get(r.id) || '');
+  const setText = (v: string) => { setTextRaw(v); if (v) replyDrafts.set(r.id, v); else replyDrafts.delete(r.id); };
+  useEffect(() => { setTextRaw(replyDrafts.get(r.id) || ''); }, [r.id]);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState<RequestRejectReason | ''>('');
-  useEffect(() => { setText(''); setRejecting(false); setRejectReason(''); }, [r.id]);
+  useEffect(() => { setRejecting(false); setRejectReason(''); }, [r.id]);
 
   /** Bekleme nedeni: yalnızca neden değişir, durum ve mağaza tarafı aynı kalır. */
   const setWait = async (reason: RequestWaitReason) => {

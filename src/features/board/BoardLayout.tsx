@@ -10,7 +10,7 @@ import { useStaffSession } from '../staff/StaffLayout';
 import { ThemePicker, useStaffTheme } from '../staff/theme';
 import { useBoardQuestions } from './BoardQuestions';
 import { useAllow, type Perm } from '../../lib/permissions';
-import { useIdleLogout } from '../../lib/idleLogout';
+import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 
 /**
  * Yönetim Kurulu ekranı. Kahve Operasyonu girişinden girilir; panelin
@@ -29,7 +29,7 @@ export const BoardLayout: React.FC = () => {
   // Mağaza telefonundan giriş yapan yöneticinin oturumu 5 dk hareketsizlikte
   // kapanır (telefon mağaza moduna döner). Kendi cihazında çalışmaz.
   const sharedDevice = useSession((x) => !!x.device);
-  useIdleLogout(5 * 60 * 1000, sharedDevice);
+  const idle = useIdleLogout(5 * 60 * 1000, sharedDevice);
   const subscribe = useStaffData((x) => x.subscribe);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
@@ -59,6 +59,7 @@ export const BoardLayout: React.FC = () => {
 
   return (
     <div className="min-h-[100dvh] md:flex bg-espresso">
+      <IdleWarning left={idle.warnLeft} onStay={idle.stay} />
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-line bg-bean/60 sticky top-0 h-[100dvh] print:hidden">
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
           <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90 logo-mark" />

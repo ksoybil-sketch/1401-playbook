@@ -18,6 +18,7 @@ import { parseAmount } from '../../../shared/recipeAmount';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { loadCurriculumFile, planCurriculum, publishCurriculum, type PublishPlan, type PublishProgress } from '../../api/publishCurriculum';
 import type { CupLayer, Lesson, LessonBlock, Module, Proposal, Question, Track } from '../../../shared/types';
+import { useUnsavedGuard } from '../../lib/unsaved';
 
 const TRACK_ICONS: IconName[] = ['coffee', 'book', 'users', 'store', 'shield', 'package', 'cap', 'award', 'clipboard', 'flag'];
 
@@ -539,6 +540,8 @@ export const LessonEditorPage: React.FC = () => {
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Kaydedilmemiş düzenleme geri okuna/geri tuşuna/menüye dokununca uyarısız gidiyordu.
+  useUnsavedGuard(dirty && !saving);
 
   useEffect(() => { if (lesson && !dirty) setDraft(lesson); }, [lesson, dirty]);
   if (proposalId && pLoading) return <Page wide><Spinner /></Page>;

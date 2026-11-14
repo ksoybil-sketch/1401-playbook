@@ -172,7 +172,9 @@ export const HomePage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="text-[13px] text-fg-2">İlk başarımın Oryantasyon'u bitirince geliyor.</div>
+            // Rozet kuralları Rozetler ekranından değişebiliyor: sabit metin
+            // ("Oryantasyon'u bitirince") yanlış kalabiliyordu.
+            <div className="text-[13px] text-fg-2">{nearest.length ? 'Henüz başarımın yok. En yakın olanlar aşağıda.' : 'Ders bitirip sınav geçtikçe başarımların burada görünür.'}</div>
           )}
           {nearest.map((b) => (
             <div key={b.id} className="flex items-center gap-3">

@@ -10,7 +10,7 @@ import { Avatar } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyBulletins } from './useBaristaData';
 import { finalizeExpired } from '../../api/exam';
-import { useIdleLogout } from '../../lib/idleLogout';
+import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 
 /** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
@@ -24,7 +24,7 @@ export const BaristaLayout: React.FC = () => {
   const { unread } = useMyBulletins();
   const { items: requests } = useStoreRequests(isManager(s.role));
   const replies = requests.filter(hasNewReply).length;
-  useIdleLogout(IDLE_LOGOUT_MS);
+  const idle = useIdleLogout(IDLE_LOGOUT_MS);
 
   // Yarıda kalıp süresi dolmuş denemeler, oturum açılır açılmaz o ana kadarki
   // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
@@ -54,6 +54,7 @@ export const BaristaLayout: React.FC = () => {
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
+      <IdleWarning left={idle.warnLeft} onStay={idle.stay} />
       {/* Üst bar sabit değil, sayfayla birlikte kayar: telefonda ekranın
           önemli bir kısmını kaplıyordu. Sabit olan alttaki menü. Çentik/durum
           çubuğu altına içerik kaymasın diye yalnızca o şerit örtülür. */}

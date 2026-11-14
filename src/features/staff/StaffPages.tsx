@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { badgeReport, fromBarista } from '../../lib/badges';
 import { useBadgeConfig } from '../../store/badgeConfig';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
@@ -66,6 +66,9 @@ interface MissedQuestion {
 
 /** Yanlış yapılan bir soru: hangi şık kaç kez seçildi, kim seçti. */
 const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; storeName: (id: string) => string }> = ({ q, onClose, storeName }) => {
+  const me = useStaffSession();
+  const seesBaristas = allowed(me.role, 'ekran.baristalar');
+  const seesPool = allowed(me.role, 'ekran.soruHavuzu');
   const counts = new Map<number | null, number>();
   q?.who.forEach((w) => counts.set(w.given, (counts.get(w.given) || 0) + 1));
   const max = Math.max(1, ...counts.values());
@@ -98,7 +101,7 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
             <div className={t.sectionLabel}>Kim yanlış yaptı</div>
             <div className={`${t.listGroup} mt-1.5`}>
               {[...q.who].sort((a, b) => b.at - a.at).map((w, i) => (
-                <Link key={i} to={`/baristalar/${w.baristaId}`} className={`${t.listRow} text-[13px]`}>
+                <Link key={i} to={seesBaristas ? `/baristalar/${w.baristaId}` : '#'} onClick={(e) => !seesBaristas && e.preventDefault()} className={`${t.listRow} text-[13px]`}>
                   <span className="flex-1 min-w-0">
                     <span className="block font-medium truncate">{w.name}</span>
                     <span className="block text-[12px] text-fg-3 truncate">{storeName(w.storeId)} · {fmtDateTime(w.at)}</span>
@@ -108,9 +111,11 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
               ))}
             </div>
           </div>
+{seesPool && (
           <Link to={`/soru-havuzu?soru=${q.questionId}`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
             <Icon name="edit" size={14} /> Soru havuzunda aç: düzelt ya da iptal et
           </Link>
+          )}
         </div>
       )}
     </Sheet>
@@ -119,6 +124,10 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
 
 export const OverviewPage: React.FC = () => {
   const { stores, modules, lessons } = useContent();
+  // Kısayollar yalnızca rolün açabildiği ekranlara gider (kapalı ekrana giden
+  // kart sessizce ana sayfaya atıyor, "bozuk" izlenimi veriyordu).
+  const me = useStaffSession();
+  const can = (p: Parameters<typeof allowed>[1]) => allowed(me.role, p);
   const { baristas, progress, attempts, assignments } = useStaffData();
   const active = baristas.filter((b) => b.active);
   const weekAttempts = attempts.filter((a) => a.submittedAt && !a.voided && a.startedAt > Date.now() - WEEK);
@@ -153,10 +162,10 @@ export const OverviewPage: React.FC = () => {
       <PageTitle title="Genel bakış" subtitle="Tüm mağazaların eğitim durumu." />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to="/baristalar" />
-        <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to="/baristalar?gorunum=tablo" />
+        <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
+        <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to={can('ekran.baristalar') ? '/baristalar?gorunum=tablo' : undefined} />
         <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama ${avgScore} puan` : 'Henüz yok'} icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to="/gorevler?durum=geciken" />
+        <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to={can('ekran.gorevler') ? '/gorevler?durum=geciken' : undefined} />
       </div>
 
       <Section label="Mağazalar">
@@ -174,7 +183,7 @@ export const OverviewPage: React.FC = () => {
               assignments.filter((a) => a.storeId === s.id).forEach((a) =>
                 team.filter((b) => !a.baristaId || a.baristaId === b.id).forEach((b) => { if (isOverdue(a, assignmentDone(a, progress[b.id]))) od++; }));
               return (
-                <Link key={s.id} to={`/magazalar/${s.id}`} className="grid grid-cols-[1.6fr_0.7fr_1.2fr_0.8fr_0.8fr] gap-3 px-4 py-3 items-center hover:bg-panel-2 transition-colors">
+                <Link key={s.id} to={can('ekran.magazalar') ? `/magazalar/${s.id}` : '#'} onClick={(e) => !can('ekran.magazalar') && e.preventDefault()} className="grid grid-cols-[1.6fr_0.7fr_1.2fr_0.8fr_0.8fr] gap-3 px-4 py-3 items-center hover:bg-panel-2 transition-colors">
                   <span className="text-[14px] font-medium truncate">{s.name}</span>
                   <span className="text-[13px] tnum text-fg-2">{team.length}</span>
                   <span className="flex items-center gap-2"><ProgressBar value={pct} className="flex-1" /><span className="text-[12px] tnum w-9 text-right">%{pct}</span></span>
@@ -213,7 +222,7 @@ export const OverviewPage: React.FC = () => {
           {attempts.filter((a) => a.submittedAt && !a.voided).length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
             <div className={t.listGroup}>
               {attempts.filter((a) => a.submittedAt && !a.voided).slice(0, 8).map((a) => (
-                <Link key={a.id} to={`/baristalar/${a.baristaId}`} className={t.listRow}>
+                <Link key={a.id} to={can('ekran.baristalar') ? `/baristalar/${a.baristaId}` : '#'} onClick={(e) => !can('ekran.baristalar') && e.preventDefault()} className={t.listRow}>
                   <Badge tone={a.passed ? 'positive' : 'negative'}>{a.score} puan</Badge>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium truncate">{a.baristaName}</div>
@@ -953,6 +962,15 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
   const [startedAt, setStartedAt] = useState(b.startedAt || new Date(b.createdAt).toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Her açılışta güncel bilgiyle başla: vazgeçilen düzenleme bir sonraki
+  // açılışta duruyor ve fark edilmeden kaydedilebiliyordu.
+  const initialStart = b.startedAt || new Date(b.createdAt).toISOString().slice(0, 10);
+  useEffect(() => {
+    if (!open) return;
+    setName(b.name); setStoreId(b.storeId); setRole(b.role); setPhone(b.phone || ''); setStartedAt(initialStart); setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const dirty = name !== b.name || storeId !== b.storeId || role !== b.role || phone !== (b.phone || '') || startedAt !== initialStart;
   const save = async () => {
     setBusy(true); setError(null);
     try {
@@ -963,7 +981,7 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
     setBusy(false);
   };
   return (
-    <Sheet open={open} title="Baristayı düzenle" onClose={onClose}
+    <Sheet open={open} title="Baristayı düzenle" onClose={onClose} dirty={!busy && dirty}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={busy}>Kaydet</button>}>
       <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} /></label>
       <label className={t.field}><span className={t.label}>Mağaza</span>
@@ -977,10 +995,13 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
         <input className={t.input} type="date" value={startedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartedAt(e.target.value)} />
         <span className="text-[11px] text-fg-3">Kıdem rozetleri buna göre hesaplanır.</span>
       </label>
-      <div className={t.segment}>
-        {BARISTA_ROLES.map((r) => (
-          <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{BARISTA_ROLE_LABEL[r]}</button>
-        ))}
+      <div className={t.field}>
+        <span className={t.label}>Rol</span>
+        <div className={t.segment}>
+          {BARISTA_ROLES.map((r) => (
+            <button key={r} onClick={() => setRole(r)} className={`${t.segmentItem} ${role === r ? t.segmentItemOn : t.segmentItemOff}`}>{BARISTA_ROLE_LABEL[r]}</button>
+          ))}
+        </div>
       </div>
       <ErrorText>{error}</ErrorText>
     </Sheet>

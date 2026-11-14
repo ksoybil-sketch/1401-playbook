@@ -281,6 +281,7 @@ export const BulletinSheet: React.FC<{
 
   return (
     <Sheet
+      dirty={!busy && ((d.title || '') !== (value.title || '') || (d.body || '') !== (value.body || ''))}
       open
       title={editing ? 'Bülteni düzenle' : 'Yeni bülten'}
       onClose={busy ? () => {} : onClose}

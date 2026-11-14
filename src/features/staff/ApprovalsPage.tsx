@@ -297,7 +297,7 @@ const RejectSheet: React.FC<{ p: Proposal | null; onClose: () => void }> = ({ p,
   useEffect(() => { setNote(''); setErr(null); }, [p]);
   if (!p) return null;
   return (
-    <Sheet open title="Öneriyi reddet" onClose={onClose}
+    <Sheet open title="Öneriyi reddet" onClose={onClose} dirty={!busy && !!note.trim()}
       footer={<button disabled={busy} className={`${t.btn} ${t.btnDanger} ${t.btnMd}`} onClick={async () => {
         if (note.trim().length < 3) { setErr('Öneriyi yapan kişi neyi düzelteceğini bilsin: kısa bir not yaz.'); return; }
         setBusy(true);

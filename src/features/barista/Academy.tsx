@@ -166,8 +166,9 @@ export const ModulePage: React.FC = () => {
             <div className="flex-1">
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
-                {mod.examSize} soru · Geçme notu {mod.passScore} · Bu hafta {left}/{EXAMS_PER_WEEK} deneme hakkın kaldı
-                {!openAttempt && nextSlotAt && <> · Yeni hakkın {fmtDateTime(nextSlotAt)} tarihinde açılır</>}
+                {mod.examSize} soru · Geçme notu {mod.passScore} · {left > 0
+                  ? `Bu hafta ${EXAMS_PER_WEEK} hakkından ${left} tanesi kaldı`
+                  : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · yenisi ${fmtDateTime(nextSlotAt)} tarihinde açılır` : ''}`}
               </div>
             </div>
           </div>

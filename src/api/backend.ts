@@ -208,6 +208,25 @@ async function updateBarista(b: Barista, patch: { name?: string; storeId?: strin
   await batch.commit();
 }
 
+/**
+ * [Telefon] Bir müdürün PIN'ini, telefondaki oturumu değiştirmeden doğrular
+ * (ikinci, bellekte yaşayan Firebase örneğiyle). Mağaza bağlantısını kaldırmak
+ * gibi ortak cihazdaki geri dönüşü zor işler için.
+ */
+async function verifyPin(b: Barista, pin: string): Promise<void> {
+  const a = secondaryAuth();
+  try {
+    await signInWithEmailAndPassword(a, b.authEmail, pinPassword(b.id, pin));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === 'auth/too-many-requests') throw new AppError('Çok fazla hatalı deneme. Birkaç dakika sonra tekrar dene.');
+    if (code === 'auth/network-request-failed') throw new AppError('İnternet bağlantısı yok.');
+    throw new AppError('PIN hatalı.');
+  } finally {
+    await a.signOut().catch(() => {});
+  }
+}
+
 /** [Telefon] Barista PIN ile giriş. */
 async function baristaSignIn(b: Barista, pin: string): Promise<void> {
   try {
@@ -289,7 +308,7 @@ async function createStaff(name: string, email: string, role: StaffRole = 'ops')
 
 export const backend = {
   createPairingCode, pairDevice, deviceSignIn, revokeDevice,
-  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, redeemInvite, changeOwnPin,
+  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, verifyPin, redeemInvite, changeOwnPin,
   bootstrapAdmin, needsBootstrap, createStaff
 };
 

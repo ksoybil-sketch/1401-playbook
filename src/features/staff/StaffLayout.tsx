@@ -10,7 +10,8 @@ import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
-import { useIdleLogout } from '../../lib/idleLogout';
+import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
+import { confirmLeave } from '../../lib/unsaved';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean; perm?: Perm }
 
@@ -35,7 +36,7 @@ export const StaffLayout: React.FC = () => {
   // Mağaza telefonundan giriş yapan yöneticinin oturumu 5 dk hareketsizlikte
   // kapanır (telefon mağaza moduna döner). Kendi cihazında çalışmaz.
   const sharedDevice = useSession((x) => !!x.device);
-  useIdleLogout(5 * 60 * 1000, sharedDevice);
+  const idle = useIdleLogout(5 * 60 * 1000, sharedDevice);
   const subscribe = useStaffData((x) => x.subscribe);
   const proposals = useStaffData((x) => x.proposals);
   const requests = useStaffData((x) => x.requests);
@@ -77,7 +78,8 @@ export const StaffLayout: React.FC = () => {
     // Bütün sınav soruları: düzelt, iptal et, sınavları yeniden puanla.
     { to: '/soru-havuzu', label: 'Soru havuzu', icon: 'target', perm: 'ekran.soruHavuzu' },
     { to: '/geri-bildirim', label: 'Geri bildirim', icon: 'message', perm: 'ekran.geriBildirim' },
-    { to: '/bildirimler', label: 'Bildirimler', icon: 'bell', perm: 'ekran.bildirimler' },
+    // Yetkiler ekranındaki adıyla aynı; Bülten'le aynı zil simgesi karışıyordu.
+    { to: '/bildirimler', label: 'E-posta bildirimleri', icon: 'send', perm: 'ekran.bildirimler' },
     // Yetkiler: kim neyi görür/değiştirir. Kahve Operasyon Direktörü ve geliştirici (sabit).
     ...(can(s.role, 'manageTeam') ? [{ to: '/yetkiler', label: 'Yetkiler', icon: 'key' as IconName }] : []),
     // Demo ve emülatör paketinde: demoyu deneyenlerin izi (yalnızca geliştirici).
@@ -96,6 +98,7 @@ export const StaffLayout: React.FC = () => {
 
   return (
     <div className="min-h-[100dvh] md:flex bg-espresso">
+      <IdleWarning left={idle.warnLeft} onStay={idle.stay} />
       {/* Masaüstü yan menü */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-line bg-bean/60 sticky top-0 h-[100dvh]">
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
@@ -110,6 +113,7 @@ export const StaffLayout: React.FC = () => {
             <NavLink
               key={n.to}
               to={n.to}
+              onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}
               end={n.to === '/'}
               className={({ isActive }) =>
                 `flex items-center gap-3 h-10 px-3 rounded-lg text-[14px] font-medium transition-colors ${isActive ? 'bg-panel-3 text-crema' : 'text-fg-2 hover:bg-panel-2 hover:text-crema'}`
@@ -154,7 +158,7 @@ export const StaffLayout: React.FC = () => {
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bean/92 backdrop-blur-xl border-t border-line pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-stretch px-1">
           {primary.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.to === '/'}
+            <NavLink key={n.to} to={n.to} end={n.to === '/'} onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}
               className={({ isActive }) => `flex-1 flex flex-col items-center justify-center gap-1 h-14 ${isActive ? 'text-crema' : 'text-fg-3'}`}>
               {({ isActive }) => (
                 <>
@@ -178,7 +182,7 @@ export const StaffLayout: React.FC = () => {
       <Sheet open={more} title="Menü" onClose={() => setMore(false)}>
         <div className={t.listGroup}>
           {rest.map((n) => (
-            <NavLink key={n.to} to={n.to} className={t.listRow}>
+            <NavLink key={n.to} to={n.to} className={t.listRow} onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}>
               <span className={t.iconChip('neutral')}><Icon name={n.icon} size={16} /></span>
               <span className="text-[14px] font-medium flex-1">{n.label}</span>
               <Badge n={n.badge} />

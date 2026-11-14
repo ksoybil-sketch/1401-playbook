@@ -104,6 +104,10 @@ export const StoreHome: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
   const [menu, setMenu] = useState(false);
+  const [unpairing, setUnpairing] = useState<{ who: Barista | null } | null>(null);
+  const [unpairBusy, setUnpairBusy] = useState(false);
+  const [unpairErr, setUnpairErr] = useState<string | null>(null);
+  const [unpairErrKey, setUnpairErrKey] = useState(0);
 
   // Ortak telefon: yanlış isim seçilince geri tuşu seçimi kaldırsın (eskiden
   // uygulama arka plana gidiyor, açılınca aynı kişinin PIN ekranı duruyordu).
@@ -226,22 +230,58 @@ export const StoreHome: React.FC = () => {
         </button>
       </div>
 
-      <Sheet open={menu} title="Cihaz" onClose={() => setMenu(false)}>
+      <Sheet open={menu} title="Cihaz" onClose={() => { setMenu(false); setUnpairing(null); }}>
         <p className="text-[13px] text-fg-2 leading-relaxed">Bu telefon <b>{storeName}</b> mağazasına bağlı.</p>
         <button className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`} onClick={() => { setMenu(false); navigate('/yonetici-girisi'); }}>
           <Icon name="shield" size={16} /> Kahve Operasyonu girişi
         </button>
-        <button
-          className={`${t.btn} ${t.btnDanger} ${t.btnLg}`}
-          onClick={async () => {
-            if (confirm('Telefonun mağaza bağlantısı kaldırılsın mı? Yeniden bağlamak için yeni bir eşleştirme kodu gerekir.')) {
-              setMenu(false);
-              await unpair();
-            }
-          }}
-        >
-          Mağaza bağlantısını kaldır
-        </button>
+        {/* Bağlantıyı kaldırmak mağaza müdürünün ya da vardiya müdürünün PIN'ini
+            ister: giriş ekranındaki bu menüye herkes ulaşabiliyor, yanlışlıkla
+            ya da şaka için basılınca telefon kimsenin giremediği hale geliyordu. */}
+        {!unpairing ? (
+          <button className={`${t.btn} ${t.btnDanger} ${t.btnLg}`} onClick={() => { setUnpairing({ who: null }); setUnpairErr(null); }}>
+            Mağaza bağlantısını kaldır
+          </button>
+        ) : !unpairing.who ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-[13px] text-fg-2 leading-relaxed">Bağlantıyı kaldırmak için mağaza müdürü ya da vardiya müdürü PIN'ini girmeli.</p>
+            {managers.length === 0 ? (
+              <p className="text-[13px] text-caution leading-relaxed">Bu mağazada PIN'i olan müdür yok. Bağlantıyı Kahve Operasyonu kaldırabilir.</p>
+            ) : (
+              <div className={t.listGroup}>
+                {managers.map((m) => (
+                  <button key={m.id} className={t.listRow} onClick={() => setUnpairing({ who: m })}>
+                    <Avatar name={m.name} size={28} />
+                    <span className="flex-1 text-left text-[14px] font-medium">{m.name}</span>
+                    <Icon name="chevronRight" size={16} className={t.rowChevron} />
+                  </button>
+                ))}
+              </div>
+            )}
+            <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => setUnpairing(null)}>Vazgeç</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-[14px] font-semibold">{unpairing.who.name} · PIN</div>
+            <PinPad length={4} busy={unpairBusy} errorKey={unpairErrKey} onComplete={async (pin) => {
+              const who = unpairing.who!;
+              setUnpairBusy(true); setUnpairErr(null);
+              try {
+                await backend.verifyPin(who, pin);
+                if (confirm('Telefonun mağaza bağlantısı kaldırılsın mı? Yeniden bağlamak için yeni bir eşleştirme kodu gerekir.')) {
+                  setMenu(false); setUnpairing(null);
+                  await unpair();
+                }
+              } catch (e) {
+                setUnpairErr(errorText(e)); setUnpairErrKey((k) => k + 1);
+              } finally {
+                setUnpairBusy(false);
+              }
+            }} />
+            <div className="w-full"><ErrorText>{unpairErr}</ErrorText></div>
+            <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => setUnpairing({ who: null })}>Geri</button>
+          </div>
+        )}
       </Sheet>
     </div>
   );

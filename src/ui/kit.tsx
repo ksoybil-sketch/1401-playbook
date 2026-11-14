@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 import { useBackHandler } from '../lib/backButton';
+import { confirmLeave } from '../lib/unsaved';
 
 /* ------------------------------------------------------------------ */
 /* Sayfa iskeleti                                                      */
@@ -23,7 +24,7 @@ export const PageTitle: React.FC<{ title: string; subtitle?: string; back?: bool
     <div className="flex flex-wrap items-start gap-3">
       {back && (
         <button
-          onClick={() => (typeof back === 'string' ? navigate(back) : navigate(-1))}
+          onClick={() => confirmLeave() && (typeof back === 'string' ? navigate(back) : navigate(-1))}
           className={`${t.iconBtn} mt-0.5`}
           aria-label="Geri"
         >
@@ -153,23 +154,31 @@ export const ErrorText: React.FC<{ children?: React.ReactNode }> = ({ children }
 /* Alttan açılan sayfa (modal)                                         */
 /* ------------------------------------------------------------------ */
 
-export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }> = ({ open, title, onClose, children, footer }) => {
+/**
+ * dirty: pencerede yazılmış ama gönderilmemiş bir şey var. O zaman dışarı
+ * dokunmak, Esc, geri tuşu ve Kapat önce sorar (eskiden yazılan sessizce
+ * gidiyordu: talep yanıtı, ret notu, bülten metni…).
+ */
+export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; dirty?: boolean }> = ({ open, title, onClose, children, footer, dirty }) => {
+  const close = () => { if (!dirty || confirm('Yazdıkların silinecek. Kapatılsın mı?')) onClose(); };
+  const closeRef = useRef(close);
+  closeRef.current = close;
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
   // Android geri tuşu önce alt sayfayı kapatır.
-  useBackHandler(open, () => { onClose(); return true; });
+  useBackHandler(open, () => { closeRef.current(); return true; });
   if (!open) return null;
   return (
-    <div className={t.modalOverlay} onClick={onClose}>
+    <div className={t.modalOverlay} onClick={close}>
       <div className={t.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <div className={t.modalGrabber} />
         <div className={t.modalHeader}>
           <h2 className={t.modalTitle}>{title}</h2>
-          <button className={t.iconBtn} onClick={onClose} aria-label="Kapat"><Icon name="close" size={16} /></button>
+          <button className={t.iconBtn} onClick={close} aria-label="Kapat"><Icon name="close" size={16} /></button>
         </div>
         {/* Gövde sınırlı yükseklikte kayıyor; içindeki öğeler dikeyde ezilmesin. */}
         <div className={`${t.modalBody} flex flex-col gap-4 [&>*]:shrink-0`}>{children}</div>

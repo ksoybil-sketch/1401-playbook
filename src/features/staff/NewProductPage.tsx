@@ -12,6 +12,8 @@ import { Icon } from '../../ui/Icon';
 import { Page, PageTitle, Section, ErrorText, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { BulletinKind, ChangeOp, LessonBlock } from '../../../shared/types';
+import { useUnsavedGuard } from '../../lib/unsaved';
+import { allowed } from '../../lib/permissions';
 
 /**
  * Yeni ürün akışı: menüye yeni bir içecek girince tek ekranda
@@ -65,6 +67,8 @@ export const NewProductPage: React.FC = () => {
   const [taskNote, setTaskNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Uzun form: yarıda kalan reçete geri okuna/geri tuşuna/menüye dokununca gidiyordu.
+  useUnsavedGuard(!busy && !!(name.trim() || photo || stepsText.trim() || tip.trim() || bBody.trim() || taskNote.trim() || quizTouched));
 
   const mod = recipeModules.find((m) => m.id === moduleId);
   const steps = stepsText.split('\n').map((s) => s.replace(/^\s*(\d+[.)]|-)\s*/, '').trim()).filter(Boolean);
@@ -149,7 +153,7 @@ export const NewProductPage: React.FC = () => {
 
   return (
     <Page>
-      <PageTitle title="Yeni ürün" back="/icerik"
+      <PageTitle title="Yeni ürün" back={allowed(me.role, 'ekran.akademi') ? '/icerik' : true}
         subtitle="Reçete, mini sınav, bülten ve görev tek seferde. Yayınlayınca baristalar hemen görür." />
 
       <Section label="1 · Ürün">

@@ -67,7 +67,7 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
   };
 
   return (
-    <Sheet open={open} title="Geri bildirim" onClose={busy ? () => {} : onClose}
+    <Sheet open={open} title="Geri bildirim" onClose={busy ? () => {} : onClose} dirty={!busy && !!(text.trim() || image)}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`} disabled={busy} onClick={send}>{busy ? <Spinner size={16} /> : 'Gönder'}</button>}>
       <div className="flex flex-col gap-2">
         {FEEDBACK_KINDS.map((k) => (
