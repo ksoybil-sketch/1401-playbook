@@ -1,6 +1,7 @@
-import type { Assignment, Attempt, Barista, Lesson, Module, Progress, Proposal, Store, StoreRequest } from '../../shared/types';
+import type { Assignment, Attempt, Barista, Lesson, Module, Progress, Proposal, Store, StoreRequest, Track } from '../../shared/types';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from './progress';
 import { closedOf } from './requestStats';
+import { taskInvalidReason, taskTargets } from './taskValidity';
 
 /**
  * Yönetim Kurulu göstergeleri. Hepsi panelin zaten okuduğu veriden
@@ -50,13 +51,25 @@ export interface BoardCtx {
   proposals: Proposal[];
   modules: Module[];
   lessons: Lesson[];
+  tracks: Track[];
 }
 
 const inP = (t: number | undefined | null, p: Period) => !!t && t >= p.from && t <= p.to;
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : null);
 /** Kurul ekranında süreler ortalama olarak gösterilir (ortanca değil). */
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-const exams = (c: BoardCtx, p: Period) => c.attempts.filter((a) => a.submittedAt && !a.voided && inP(a.submittedAt, p));
+/** Dönemdeki modül sınavları. Mini sınavlar (Yeni ürün, 3 soru) sayılmaz: başarı oranını ve puanı şişiriyordu. */
+const exams = (c: BoardCtx, p: Period) => c.attempts.filter((a) => a.submittedAt && !a.voided && !a.lessonId && inP(a.submittedAt, p));
+
+/** Gecikmiş görev sayısı: geçersiz görevler (hedef kalmadı / içerik silindi) sayılmaz. */
+function overdueOf(c: BoardCtx, list: Assignment[], team?: Barista[]): number {
+  let n = 0;
+  for (const a of list) {
+    if (taskInvalidReason(a, { modules: c.modules, lessons: c.lessons, tracks: c.tracks, baristas: c.baristas })) continue;
+    for (const b of taskTargets(a, team || c.baristas)) if (isOverdue(a, assignmentDone(a, c.progress[b.id]))) n++;
+  }
+  return n;
+}
 
 /** Barista o tarihte ekipte miydi (işe giriş ≤ t, ayrılış yok ya da > t). */
 const activeAt = (b: Barista, t: number) => b.createdAt <= t && (b.active || (b.deactivatedAt || 0) > t);
@@ -71,15 +84,11 @@ export function summary(c: BoardCtx, p: Period) {
   const left = c.baristas.filter((b) => !b.active && inP(b.deactivatedAt, p));
   // Ayrılma oranı: dönemde ayrılan / dönem başındaki ekip.
   const headStart = c.baristas.filter((b) => activeAt(b, p.from)).length;
-  let overdue = 0;
-  for (const a of c.assignments) {
-    const team = active.filter((b) => b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
-    for (const b of team) if (isOverdue(a, assignmentDone(a, c.progress[b.id]))) overdue++;
-  }
+  const overdue = overdueOf(c, c.assignments);
   return {
     activeBaristas: active.length,
     stores: c.stores.filter((s) => s.active).length,
-    avgProgress: active.length ? Math.round(active.reduce((s, b) => s + overallPercent(c.modules, c.lessons, c.progress[b.id] || EMPTY_PROGRESS), 0) / active.length) : 0,
+    avgProgress: active.length ? Math.round(active.reduce((s, b) => s + overallPercent(c.modules, c.lessons, c.progress[b.id] || EMPTY_PROGRESS, c.tracks), 0) / active.length) : 0,
     exams: ex.length,
     passRate: pct(ex.filter((a) => a.passed).length, ex.length),
     avgScore: ex.length ? Math.round(ex.reduce((s, a) => s + (a.score || 0), 0) / ex.length) : null,
@@ -105,13 +114,11 @@ export function scorecard(c: BoardCtx, p: Period) {
   const ex = exams(c, p);
   return c.stores.filter((s) => s.active).map((s) => {
     const team = c.baristas.filter((b) => b.active && b.storeId === s.id);
-    const progress = team.length ? Math.round(team.reduce((x, b) => x + overallPercent(c.modules, c.lessons, c.progress[b.id] || EMPTY_PROGRESS), 0) / team.length) : null;
+    const progress = team.length ? Math.round(team.reduce((x, b) => x + overallPercent(c.modules, c.lessons, c.progress[b.id] || EMPTY_PROGRESS, c.tracks), 0) / team.length) : null;
     const se = ex.filter((a) => a.storeId === s.id);
     const reqs = c.requests.filter((r) => r.storeId === s.id);
     const solved = reqs.filter((r) => r.status === 'done' && inP(r.closedAt || r.updatedAt, p));
-    let overdue = 0;
-    c.assignments.filter((a) => a.storeId === s.id).forEach((a) =>
-      team.filter((b) => !a.baristaId || a.baristaId === b.id).forEach((b) => { if (isOverdue(a, assignmentDone(a, c.progress[b.id]))) overdue++; }));
+    const overdue = overdueOf(c, c.assignments.filter((a) => a.storeId === s.id), team);
     return {
       store: s,
       baristas: team.length,
@@ -151,7 +158,7 @@ export function bestBarista(c: BoardCtx, p: Period) {
 
 /** Modül bazında sınav başarısı: hangi eğitimde zorlanılıyor. */
 export function modulePerformance(c: BoardCtx, p: Period) {
-  const ex = exams(c, p).filter((a) => !a.lessonId);
+  const ex = exams(c, p);
   const m = new Map<string, Attempt[]>();
   ex.forEach((a) => m.set(a.moduleId, [...(m.get(a.moduleId) || []), a]));
   return [...m.entries()].map(([id, list]) => ({
@@ -203,7 +210,7 @@ export function attention(c: BoardCtx, now = Date.now()): AttentionItem[] {
     to: `/isler?talep=${r.id}`, topic: { kind: 'request', id: r.id, title: `${r.storeName}: ${r.title}` }
   }));
   c.proposals.filter((x) => x.status === 'pending' && now - x.createdAt > 3 * DAY).forEach((x) => out.push({
-    tone: 'caution', text: `Onay bekliyor: ${x.title}`, detail: `${x.createdByName} · ${Math.round((now - x.createdAt) / DAY)} gündür`,
+    tone: 'caution', text: `Onay bekliyor: ${x.title}`, detail: `${x.createdByName ? `${x.createdByName} · ` : ''}${Math.round((now - x.createdAt) / DAY)} gündür`,
     to: '/isler?sekme=onay', topic: { kind: 'proposal', id: x.id, title: x.title }
   }));
   const card = scorecard(c, periodOf('30', now));
@@ -226,8 +233,11 @@ export function attention(c: BoardCtx, now = Date.now()): AttentionItem[] {
 
 export function downloadCsv(name: string, rows: (string | number | null | undefined)[][]) {
   const cell = (v: string | number | null | undefined) => {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    let s = v === null || v === undefined ? '' : String(v);
+    // Mağazanın yazdığı başlık =, +, -, @ ile başlıyorsa Excel onu formül olarak
+    // çalıştırır (CSV formül enjeksiyonu): metnin önüne ' konur. Sayılar dokunulmaz.
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const text = '﻿' + rows.map((r) => r.map(cell).join(';')).join('\r\n');
   const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));

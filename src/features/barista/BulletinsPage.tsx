@@ -41,7 +41,7 @@ const Card: React.FC<{ b: Bulletin; read: boolean; onOpen: () => void }> = ({ b,
           </div>
           <div className="text-[15px] font-semibold leading-snug mt-1">{b.title}</div>
           <div className="text-[12px] text-fg-3 mt-0.5">
-            {fmtDate(b.createdAt)} · {b.createdByName}
+            {fmtDate(b.createdAt)}{b.createdByName ? ` · ${b.createdByName}` : ''}
             {b.expiresAt ? ` · ${fmtDate(b.expiresAt)} tarihine kadar` : ''}
           </div>
         </div>
@@ -83,7 +83,7 @@ const Card: React.FC<{ b: Bulletin; read: boolean; onOpen: () => void }> = ({ b,
 
 export const BulletinsPage: React.FC = () => {
   const s = useBaristaSession();
-  const { progress } = useMyProgress();
+  const { progress, loading: progressLoading } = useMyProgress();
   const { items, unread, loading } = useMyBulletins();
 
   return (
@@ -92,7 +92,10 @@ export const BulletinsPage: React.FC = () => {
         title="Bülten"
         subtitle={unread > 0 ? `${unread} okunmamış duyuru` : undefined}
       />
-      {loading ? <div className="flex justify-center py-10"><Spinner /></div> : items.length === 0 ? (
+      {/* İlerleme (okundu bilgisi) gelmeden kart çizilmez: kartlar okunmamış
+          sanılıp açık doğuyor ve okunmuş bültenlere bugünün tarihiyle yeniden
+          "okundu" yazılıyordu (panelde "Okuyanlar" tarihleri kayıyordu). */}
+      {loading || progressLoading ? <div className="flex justify-center py-10"><Spinner /></div> : items.length === 0 ? (
         <Empty icon="bell" text="Şimdilik duyuru yok. Yeni bir şey olduğunda burada görünecek." />
       ) : (
         <div className="flex flex-col gap-2.5">

@@ -15,13 +15,19 @@
  *  - hiçbir deneme "havada" kalmaz, hepsi raporda görünür.
  *
  * Süre: soru başına 1,5 dakika (SECONDS_PER_QUESTION).
+ *
+ * Okuma kotası (Spark: 50.000/gün): soru havuzu yalnızca "Başla"da okunur
+ * (eskiden sınav ekranı açılır açılmaz, 60 sn sonra yeniden okunuyordu);
+ * seçilen sorular bellekte tutulur, teslimde yeniden okunmaz (bkz. asked).
  */
 import {
-  collection, doc, documentId, getDoc, getDocs, query, updateDoc, where, addDoc, writeBatch
+  collection, doc, documentId, getDoc, getDocFromServer, getDocs, getDocsFromServer, query, runTransaction, updateDoc, where, writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { stopwatch } from '../lib/perf';
 import { AppError } from './backend';
+import { useContent } from '../store/content';
+import { EMPTY_PROGRESS, isLocked } from '../lib/progress';
 import type { Attempt, AttemptReviewItem, ExamQuestion, Lesson, Module, Progress, Question } from '../../shared/types';
 import { MAX_EXAMS_PER_WEEK } from '../../shared/types';
 
@@ -116,6 +122,13 @@ function toExamQuestions(ids: string[], orders: Record<string, number[]>, qs: Ma
     });
 }
 
+/**
+ * Bu oturumda sorulan soruların cevap anahtarıyla bellekteki kopyası
+ * (deneme → soru → soru). Teslimde sorular yeniden okunmaz; uygulama
+ * kapanıp açıldıysa (bellek boş) bankadan okunur.
+ */
+const asked = new Map<string, Map<string, Question>>();
+
 export interface ExamSession {
   attemptId: string;
   passScore: number;
@@ -125,76 +138,18 @@ export interface ExamSession {
   resumed: boolean;
 }
 
-/**
- * Hız: sınavı başlatmak için gereken okumalar.
- *
- * Eskiden "Başla"ya basınca yedi okuma art arda yapılıyordu (açık denemeler
- * iki kez, ilerleme, son hafta, soru havuzu, geçmiş denemeler, sonra kayıt).
- * Yavaş bağlantıda her biri ayrı bir gidiş-dönüş demekti. Şimdi:
- *  - okumalar dörde indi ve aynı anda yapılır (Promise.all);
- *  - sınav ekranı açılır açılmaz başlar, barista "Başla"ya basana kadar
- *    çoğu zaman bitmiş olur; "Başla" yalnızca denemeyi kaydeder.
- * Hazırlık en çok PREP_TTL_MS kadar kullanılır; sonra yeniden okunur.
- */
-interface ExamPrep {
-  /** Baristanın tüm açık (teslim edilmemiş) denemeleri — tüm modüller. */
-  open: Attempt[];
-  /** Bu modüldeki tüm denemeleri: haftalık hak ve daha önce görülen sorular. */
-  moduleAttempts: Attempt[];
-  /** Sınavın soru havuzu (iptal edilenler dahil; seçimde ayıklanır). */
-  pool: Question[];
-  poolFromCache: boolean;
-  progress: Progress | null;
-}
-
-const PREP_TTL_MS = 60_000;
-let prep: { key: string; at: number; p: Promise<ExamPrep> } | null = null;
-const prepKey = (baristaId: string, moduleId: string, lessonId: string | null) => `${baristaId}|${moduleId}|${lessonId || ''}`;
-const prepFresh = (key: string) => !!prep && prep.key === key && Date.now() - prep.at < PREP_TTL_MS;
-const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
 const openAttemptsQuery = (baristaId: string) => query(
   collection(db, 'attempts'),
   where('baristaId', '==', baristaId),
   where('submittedAt', '==', null)
 );
 const asAttempt = (d: { id: string; data: () => unknown }) => ({ id: d.id, ...(d.data() as object) } as Attempt);
-
-export function prepareExam(mod: Module, baristaId: string, lessonId?: string | null): Promise<ExamPrep> {
-  const quiz = lessonId || null;
-  const key = prepKey(baristaId, mod.id, quiz);
-  if (prepFresh(key)) return prep!.p;
-  const sw = stopwatch('Sınav hazırlığı', { modül: mod.id, mini: !!quiz });
-  const t0 = tick();
-  // Her okumanın bitiş anı (başlangıçtan ms): hangisi en geç geldi?
-  const timed = <T>(name: string, p: Promise<T>) => p.then((v) => { sw.note(name, Math.round(tick() - t0)); return v; });
-  const p = Promise.all([
-    timed('açık denemeler', getDocs(openAttemptsQuery(baristaId))),
-    timed('modül denemeleri', getDocs(query(collection(db, 'attempts'), where('baristaId', '==', baristaId), where('moduleId', '==', mod.id)))),
-    timed('soru havuzu', getDocs(quiz
-      ? query(collection(db, 'questions'), where('moduleId', '==', mod.id), where('lessonId', '==', quiz))
-      : query(collection(db, 'questions'), where('moduleId', '==', mod.id)))),
-    !quiz && mod.prerequisiteId ? timed('ilerleme', getDoc(doc(db, 'progress', baristaId))) : Promise.resolve(null)
-  ]).then(([openSnap, modSnap, qSnap, pSnap]) => {
-    sw.done({ soru: qSnap.size, önbellekten: qSnap.metadata.fromCache });
-    return {
-      open: openSnap.docs.map(asAttempt),
-      moduleAttempts: modSnap.docs.map(asAttempt),
-      pool: qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question)),
-      poolFromCache: qSnap.metadata.fromCache,
-      progress: pSnap ? ((pSnap.data() as Progress | undefined) ?? null) : null
-    };
-  });
-  const entry = { key, at: Date.now(), p };
-  prep = entry;
-  p.catch(() => { if (prep === entry) prep = null; });
-  return p;
-}
+const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /** Bu modülde süresi dolmamış, açık deneme. */
 export function activeAttemptIn(open: Attempt[], moduleId: string, lessonId?: string | null): Attempt | null {
   const now = Date.now();
-  return open.find((a) => a.moduleId === moduleId && (a.lessonId || null) === (lessonId || null) && !!a.deadline && a.deadline > now) || null;
+  return open.find((a) => !a.submittedAt && a.moduleId === moduleId && (a.lessonId || null) === (lessonId || null) && !!a.deadline && a.deadline > now) || null;
 }
 
 /**
@@ -209,53 +164,85 @@ export const EXAMS_PER_WEEK = TEST_ENV ? 20 : MAX_EXAMS_PER_WEEK;
 export const QUIZ_PASS = 67;
 
 const OFFLINE_MSG = 'Sınava girmek için internet bağlantısı gerekiyor. Bağlantı gelince yeniden dene.';
+const VOIDED_MSG = 'Bu sınavın soruları güncellendi; sınav geçersiz sayıldı ve hakkından düşmedi. Yeniden başlayabilirsin.';
 
-export async function startExam(mod: Module, who: { baristaId: string; storeId: string; name: string }, lesson?: Lesson | null): Promise<ExamSession> {
+/**
+ * Sınavı başlatır ya da bu modülde açık deneme varsa ona devam eder.
+ *
+ * opts.resume: sınav ekranı (baristanın kendi denemeler dinleyicisinden)
+ * açık deneme olduğunu biliyor; soru havuzu okunmaz, yalnızca o denemenin
+ * soruları okunur.
+ *
+ * İki cihazdan aynı anda "Başla": deneme kimliği belirlenimcidir
+ * (barista_modül_ders_sıra) ve bir işlem (transaction) içinde "yoksa
+ * oluştur" ile yazılır. İkinci cihaz aynı kimliği dolu bulur ve o denemeye
+ * bağlanır; eskiden iki ayrı deneme açılıp iki hak yeniyordu.
+ */
+export async function startExam(
+  mod: Module, who: { baristaId: string; storeId: string; name: string }, lesson?: Lesson | null, opts: { resume?: boolean } = {}
+): Promise<ExamSession> {
   // Sınav sunucuda puanlanır ve soru seçimi geçmişe bakar: internetsiz
   // başlatılırsa önbellekteki boş soru listesi "soru yok" gibi görünüyordu.
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new AppError(OFFLINE_MSG);
   const quiz = lesson?.id || null;
   const sw = stopwatch('Sınav başlatma', { modül: mod.id, mini: !!quiz });
-  const ready = prepFresh(prepKey(who.baristaId, mod.id, quiz));
-  const data = await prepareExam(mod, who.baristaId, quiz);
-  sw.lap(ready ? 'hazırlık (önceden başlamıştı)' : 'hazırlık');
-  // Bundan sonra denemeler değişiyor; bir sonraki sınav yeniden okusun.
-  prep = null;
+  const t0 = tick();
+  const timed = <T>(name: string, p: Promise<T>) => p.then((v) => { sw.note(name, Math.round(tick() - t0)); return v; });
+  const poolQuery = () => getDocs(quiz
+    ? query(collection(db, 'questions'), where('moduleId', '==', mod.id), where('lessonId', '==', quiz))
+    : query(collection(db, 'questions'), where('moduleId', '==', mod.id)));
+
+  // Okumalar aynı anda yapılır (yavaş bağlantıda her biri ayrı bir gidiş-dönüş).
+  const [openSnap, modSnap, pSnap, firstPool] = await Promise.all([
+    timed('açık denemeler', getDocs(openAttemptsQuery(who.baristaId))),
+    timed('modül denemeleri', getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('moduleId', '==', mod.id)))),
+    !quiz && mod.prerequisiteId ? timed('ilerleme', getDoc(doc(db, 'progress', who.baristaId))) : Promise.resolve(null),
+    opts.resume ? Promise.resolve(null) : timed('soru havuzu', poolQuery())
+  ]);
+  sw.lap('okuma');
+  const open = openSnap.docs.map(asAttempt);
+  const moduleAttempts = modSnap.docs.map(asAttempt);
 
   // Süresi geçmiş açık denemeler arka planda kapatılır: haftalık hakka
   // zaten sayılıyorlar, beklemeye gerek yok.
   const now = Date.now();
-  const expired = data.open.filter((a) => (a.deadline && a.orders ? a.deadline <= now : now - a.startedAt > LEGACY_GRACE_MS));
+  const expired = open.filter((a) => (a.deadline && a.orders ? a.deadline <= now : now - a.startedAt > LEGACY_GRACE_MS));
   if (expired.length) void closeAttempts(expired);
 
   // Bu modülde devam eden bir deneme varsa yeni hak harcatmadan ona dön.
-  const active = activeAttemptIn(data.open, mod.id, quiz);
+  const active = activeAttemptIn(open, mod.id, quiz);
   if (active) {
-    const s = await resumeExam(active, data.pool);
-    sw.lap('devam');
+    const s = await resumeExam(active, firstPool ? firstPool.docs.map((d) => ({ id: d.id, ...d.data() } as Question)) : []);
     sw.done({ devam: true });
     return s;
   }
 
-  if (!quiz && mod.prerequisiteId && !data.progress?.modules?.[mod.prerequisiteId]) {
+  // Önkoşul modülü silinmiş ya da baristaya görünmüyorsa kilit yok sayılır
+  // (bkz. progress.ts isLocked); modül sayfası da aynı kararı verir.
+  const content = useContent.getState();
+  const progress = { ...EMPTY_PROGRESS, ...((pSnap?.data() as Progress | undefined) ?? {}) };
+  if (!quiz && isLocked(mod, progress, { modules: content.modules, tracks: content.tracks })) {
     throw new AppError('Bu sınav kilitli. Önce önceki modülü geçmelisin.');
   }
   const since = now - 7 * DAY_MS;
-  const recent = data.moduleAttempts.filter((a) => a.startedAt >= since && !a.voided && (a.lessonId || null) === quiz);
+  const recent = moduleAttempts.filter((a) => a.startedAt >= since && !a.voided && (a.lessonId || null) === quiz);
   if (recent.length >= EXAMS_PER_WEEK) {
     const oldest = Math.min(...recent.map((a) => a.startedAt));
     throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
   }
+  // Ekran açık deneme bekliyordu ama yokmuş (bu arada teslim edildi): havuzu şimdi oku.
+  const qSnap = firstPool ?? await timed('soru havuzu', poolQuery());
+  const all = qSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
   // İptal edilen (Soru havuzundan kaldırılan) sorular sınava gelmez.
-  const pool = data.pool.filter((q) => !q.disabled);
-  if (!data.pool.length && data.poolFromCache) throw new AppError(OFFLINE_MSG);
+  const pool = all.filter((q) => !q.disabled);
+  if (!all.length && qSnap.metadata.fromCache) throw new AppError(OFFLINE_MSG);
   if (!pool.length) throw new AppError(quiz ? 'Bu reçetenin mini sınavı yok.' : 'Bu modülde henüz soru yok.');
 
   const missed = new Set<string>();
   recent.forEach((a) => (a.mistakes || []).forEach((m) => missed.add(m.questionId)));
   // Bu modülde daha önce görülen sorular (tüm zamanlar).
   const seenAt = new Map<string, number>();
-  data.moduleAttempts.forEach((a) => {
+  moduleAttempts.forEach((a) => {
     (a.questionIds || []).forEach((id) => seenAt.set(id, Math.max(seenAt.get(id) || 0, a.startedAt)));
     (a.mistakes || []).forEach((m) => seenAt.set(m.questionId, Math.max(seenAt.get(m.questionId) || 0, a.startedAt)));
   });
@@ -273,38 +260,85 @@ export async function startExam(mod: Module, who: { baristaId: string; storeId: 
 
   const startedAt = Date.now();
   const deadline = startedAt + picked.length * SECONDS_PER_QUESTION * 1000;
-  const ref = await addDoc(collection(db, 'attempts'), {
+  const data = {
     baristaId: who.baristaId, baristaName: who.name, storeId: who.storeId,
     moduleId: mod.id, moduleTitle: quiz ? `${lesson!.title} · mini sınav` : mod.title, passScore, lessonId: quiz,
     startedAt, deadline, total: picked.length,
     questionIds: picked.map((q) => q.id), orders, answers: {},
     // Kural "submittedAt == null" ile bitmemiş denemeyi ayırt eder.
     submittedAt: null
-  });
+  };
+  const base = `${who.baristaId}_${mod.id}_${quiz || 'sinav'}`;
+  const firstSeq = moduleAttempts.filter((a) => (a.lessonId || null) === quiz).length + 1;
+  let outcome: { created: string } | { resume: Attempt };
+  try {
+    outcome = await runTransaction(db, async (tx) => {
+      // Sıra numarası eski (önbellekten) olabilir: dolu ve kapanmış kimlikler atlanır.
+      for (let n = firstSeq; n < firstSeq + 15; n++) {
+        const ref = doc(db, 'attempts', `${base}_${n}`);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) { tx.set(ref, data); return { created: ref.id }; }
+        const other = asAttempt(snap);
+        if (activeAttemptIn([other], mod.id, quiz)) return { resume: other };
+      }
+      throw new AppError('Sınav başlatılamadı. Tekrar dene.');
+    });
+  } catch (e) {
+    // Bağlantı koptu ya da onay yolda kayboldu: deneme sunucuda açılmış
+    // olabilir. Açık deneme varsa ona devam edilir (yeni hak yemez).
+    const fresh = await getDocsFromServer(openAttemptsQuery(who.baristaId)).catch(() => null);
+    const again = fresh ? activeAttemptIn(fresh.docs.map(asAttempt), mod.id, quiz) : null;
+    if (!again) throw e;
+    outcome = { resume: again };
+  }
+  if ('resume' in outcome) {
+    const s = await resumeExam(outcome.resume, all);
+    sw.done({ devam: true, ikinciCihaz: true });
+    return s;
+  }
   sw.lap('deneme kaydı');
   sw.done({ soru: picked.length });
 
   const qs = new Map(picked.map((q) => [q.id, q]));
+  asked.set(outcome.created, qs);
   return {
-    attemptId: ref.id, passScore, deadline, resumed: false, answers: {},
+    attemptId: outcome.created, passScore, deadline, resumed: false, answers: {},
     questions: toExamQuestions(picked.map((q) => q.id), orders, qs)
   };
 }
 
-/** Yarım kalan deneme; sorular eldeki havuzdan, eksikler bankadan. */
+/**
+ * Yarım kalan deneme; sorular eldeki havuzdan, eksikler bankadan.
+ * Bu arada iptal edilen sorular gösterilmez (teslimde kurala göre puanlanır).
+ * Hiç soru kalmadıysa (müfredat güncellemesi bütün soruları sildi / hepsi
+ * iptal) deneme hak yemeden kapatılır; eskiden ekran çöküyor, teslim
+ * edilirse 0 puanla "kaldı" yazılıyordu.
+ */
 async function resumeExam(a: Attempt, known: Question[] = []): Promise<ExamSession> {
   const ids = a.questionIds || [];
   const want = new Set(ids);
   const qs = new Map(known.filter((q) => want.has(q.id)).map((q) => [q.id, q]));
   const missing = ids.filter((id) => !qs.has(id));
   if (missing.length) (await loadQuestions(missing)).forEach((q, id) => qs.set(id, q));
+  asked.set(a.id, qs);
+  const voided = new Set(a.voidedQuestions || []);
+  const shown = ids.filter((id) => qs.has(id) && !qs.get(id)!.disabled && !voided.has(id));
+  if (!shown.length) {
+    await updateDoc(doc(db, 'attempts', a.id), { submittedAt: Date.now(), voided: true }).catch(() => {});
+    asked.delete(a.id);
+    throw new AppError(VOIDED_MSG, 'exam-voided');
+  }
   return {
     attemptId: a.id, passScore: a.passScore ?? 80, deadline: a.deadline!, resumed: true,
-    answers: a.answers || {}, questions: toExamQuestions(ids, a.orders || {}, qs)
+    answers: a.answers || {}, questions: toExamQuestions(shown, a.orders || {}, qs)
   };
 }
 
-/** Her işaretlemede çağrılır: cevaplar denemeye yazılır, uygulama kapanırsa kaybolmaz. */
+/**
+ * Cevaplar denemeye yazılır; uygulama kapanırsa kaybolmaz. Sınav ekranı
+ * bunu her işaretlemede değil, birkaç cevapta bir ve ekrandan çıkarken
+ * çağırır (her yazım açık panellere okuma olarak yansıyor).
+ */
 export async function saveAnswers(attemptId: string, answers: Record<string, number>): Promise<void> {
   await updateDoc(doc(db, 'attempts', attemptId), { answers }).catch(() => {});
 }
@@ -314,14 +348,24 @@ export interface ExamResult {
   mistakes: AttemptReviewItem[]; timedOut: boolean;
 }
 
+const resultOf = (a: Attempt): ExamResult => ({
+  score: a.score ?? 0, correct: a.correct ?? 0, total: a.total, passed: !!a.passed,
+  passScore: a.passScore ?? 80, mistakes: a.mistakes || [], timedOut: !!a.timedOut
+});
+
 /**
- * Denemeyi puanlar. Cevap anahtarı denemeden ve soru bankasından yeniden
- * kurulur; bellekte hiçbir şeye ihtiyaç yok.
+ * Denemeyi puanlar. Cevap anahtarı bu oturumda sorulan sorulardan (asked)
+ * ya da — uygulama kapanıp açıldıysa — soru bankasından kurulur.
  *
- * Hız: sınav ekranı soru kimliklerini ve baristayı bildiğinde (hint) deneme,
- * sorular ve ilerleme aynı anda okunur; puan ve ilerleme tek bir toplu
- * yazımla (writeBatch) kaydedilir. Eskiden dört-beş gidiş-dönüş art arda
- * yapılıyordu (okuma, okuma, yazma, işlem içinde okuma + yazma).
+ * İptal edilen sorular (Soru havuzunda iptal; deneme açıkken iptal edildiyse
+ * voidedQuestions'ta) yeniden puanlamayla aynı kurala uyar: doğru
+ * cevaplandıysa doğru sayılır, yanlış/boşsa hesaptan çıkar — kimsenin puanı
+ * iptal yüzünden düşmez (bkz. regrade.ts). Bankadan silinen sorular hesaba
+ * girmez. `total` puanlanan soru sayısıyla yazılır (eskiden "6/10 doğru ·
+ * 100 puan" gibi tutarsız kayıt kalıyordu). Puanlanacak soru kalmadıysa
+ * deneme hak yemeden geçersiz sayılır.
+ *
+ * Puan ve ilerleme tek bir toplu yazımla (writeBatch) kaydedilir.
  */
 export async function submitExam(
   attemptId: string,
@@ -331,9 +375,11 @@ export async function submitExam(
   const sw = stopwatch('Sınav teslimi', { süreDoldu: !!opts.timedOut });
   const t0 = tick();
   const timed = <T>(name: string, p: Promise<T>) => p.then((v) => { sw.note(name, Math.round(tick() - t0)); return v; });
+  const aRef = doc(db, 'attempts', attemptId);
+  const inMemory = asked.get(attemptId);
   const [aSnap, hinted, hintedProgress] = await Promise.all([
-    timed('deneme', getDoc(doc(db, 'attempts', attemptId))),
-    opts.questionIds?.length ? timed('sorular', loadQuestions(opts.questionIds)) : Promise.resolve(null),
+    timed('deneme', getDoc(aRef)),
+    !inMemory && opts.questionIds?.length ? timed('sorular', loadQuestions(opts.questionIds)) : Promise.resolve(null),
     opts.baristaId ? timed('ilerleme', getDoc(doc(db, 'progress', opts.baristaId))) : Promise.resolve(null)
   ]);
   sw.lap('okuma');
@@ -341,13 +387,12 @@ export async function submitExam(
   const a = { id: aSnap.id, ...aSnap.data() } as Attempt;
   if (a.submittedAt) {
     sw.done({ zatenTeslim: true });
-    return {
-      score: a.score ?? 0, correct: a.correct ?? 0, total: a.total, passed: !!a.passed,
-      passScore: a.passScore ?? 80, mistakes: a.mistakes || [], timedOut: !!a.timedOut
-    };
+    asked.delete(attemptId);
+    if (a.voided) throw new AppError(VOIDED_MSG, 'exam-voided');
+    return resultOf(a);
   }
   const ids = a.questionIds || [];
-  const qs = hinted ?? new Map<string, Question>();
+  const qs = new Map(inMemory ?? hinted ?? []);
   const missing = ids.filter((id) => !qs.has(id));
   if (missing.length) {
     (await loadQuestions(missing)).forEach((q, id) => qs.set(id, q));
@@ -355,8 +400,11 @@ export async function submitExam(
   }
   const given = answers ?? a.answers ?? {};
   const orders = a.orders || {};
+  const voided = new Set(a.voidedQuestions || []);
+  qs.forEach((q, id) => { if (q.disabled) voided.add(id); });
 
   let correct = 0;
+  let total = 0;
   const mistakes: AttemptReviewItem[] = [];
   for (const id of ids) {
     const q = qs.get(id);
@@ -364,18 +412,32 @@ export async function submitExam(
     const order = orders[id] || q.options.map((_, i) => i);
     const shown = given[id];
     const pick = Number.isInteger(shown) && order[shown] !== undefined ? order[shown] : null;
-    if (pick === q.answer) correct++;
+    const right = pick === q.answer;
+    if (voided.has(id) && !right) continue; // iptal: yanlış/boşsa hesap dışı
+    total++;
+    if (right) correct++;
     else mistakes.push({ questionId: id, prompt: q.prompt, options: q.options, given: pick, answer: q.answer, explanation: q.explanation || '' });
   }
-  const total = ids.filter((id) => qs.has(id)).length;
+  const voidedQuestions = ids.filter((id) => voided.has(id));
   const passScore = a.passScore ?? 80;
-  const score = total ? Math.round((correct / total) * 100) : 0;
-  const passed = score >= passScore;
   const now = Date.now();
   const timedOut = !!opts.timedOut;
 
   const batch = writeBatch(db);
-  batch.update(doc(db, 'attempts', attemptId), { submittedAt: now, correct, score, passed, mistakes, answers: given, timedOut });
+  if (!total) {
+    // Puanlanacak soru kalmadı: hak yemeden kapat.
+    batch.update(aRef, { submittedAt: now, voided: true, answers: given, timedOut, ...(voidedQuestions.length ? { voidedQuestions } : {}) });
+    await commitOrRecover(batch, aRef);
+    asked.delete(attemptId);
+    sw.done({ geçersiz: true });
+    throw new AppError(VOIDED_MSG, 'exam-voided');
+  }
+  const score = Math.round((correct / total) * 100);
+  const passed = score >= passScore;
+  batch.update(aRef, {
+    submittedAt: now, correct, total, score, passed, mistakes, answers: given, timedOut,
+    ...(voidedQuestions.length ? { voidedQuestions } : {})
+  });
   if (passed) {
     // Mini sınav modül geçişi sayılmaz; ayrı alanda tutulur.
     const pRef = doc(db, 'progress', a.baristaId);
@@ -386,10 +448,34 @@ export async function submitExam(
     // Daha yüksek bir puan zaten varsa düşürülmez.
     if (!prev || prev.score < score) batch.update(pRef, { [`${field}.${key}`]: { score, passedAt: prev?.passedAt || now }, updatedAt: now });
   }
-  await batch.commit();
+  const stored = await commitOrRecover(batch, aRef);
+  asked.delete(attemptId);
   sw.lap('kayıt');
   sw.done({ soru: total, geçti: passed });
+  if (stored) {
+    if (stored.voided) throw new AppError(VOIDED_MSG, 'exam-voided');
+    return resultOf(stored);
+  }
   return { score, correct, total, passed, passScore, mistakes, timedOut };
+}
+
+/**
+ * Toplu yazımı gönderir. Hata olursa denemeyi sunucudan yeniden okur: yazım
+ * sunucuda işlenip onayı yolda kaybolduysa SDK yeniden dener ve kural
+ * ("zaten teslim edildi") reddeder — ekranda "yetkin yok" görünüyor, barista
+ * yeniden başlayıp bir hak daha yakıyordu. Teslim edilmişse kayıtlı deneme
+ * döner (null: yazım başarılı).
+ */
+async function commitOrRecover(batch: ReturnType<typeof writeBatch>, aRef: ReturnType<typeof doc>): Promise<Attempt | null> {
+  try {
+    await batch.commit();
+    return null;
+  } catch (e) {
+    const fresh = await getDocFromServer(aRef).catch(() => null);
+    const f = fresh?.exists() ? ({ id: fresh.id, ...fresh.data() } as Attempt) : null;
+    if (f?.submittedAt) return f;
+    throw e;
+  }
 }
 
 /** Süresi geçmiş denemeleri kapatır (bkz. finalizeExpired). */

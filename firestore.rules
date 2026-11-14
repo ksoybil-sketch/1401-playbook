@@ -18,9 +18,19 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    /** users/{uid} belgem — yoksa (silinmiş/pasif hesap) false döner. */
+    /** users/{uid} belgem — yoksa okuma hata verir, kural reddeder. */
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function myRole() { return signedIn() ? me().role : null; }
+    /**
+     * Etkin hesap: users/{uid} belgesi var ve active == true.
+     * Pasifleştirilen hesap (ekipten kaldırılan yönetici, bağlantısı
+     * kaldırılan telefon, pasif barista, PIN'i sıfırlanınca eski hesap)
+     * Firebase Auth jetonu yenilenmeye devam etse de hiçbir şey okuyup
+     * yazamaz. İstisna: kendi users/{uid} belgesini okuması (uygulama
+     * bununla "erişimin kaldırıldı" deyip oturumu kapatır), ilk kurulum
+     * (bootstrap) ve hata kaydı.
+     */
+    function isActive() { return signedIn() && me().get('active', false) == true; }
+    function myRole() { return isActive() ? me().role : null; }
     // Yetki sıralaması — bkz. src/lib/roles.ts (ikisi birlikte değişmeli).
     //   developer  uygulama geliştiricisi; dağıtıma kadar hiçbir kurala takılmaz
     //   admin      eski sürümden kalan tam yetkili rol (developer gibi)
@@ -121,7 +131,7 @@ service cloud.firestore {
       allow update: if isAdmin()
                       || (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
                       || (canManageBaristas() && resource.data.role in storeRoles() && request.resource.data.role in storeRoles())
-                      || (signedIn() && request.auth.uid == uid
+                      || (signedIn() && request.auth.uid == uid && resource.data.get('active', false) == true
                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label']));
       allow delete: if false;
     }
@@ -143,7 +153,7 @@ service cloud.firestore {
 
     // Rozet ve başarım ayarları: herkes okur, Kahve Operasyon Direktörü yazar.
     match /config/badges {
-      allow get: if signedIn();
+      allow get: if isActive();
       allow write: if canBadges();
     }
 
@@ -158,7 +168,7 @@ service cloud.firestore {
     // emülatör) yazılır; canlı projede o belge yok, kimse yazamaz. Kayıtları
     // yalnızca uygulama geliştiricisi okur, kimse değiştirip silemez.
     match /config/demo {
-      allow get: if signedIn();
+      allow get: if isActive();
       allow write: if isAdmin();
     }
     match /demoLog/{id} {
@@ -186,7 +196,7 @@ service cloud.firestore {
     // operasyon) kendi adına gönderir; geliştirici, direktör ve bölge müdürü
     // okur, durumunu değiştirir. Silinmez: neyin bildirildiği kayıttır.
     match /feedback/{id} {
-      allow create: if signedIn() && request.resource.data.by == request.auth.uid
+      allow create: if isActive() && request.resource.data.by == request.auth.uid
         && request.resource.data.status == 'yeni'
         && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
       allow read: if canFeedback();
@@ -208,7 +218,7 @@ service cloud.firestore {
     }
 
     match /stores/{storeId} {
-      allow read: if signedIn();
+      allow read: if isActive();
       allow write: if canManageBaristas();
     }
 
@@ -231,15 +241,15 @@ service cloud.firestore {
     // (kahve dışı); diğer yollardaki değişikliği öneri olarak gönderir.
     // Eğitim yolu (track) eklemek/silmek alan sınırı olmayanlara açıktır.
     match /tracks/{id} {
-      allow read: if signedIn();
+      allow read: if isActive();
       allow write: if isAdmin() || (canPublish() && domainLimit() == null);
     }
     match /modules/{id} {
-      allow read: if signedIn();
+      allow read: if isActive();
       allow write: if isAdmin() || (canPublish() && inTrack(docData().trackId));
     }
     match /lessons/{id} {
-      allow read: if signedIn();
+      allow read: if isActive();
       allow write: if isAdmin() || (canPublish() && inModule(docData().moduleId));
     }
     // Soru bankası: sunucu olmadığı için sınav telefonda puanlanır, bu
@@ -259,7 +269,7 @@ service cloud.firestore {
       allow update: if canApproveProposals()
         || (isStaff() && resource.data.createdBy == request.auth.uid && resource.data.status == 'pending'
             && request.resource.data.status in ['pending', 'withdrawn']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status', 'baseUpdatedAt']));
       allow delete: if isAdmin();
     }
 
@@ -276,7 +286,11 @@ service cloud.firestore {
       // çıkarır; yanıt yetkisi olan "İşleme al" ile onayı atlayamaz (mesaj yazabilir).
       allow update: if (canHandleRequests()
             && (resource.data.status != 'approval' || request.resource.data.status == 'approval' || canApproveService()))
+        // Mağaza tarafı kapanmış (çözüldü/reddedildi) talebe yazamaz: talep
+        // kapalı kaldığı için mesaj panelde "Açık" listesine düşmüyor, gözden
+        // kaçıyordu. Yeni konu için yeni talep açılır (14.11.2026 kararı).
         || (isLead() && resource.data.storeId == myStoreId()
+            && !(resource.data.status in ['done', 'rejected'])
             && request.resource.data.lastSide == 'store'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide']));
       allow delete: if isAdmin();
@@ -287,6 +301,10 @@ service cloud.firestore {
       allow read: if canRead()
         || (isBarista() && resource.data.baristaId == myBaristaId())
         || (isLead() && resource.data.storeId == myStoreId());
+      // Sınav başlatma işlemi (exam.ts startExam) belirlenimci kimliğin boş
+      // olup olmadığına bakar: aynı barista + modül için iki cihazdan aynı
+      // anda "Başla" iki deneme açmasın. Var olmayan belgeyi okumak bir şey sızdırmaz.
+      allow get: if isBarista() && resource == null;
       allow create: if (isBarista() && request.resource.data.baristaId == myBaristaId()
         && request.resource.data.submittedAt == null)
         // Geliştirici: demo ortamına örnek sınav geçmişi yazmak için.
@@ -294,15 +312,21 @@ service cloud.firestore {
       // Puanlama telefonda. Deneme açıkken (submittedAt == null) barista
       // cevaplarını kaydeder; bir kez de puanlayıp kapatır. Kapandıktan
       // sonra hiçbir alan değişmez.
+      // total/voidedQuestions: teslimde iptal edilen ya da bankadan silinen
+      // sorular hesap dışı kalır, toplam da buna göre yazılır.
       allow update: if isBarista() && resource.data.baristaId == myBaristaId()
         && resource.data.submittedAt == null
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided']);
+             .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided', 'total', 'voidedQuestions']);
       // Hatalı soru iptal edilince Kahve Operasyon Direktörü geçmiş sınavları
       // o soru olmadan yeniden puanlar (Soru havuzu); yalnızca puan alanları.
       allow update: if canFixQuestions() && resource.data.submittedAt != null && (isAdmin() || inModule(resource.data.moduleId))
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['score', 'passed', 'correct', 'total', 'mistakes', 'regradedAt', 'regradeNote', 'voidedQuestions']);
+      // İptal anında açık olan denemeye yalnızca "bu soru iptal" notu düşülür;
+      // barista teslim edince soru buna göre puanlanır (bkz. exam.ts submitExam).
+      allow update: if canFixQuestions() && resource.data.submittedAt == null && (isAdmin() || inModule(resource.data.moduleId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedQuestions']);
       // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
       // Yalnızca admin, hatalı/deneme kayıtlarını temizlemek ve demo
       // ortamını sıfırlamak için silebilir.
@@ -354,7 +378,8 @@ service cloud.firestore {
       // bir koda bakılıyor) — bu durumda okumanın bir sakıncası yok.
       allow get: if resource == null || resource.data.expiresAt > request.time.toMillis();
       allow create: if canManageBaristas();
-      allow delete: if signedIn();
+      // Kodu yalnızca onunla eşleşen telefon (kullanınca) ya da Bölge Müdürü siler.
+      allow delete: if (isActive() && resource.data.uid == request.auth.uid) || canManageBaristas();
       allow update: if false;
     }
 
@@ -364,8 +389,10 @@ service cloud.firestore {
       // Eski davetleri temizlerken (PIN sıfırlama, işten çıkarma) sorgulanır.
       allow list: if canManageBaristas();
       allow create: if canManageBaristas();
-      allow delete: if isStoreSession() || canManageBaristas();
-      allow update: if false;
+      // Mağaza oturumu yalnızca kendi mağazasının davetini siler (kullanınca).
+      allow delete: if (isStoreSession() && resource.data.storeId == myStoreId()) || canManageBaristas();
+      // Barista başka mağazaya taşınınca bekleyen davet de taşınır (backend.ts updateBarista).
+      allow update: if canManageBaristas() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeId']);
     }
 
     // --- Yönetim Kurulu soruları ----------------------------------------

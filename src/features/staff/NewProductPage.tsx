@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { commitChange, canPublishNow, newId, resultText } from '../../api/changes';
+import { commitChange, canPublishOps, newId, resultText } from '../../api/changes';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { RECIPE_TRACK_ID } from '../../lib/search';
@@ -14,6 +14,9 @@ import * as t from '../../ui/tokens';
 import type { BulletinKind, ChangeOp, LessonBlock } from '../../../shared/types';
 import { useUnsavedGuard } from '../../lib/unsaved';
 import { allowed } from '../../lib/permissions';
+import { authorName } from '../../lib/roles';
+import { localDay } from '../../lib/day';
+import { useStaffData } from './staffData';
 
 /**
  * Yeni ürün akışı: menüye yeni bir içecek girince tek ekranda
@@ -29,7 +32,7 @@ type Cup = Extract<LessonBlock, { type: 'cup' }>;
 
 const slug = (s: string) => s.toLocaleLowerCase('tr').replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'urun';
-const dayInput = (ms: number) => new Date(ms - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const dayInput = (ms: number) => localDay(ms);
 const endOfDay = (v: string) => (v ? new Date(`${v}T23:59:00`).getTime() : null);
 
 const emptyCup = (): Cup => ({
@@ -45,8 +48,7 @@ export const NewProductPage: React.FC = () => {
   const navigate = useNavigate();
   const { modules, lessons, stores } = useContent();
   const recipeModules = modules.filter((m) => m.trackId === RECIPE_TRACK_ID).sort((a, b) => a.order - b.order);
-  // Yeni ürün kahve (içecek standartları) yolunda: alanı dışındaysa öneri olur.
-  const publishNow = canPublishNow({ op: 'set', col: 'modules', id: '', data: { trackId: RECIPE_TRACK_ID } });
+  const baristas = useStaffData((x) => x.baristas);
 
   const [name, setName] = useState('');
   const [moduleId, setModuleId] = useState('');
@@ -70,11 +72,22 @@ export const NewProductPage: React.FC = () => {
   // Uzun form: yarıda kalan reçete geri okuna/geri tuşuna/menüye dokununca gidiyordu.
   // Bülten metni boş formda bile kendiliğinden dolduğu için sayılmaz; yalnızca elle
   // değiştirildiyse (bTouched) kayıp sayılır. Yoksa boş formdan çıkılamıyordu.
-  useUnsavedGuard(!busy && !!(name.trim() || photo || stepsText.trim() || tip.trim() || bTouched || taskNote.trim() || quizTouched));
+  // Kategori ve bardak ölçüleri de sayılır (yalnızca ölçü girilip çıkılınca uyarı yoktu).
+  const cupTouched = cup.layers.some((l) => l.name.trim() || l.text.trim());
+  useUnsavedGuard(!busy && !!(name.trim() || moduleId || cupTouched || photo || stepsText.trim() || tip.trim() || bTouched || taskNote.trim() || quizTouched));
 
   const mod = recipeModules.find((m) => m.id === moduleId);
   const steps = stepsText.split('\n').map((s) => s.replace(/^\s*(\d+[.)]|-)\s*/, '').trim()).filter(Boolean);
   const activeStores = stores.filter((s) => s.active !== false);
+  // Aktif baristası olmayan mağazaya görev açılmaz: hiç tamamlanamaz, "Geçersiz" kalırdı.
+  const taskStores = activeStores.filter((s) => baristas.some((b) => b.active && b.storeId === s.id));
+  // Yayınla mı, onaya mı: reçetenin yanında bülten ve görev yetkisine de bakılır
+  // (bülten ya da görev yetkisi kapalıyken düğme "Yayınla" deyip iş öneriye düşüyordu).
+  const publishNow = canPublishOps([
+    { op: 'set', col: 'lessons', id: '_', data: { moduleId: mod?.id || recipeModules[0]?.id } },
+    ...(withBulletin ? [{ op: 'set' as const, col: 'bulletins' as const, id: '_' }] : []),
+    ...(withTask && taskStores.length ? [{ op: 'set' as const, col: 'assignments' as const, id: '_' }] : [])
+  ]);
 
   // Kategori seçilince bardak boyları ve sıcak/soğuk aynı kategorideki bir reçeteden gelir.
   useEffect(() => {
@@ -107,7 +120,12 @@ export const NewProductPage: React.FC = () => {
     if (!cup.layers.some((l) => l.name.trim() && l.text.trim())) return setError('En az bir malzemeyi ölçüsüyle gir.');
     if (!steps.length) return setError('Hazırlanış adımlarını yaz (her satır bir adım).');
     if (quiz.some((q) => !q.prompt.trim() || q.options.some((o) => !o.trim()))) return setError('Mini sınavda boş soru ya da şık var.');
-    if (withTask && !activeStores.length) return setError('Görev atanacak mağaza yok.');
+    // Tek şıklı ya da apaçık soru sınava girmesin: çoktan seçmelide en az 3 farklı şık.
+    const tr = (x: string) => x.trim().toLocaleLowerCase('tr');
+    if (quiz.some((q) => q.type !== 'truefalse' && new Set(q.options.map(tr)).size < 3)) return setError('Mini sınavdaki her çoktan seçmeli soruda en az 3 farklı şık olmalı.');
+    if (quiz.some((q) => new Set(q.options.map(tr)).size !== q.options.length)) return setError('Mini sınavda aynı şık iki kez yazılmış.');
+    if (withTask && due && due < localDay()) return setError('Görevin son tarihi geçmiş bir gün olamaz.');
+    if (withTask && !taskStores.length) return setError('Görev atanacak mağaza yok: aktif baristası olan mağaza bulunamadı.');
 
     const now = Date.now();
     const lessonId = `r-${slug(name)}-${now.toString(36)}`;
@@ -120,7 +138,7 @@ export const NewProductPage: React.FC = () => {
       ...(tip.trim() ? [{ type: 'tip', text: tip.trim() } as LessonBlock] : []),
       { type: 'tip', text: 'Ürünü teslim etmeden önce standarda ve sunuma uygunluğunu **gözle kontrol et**. Standart dışı ürün misafire sunulmaz.' }
     ];
-    const by = { createdAt: now, createdBy: me.uid, createdByName: me.name };
+    const by = { createdAt: now, createdBy: me.uid, createdByName: authorName(me.role, me.name) };
     const ops: ChangeOp[] = [
       // kaynak: 'panel' → "Müfredatı güncelle" bu reçeteyi ve sorularını silmez.
       { op: 'set', col: 'lessons', id: lessonId, data: { moduleId: mod.id, title: name.trim(), order, durationMin: 2, blocks, published: true, quiz: quiz.length, kaynak: 'panel' } },
@@ -134,7 +152,7 @@ export const NewProductPage: React.FC = () => {
       } });
     }
     if (withTask) {
-      for (const s of activeStores) {
+      for (const s of taskStores) {
         ops.push({ op: 'set', col: 'assignments', id: newId('assignments'), data: {
           kind: 'quiz', targetId: lessonId, title: `${name.trim()} mini sınavı`, note: taskNote.trim() || 'Yeni ürün: reçeteyi oku, mini sınavı geç.',
           storeId: s.id, baristaId: null, dueAt: endOfDay(due), ...by
@@ -144,7 +162,7 @@ export const NewProductPage: React.FC = () => {
 
     setBusy(true);
     try {
-      const res = await commitChange(ops, { kind: 'product', title: name.trim(), summary: `Yeni ürün: reçete, ${quiz.length} soruluk mini sınav${withBulletin ? ', bülten' : ''}${withTask ? `, ${activeStores.length} mağazaya görev` : ''}` });
+      const res = await commitChange(ops, { kind: 'product', title: name.trim(), summary: `Yeni ürün: reçete, ${quiz.length} soruluk mini sınav${withBulletin ? ', bülten' : ''}${withTask ? `, ${taskStores.length} mağazaya görev` : ''}` });
       toast(res === 'applied' ? `${name.trim()} yayında.` : resultText(res));
       navigate(res === 'applied' ? `/icerik/ders/${lessonId}` : '/onaylar');
     } catch (e) {
@@ -232,11 +250,14 @@ export const NewProductPage: React.FC = () => {
 
       <Section label="6 · Görev">
         <div className={`${t.card} ${t.cardPad} flex flex-col gap-3`}>
-          <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" checked={withTask} onChange={(e) => setWithTask(e.target.checked)} /> Bütün mağazalara "mini sınavı geç" görevi ({activeStores.length} mağaza)</label>
+          <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" checked={withTask} onChange={(e) => setWithTask(e.target.checked)} /> Bütün mağazalara "mini sınavı geç" görevi ({taskStores.length} mağaza)</label>
+          {withTask && taskStores.length < activeStores.length && (
+            <span className="text-[12px] text-fg-3">Aktif baristası olmayan {activeStores.length - taskStores.length} mağazaya görev açılmaz.</span>
+          )}
           {withTask && (
             <>
               <label className={t.field}><span className={t.label}>Son tarih</span>
-                <input type="date" className={t.input} value={due} onChange={(e) => setDue(e.target.value)} /></label>
+                <input type="date" className={t.input} value={due} min={localDay()} onChange={(e) => setDue(e.target.value)} /></label>
               <input className={t.input} value={taskNote} onChange={(e) => setTaskNote(e.target.value)} placeholder="Not (isteğe bağlı): Hafta sonu yoğunluğundan önce." />
             </>
           )}
@@ -246,7 +267,7 @@ export const NewProductPage: React.FC = () => {
       <ErrorText>{error}</ErrorText>
       <div className={`${t.card} ${t.cardPad} flex items-center gap-3 sticky bottom-20 md:bottom-4`}>
         <div className="flex-1 text-[13px] text-fg-2">
-          1 reçete · {quiz.length} soru{withBulletin ? ' · 1 bülten' : ''}{withTask ? ` · ${activeStores.length} görev` : ''}
+          1 reçete · {quiz.length} soru{withBulletin ? ' · 1 bülten' : ''}{withTask ? ` · ${taskStores.length} görev` : ''}
           {!publishNow && <div className="text-[12px] text-fg-3">Kahve Operasyon Direktörü onaylayınca yayına girer.</div>}
           {/* Hata sayfanın en altında kalıyordu; düğmeye formun ortasında basan görmüyordu. */}
           {error && <div className="text-[12px] text-negative mt-1">{error}</div>}

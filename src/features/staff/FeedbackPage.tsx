@@ -36,7 +36,9 @@ export const FeedbackPage: React.FC = () => {
   const [tab, setTab] = useState<FeedbackStatus | 'hepsi' | 'hatalar'>('yeni');
   // Sürüm ve otomatik hata kaydı yalnızca uygulama geliştiricisine görünür.
   const dev = me.role === 'developer' || me.role === 'admin';
-  const { data, loading } = useQueryLive<Feedback>(canRead ? query(collection(db, 'feedback'), orderBy('createdAt', 'desc')) : null, 'feedback');
+  // Son N bildirim (eskiden hepsi canlı); "Daha eski" ile büyür.
+  const [max, setMax] = useState(100);
+  const { data, loading } = useQueryLive<Feedback>(canRead ? query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(max)) : null, `feedback-${max}`);
   const list = data.filter((f) => inDomain(f) && (tab === 'hepsi' || f.status === tab));
   const errors = useQueryLive<AppError>(dev ? query(collection(db, 'hatalar'), orderBy('createdAt', 'desc'), limit(200)) : null, 'hatalar');
 
@@ -87,7 +89,7 @@ export const FeedbackPage: React.FC = () => {
                       )}
                       {f.imageUrl && <img src={f.imageUrl} alt="" className="max-h-64 self-start rounded-lg border border-line" loading="lazy" />}
                       <div className="text-[12px] text-fg-3">
-                        {f.byName}{f.storeName ? ` · ${f.storeName}` : ''} · ekran {f.path}{f.lessonTitle ? ` · ${f.lessonTitle}` : ''} · {f.device}{dev ? ` · ${f.version}` : ''}
+                        {[f.byName, f.storeName].filter(Boolean).map((x) => `${x} · `).join('')}ekran {f.path}{f.lessonTitle ? ` · ${f.lessonTitle}` : ''} · {f.device}{dev ? ` · ${f.version}` : ''}
                       </div>
                       <div className="flex gap-2">
                         {(['inceleniyor', 'cozuldu'] as const).filter((s) => s !== f.status).map((s) => (
@@ -98,6 +100,11 @@ export const FeedbackPage: React.FC = () => {
                   );
                 })}
               </div>
+            )}
+            {data.length >= max && (
+              <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start mt-2`} onClick={() => setMax(max + 100)}>
+                <Icon name="clock" size={13} /> Daha eski bildirimleri göster
+              </button>
             )}
           </Section>
           )}

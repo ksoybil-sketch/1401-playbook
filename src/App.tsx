@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
@@ -44,7 +44,22 @@ export const App: React.FC = () => {
 
   const signedIn = session.kind === 'store' || session.kind === 'barista' || session.kind === 'staff';
   const sessionKey = session.kind === 'barista' ? session.baristaId : session.kind === 'staff' ? session.uid : session.kind;
-  useEffect(() => (signedIn ? subscribeContent() : undefined), [signedIn, sessionKey, subscribeContent]);
+  // İçerik (yollar, modüller, ~100 ders, mağazalar) herkes için aynı: barista
+  // girişi/çıkışında yeniden kurulmaz. Eskiden her hesap değişiminde
+  // ('loading' arası dahil) dinleyiciler kapanıp açılıyor, 30 dakikadan uzun
+  // aradan sonraki her girişte bütün dersler yeniden okunuyordu (kota).
+  //  - Hesap değişirken gelen 'loading' arasında dinleyiciler açık kalır.
+  //  - Oturumsuz bir an olduysa (çıkış, eşleşme kaldırma; kurallar o anda
+  //    dinleyicileri reddedip kapatır) bir sonraki girişte authEpoch artar ve
+  //    dinleyiciler yeniden kurulur. Barista girişi/çıkışı hesabı doğrudan
+  //    değiştirdiği için (bkz. session.ts logout) arada oturumsuz an yoktur.
+  const authEpoch = useSession((s) => s.authEpoch);
+  const [contentOn, setContentOn] = useState(false);
+  useEffect(() => {
+    if (signedIn) setContentOn(true);
+    else if (session.kind !== 'loading') setContentOn(false);
+  }, [signedIn, session.kind]);
+  useEffect(() => (contentOn ? subscribeContent() : undefined), [contentOn, authEpoch, subscribeContent]);
   // Yetki ayarları (Yetkiler ekranı): panel ve kurul oturumlarında dinlenir.
   const subscribePerms = usePermStore((s) => s.subscribe);
   useEffect(() => (session.kind === 'staff' ? subscribePerms() : undefined), [session.kind, sessionKey, subscribePerms]);

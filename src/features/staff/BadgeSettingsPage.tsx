@@ -4,6 +4,8 @@ import { saveBadgeConfig, useBadgeConfig } from '../../store/badgeConfig';
 import { errorText } from '../../api/backend';
 import { useStaffSession } from './StaffLayout';
 import { allowed } from '../../lib/permissions';
+import { authorName } from '../../lib/roles';
+import { useUnsavedGuard } from '../../lib/unsaved';
 import { ApronBadgesSection } from './StaffPages';
 import { Icon } from '../../ui/Icon';
 import { useContent } from '../../store/content';
@@ -28,6 +30,9 @@ export const BadgeSettingsPage: React.FC = () => {
   const [themes, setThemes] = useState(() => resolveThemeRules(stored?.themes));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Kaydedilmemiş taslak: geri tuşu, menü ve sayfa yenilemesi (web'deki otomatik
+  // sürüm yenilemesi dahil) önce sorar; eskiden uyarısız siliniyordu.
+  useUnsavedGuard(dirty && !busy);
   useEffect(() => { if (!dirty) { setDraft(resolveConfig(stored)); setThemes(resolveThemeRules(stored?.themes)); } }, [stored, dirty]);
   const setTheme = (id: BaristaThemeId, patch: Partial<ThemeRule>) => {
     setThemes({ ...themes, [id]: { ...themes[id]!, ...patch } });
@@ -50,7 +55,7 @@ export const BadgeSettingsPage: React.FC = () => {
     setBusy(true);
     try {
       const out: BadgeConfig = { badges: draft.badges, titles: draft.titles, themes: Object.fromEntries(Object.entries(themes).filter(([, v]) => v)) as BadgeConfig['themes'] };
-      await saveBadgeConfig(out, me.name);
+      await saveBadgeConfig(out, authorName(me.role, me.name));
       setDirty(false);
       toast('Rozet ve başarım ayarları kaydedildi; herkes için yeniden hesaplandı', 'positive');
     } catch (e) {
@@ -77,7 +82,7 @@ export const BadgeSettingsPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Rozetler ve başarımlar"
-        subtitle={stored?.updatedAt ? `Son değişiklik: ${stored.updatedByName || ''} · ${fmtDateTime(stored.updatedAt)}` : 'Varsayılan ayarlar kullanılıyor'}
+        subtitle={stored?.updatedAt ? `Son değişiklik: ${stored.updatedByName ? `${stored.updatedByName} · ` : ''}${fmtDateTime(stored.updatedAt)}` : 'Varsayılan ayarlar kullanılıyor'}
         action={editable ? (
           <div className="flex gap-2">
             <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={reset} disabled={busy}>Varsayılana dön</button>

@@ -1,5 +1,7 @@
 import { addDoc, arrayUnion, collection, doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { useSession } from '../store/session';
+import { authorName, isDevRole } from '../lib/roles';
 import type { RequestCategory, RequestNote, RequestPriority, RequestRejectReason, RequestStatus, RequestWaitReason, StoreRequest } from '../../shared/types';
 import type { IconName } from '../ui/Icon';
 
@@ -70,6 +72,17 @@ export async function createRequest(input: {
   return r.id;
 }
 
+/**
+ * Operasyon tarafında kayda yazılan ad. Uygulama geliştiricisi hiç iz
+ * bırakmaz: adı boş yazılır (ekranlar boş adı göstermez).
+ */
+function opsName(name: string): string {
+  const s = useSession.getState().session;
+  return s.kind === 'staff' ? authorName(s.role, name) : name;
+}
+/** Oturumdaki kişi uygulama geliştiricisi mi. */
+const devSession = () => { const s = useSession.getState().session; return s.kind === 'staff' && isDevRole(s.role); };
+
 /** Yanıt ve/veya durum değişikliği. Her değişiklik iz bırakır (notes). */
 export async function addNote(req: StoreRequest, note: {
   side: 'ops' | 'store'; by: { uid: string; name: string }; text: string; status?: RequestStatus;
@@ -77,7 +90,7 @@ export async function addNote(req: StoreRequest, note: {
 }) {
   const statusChange = note.status && note.status !== req.status ? note.status : undefined;
   const n: RequestNote = {
-    at: Date.now(), by: note.by.uid, byName: note.by.name, side: note.side, text: note.text.trim(),
+    at: Date.now(), by: note.by.uid, byName: note.side === 'ops' ? opsName(note.by.name) : note.by.name, side: note.side, text: note.text.trim(),
     ...(statusChange ? { status: statusChange } : {}),
     ...(note.reason ? { reason: note.reason } : {})
   };
@@ -85,8 +98,11 @@ export async function addNote(req: StoreRequest, note: {
   // "yeni yanıt" gibi görünmesin.
   // İstisna: "Mağazadan bilgi bekleniyor" mağazanın yapması gereken bir şey;
   // mağaza müdürü bunu "yeni yanıt" olarak görmeli, yoksa bilgi hiç gelmiyordu.
+  // Bu yüzden yalnızca neden değişince updatedAt de değişmez: mağaza "yeni
+  // yanıt" kontrolü (lastSide === 'ops' && updatedAt > görülme) ve "Operasyon
+  // X önce yanıtladı" süresi updatedAt'e bakıyor.
   const reasonOnly = !n.text && !statusChange && !(note.side === 'ops' && note.reason === 'magaza');
-  const patch: Record<string, unknown> = { notes: arrayUnion(n), updatedAt: n.at, ...(reasonOnly ? {} : { lastSide: note.side }) };
+  const patch: Record<string, unknown> = { notes: arrayUnion(n), ...(reasonOnly ? {} : { updatedAt: n.at, lastSide: note.side }) };
   if (note.side === 'ops' && statusChange) {
     patch.status = statusChange;
     patch.closedAt = isClosed(statusChange) ? n.at : null;
@@ -101,11 +117,14 @@ export async function addNote(req: StoreRequest, note: {
   await updateDoc(doc(db, 'requests', req.id), patch);
 }
 
-/** Operasyon talebi açtığında yeni talep "Görüldü"ye geçer — mağaza bunu görür. */
+/**
+ * Operasyon talebi açtığında yeni talep "Görüldü"ye geçer — mağaza bunu görür.
+ * Uygulama geliştiricisi açınca hiçbir şey yazılmaz (iz bırakmaz).
+ */
 export async function markSeen(req: StoreRequest, by: { uid: string; name: string }) {
-  if (req.status !== 'open') return;
+  if (req.status !== 'open' || devSession()) return;
   await updateDoc(doc(db, 'requests', req.id), {
     status: 'seen', updatedAt: Date.now(),
-    notes: arrayUnion({ at: Date.now(), by: by.uid, byName: by.name, side: 'ops', text: '', status: 'seen' } as RequestNote)
+    notes: arrayUnion({ at: Date.now(), by: by.uid, byName: opsName(by.name), side: 'ops', text: '', status: 'seen' } as RequestNote)
   });
 }

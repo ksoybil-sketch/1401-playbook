@@ -9,7 +9,7 @@ import { ocrPagesToLesson, type OcrPage } from '../../lib/ocrLayout';
 import { blocksToLessons, pdfLinesToLessons } from '../../lib/pdfLesson';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
-import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
+import { Sheet, Spinner, ErrorText, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { IS_ANDROID_APP } from '../../lib/backButton';
 
@@ -78,6 +78,12 @@ export const ImportLessonSheet: React.FC<{
   const [pending, setPending] = useState<{ file: File; pages: number } | null>(null);
   const [range, setRange] = useState({ from: 1, to: ASK_RANGE_OVER });
   const inputRef = useRef<HTMLInputElement>(null);
+  /**
+   * Okuma (yapay zekâ, OCR) dakikalar sürebiliyor ve iptal yolu yoktu: pencere
+   * kapanmıyordu. Kapatınca bu sayaç artar, yarım kalan okumanın sonucu yok sayılır.
+   */
+  const token = useRef(0);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => { if (open) getAiKeyStatus().then(setAi); }, [open]);
   const aiKey = ai?.reason === 'ok' ? ai.key : null;
@@ -98,6 +104,8 @@ export const ImportLessonSheet: React.FC<{
   };
 
   const run = async (file: File, pdfRange: { from: number; to: number } | null, total: number) => {
+    const my = ++token.current;
+    const live = () => my === token.current;
     setBusy(true);
     setError(null);
     setResult(null);
@@ -105,6 +113,7 @@ export const ImportLessonSheet: React.FC<{
     const base = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
     const moduleTitle = modules.find((m) => m.id === moduleId)?.title;
     const finish = (r: ImportResult) => {
+      if (!live()) return;
       if (!r.questions) {
         r.questions = r.lessons.flatMap((l, i): DraftQuestion[] => blocksToQuestions(l.blocks, l.title).map((q) => ({ ...q, lesson: i })));
         r.source = 'rules';
@@ -146,10 +155,9 @@ export const ImportLessonSheet: React.FC<{
         finish(rowsToLesson(rows, base));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : errorText(e));
+      if (live()) setError(e instanceof Error ? e.message : errorText(e));
     } finally {
-      setBusy(false);
-      setProgress('');
+      if (live()) { setBusy(false); setProgress(''); }
     }
   };
 
@@ -228,28 +236,40 @@ export const ImportLessonSheet: React.FC<{
           durationMin: l.durationMin,
           blocks: l.blocks,
           // İçe aktarılan ders taslak gelir: önce gözden geçirilsin.
-          published: false
+          published: false,
+          // kaynak 'panel': "Müfredatı güncelle" dosyadan eklenen dersi silmesin.
+          kaynak: 'panel'
         }
       }));
       // Seçilen sorular modülün soru bankasına aynı değişiklikle girer;
       // onaya gidiyorsa dersler ve sorular tek öneri olarak gider.
       const qOps = chosenQ.map(({ q }) => ({
         op: 'set' as const, col: 'questions' as const, id: newId('questions'),
-        data: { moduleId, type: q.type, prompt: q.prompt, options: q.options, answer: q.answer, explanation: q.explanation, kind: q.kind, imageUrl: '' }
+        data: { moduleId, type: q.type, prompt: q.prompt, options: q.options, answer: q.answer, explanation: q.explanation, kind: q.kind, imageUrl: '', kaynak: 'panel' }
       }));
       const n = chosenLessons.length;
       const title = n > 1 ? `${chosenLessons[0].l.title} ve ${n - 1} ders daha` : chosenLessons[0].l.title;
-      const r = await commitChange([...lessonOps, ...qOps], {
+      setSaving(true);
+      let r: 'applied' | 'proposed' | null = null;
+      const q = await sendOrQueue(commitChange([...lessonOps, ...qOps], {
         kind: 'lesson', title,
         summary: `Dosyadan ${n} ders${qOps.length ? ` + ${qOps.length} soru` : ''} · ${fileName}`
-      });
-      toast(resultText(r, n > 1 ? `${n} ders taslak olarak oluşturuldu.` : 'Ders taslak olarak oluşturuldu.'), 'positive');
+      }).then((x) => { r = x; }));
+      if (q === 'queued') {
+        // Çevrimdışı: yazım kuyrukta, pencere kapanabilir.
+        toast(QUEUED_TEXT, 'positive');
+        reset();
+        onClose();
+        return;
+      }
+      toast(resultText(r!, n > 1 ? `${n} ders taslak olarak oluşturuldu.` : 'Ders taslak olarak oluşturuldu.'), 'positive');
       onCreated(ids[0], r === 'proposed' ? lastProposalId : null, { count: n, moduleId });
       reset();
     } catch (e) {
       setError(errorText(e));
     } finally {
       setBusy(false);
+      setSaving(false);
     }
   };
 
@@ -274,7 +294,7 @@ export const ImportLessonSheet: React.FC<{
     <Sheet
       open
       title="Dosyadan ders ekle"
-      onClose={busy ? () => {} : () => { reset(); onClose(); }}
+      onClose={saving ? () => {} : () => { token.current++; setBusy(false); setProgress(''); reset(); onClose(); }}
       footer={
         <div className="flex gap-2 w-full">
           {/* APK'da dosya indirme çalışmıyor; şablon yalnızca tarayıcıda. */}

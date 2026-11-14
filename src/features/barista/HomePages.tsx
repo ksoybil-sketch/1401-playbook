@@ -11,7 +11,8 @@ import { collection, query, where, orderBy, limit, deleteDoc, doc } from 'fireba
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { assignmentDone, assignmentDoneAt, isOverdue, nextLesson, overallPercent, moduleState, EMPTY_PROGRESS } from '../../lib/progress';
+import { assignmentDone, assignmentDoneAt, isOverdue, nextLesson, overallPercent, moduleState, visibleModules, EMPTY_PROGRESS } from '../../lib/progress';
+import { isTaskValid, taskInvalidReason, TASK_INVALID_LABEL } from '../../lib/taskValidity';
 import { Icon, type IconName } from '../../ui/Icon';
 import { HUE, trackHue, type Hue } from '../../ui/palette';
 import { RECIPE_TRACK_ID } from '../../lib/search';
@@ -58,23 +59,27 @@ export const HomePage: React.FC = () => {
   const { items: assignments } = useMyAssignments();
   const { items: bulletins, unread: unreadBulletins } = useMyBulletins();
   const { report } = useMyBadgeReport();
-  const pct = overallPercent(modules, lessons, progress);
+  const pct = overallPercent(modules, lessons, progress, tracks);
   const next = nextLesson(tracks, modules, lessons, progress);
+  const scope = { modules, tracks };
   // Son tarihe göre: gecikenler ve yaklaşanlar önce, tarihsizler sonda.
-  const open = assignments.filter((a) => !assignmentDone(a, progress))
+  // Geçersiz görevler (bağlı ders/modül silinmiş ya da görünmüyor) listede
+  // yer almaz: bitirilemezler, gecikmiş de sayılmazlar (bkz. lib/taskValidity.ts).
+  const open = assignments.filter((a) => !assignmentDone(a, progress) && isTaskValid(a, { modules, lessons, tracks }))
     .sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
   const [allTasks, setAllTasks] = useState(false);
   // "Tüm dersler bitti" yalnızca gerçekten bittiyse: kilitli modüller
   // varken yeni barista müfredatın çoğu önündeyken bunu görüyordu.
-  const lockedLeft = useMemo(() => modules.some((m) => m.published && tracks.some((tr) => tr.id === m.trackId && tr.published) && moduleState(m, lessons, progress).locked), [modules, tracks, lessons, progress]);
+  const lockedLeft = useMemo(() => visibleModules(modules, tracks).some((m) => moduleState(m, lessons, progress, { modules, tracks }).locked), [modules, tracks, lessons, progress]);
   const latestBulletin = bulletins.find((b) => !progress.bulletins?.[b.id]) || bulletins[0];
-  const pubModules = modules.filter((m) => m.published);
+  // Baristaya görünen modüller: modül ve yolu yayında.
+  const pubModules = visibleModules(modules, tracks);
   const recipeCount = lessons.filter((l) => l.published && pubModules.some((m) => m.id === l.moduleId && m.trackId === RECIPE_TRACK_ID)).length;
 
   // Girmesi gereken sınav: önce atanmış olanlar, sonra dersleri biten modül,
   // yoksa üzerinde çalıştığı modül (kaç ders kaldığıyla).
   const exam = useMemo(() => {
-    const states = pubModules.map((m) => ({ mod: m, st: moduleState(m, lessons, progress) })).filter((x) => !x.st.locked && !x.st.passed);
+    const states = pubModules.map((m) => ({ mod: m, st: moduleState(m, lessons, progress, scope) })).filter((x) => !x.st.locked && !x.st.passed);
     const assigned = open.filter((a) => a.kind === 'module').map((a) => states.find((x) => x.mod.id === a.targetId)).filter(Boolean) as typeof states;
     const ready = states.filter((x) => x.st.lessons.length > 0 && x.st.lessonsDone === x.st.lessons.length);
     const pick = assigned.find((x) => x.st.lessonsDone === x.st.lessons.length) || ready[0] || assigned[0]
@@ -244,7 +249,7 @@ const AssignmentRow: React.FC<{ a: Assignment; progress: Progress }> = ({ a, pro
       <div className="flex-1 min-w-0">
         <div className="text-[14px] font-medium leading-snug">{a.title}</div>
         <div className="text-[12px] text-fg-3 mt-0.5 truncate">
-          {a.createdByName}{a.note ? ` · ${a.note}` : ''}
+          {[a.createdByName, a.note].filter(Boolean).join(' · ')}
         </div>
       </div>
       {a.dueAt && <Badge tone={overdue ? 'negative' : 'neutral'}>{overdue ? 'Gecikti' : relDays(a.dueAt)}</Badge>}
@@ -368,14 +373,18 @@ export const TeamPage: React.FC = () => {
   const memberB = baristas.find((b) => b.id === member) || null;
 
   // Mağazanın görevleri: açıklar son tarihe göre (gecikenler üstte), bitenler sonda.
+  // Geçersiz görev (hedefi kalmamış ya da bağlı içeriği silinmiş) açık ya da
+  // gecikmiş sayılmaz; kapananlarla birlikte "Geçersiz" etiketiyle durur.
   const taskRows = assignments.map((a) => {
     const targets = baristas.filter((b) => !a.baristaId || a.baristaId === b.id);
     const done = targets.filter((b) => assignmentDone(a, progressOf(b.id)));
-    return { a, targets, done, complete: targets.length > 0 && done.length === targets.length };
-  }).sort((x, y) => Number(x.complete) - Number(y.complete) || (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt);
+    const invalid = taskInvalidReason(a, { modules, lessons, tracks, baristas });
+    return { a, targets, done, invalid, complete: !invalid && targets.length > 0 && done.length === targets.length };
+  }).sort((x, y) => Number(x.complete || !!x.invalid) - Number(y.complete || !!y.invalid) || (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt);
   const [showDoneTasks, setShowDoneTasks] = useState(false);
-  const openTaskRows = taskRows.filter((r) => !r.complete);
-  const doneTaskRows = taskRows.filter((r) => r.complete);
+  const openTaskRows = taskRows.filter((r) => !r.complete && !r.invalid);
+  const doneTaskRows = taskRows.filter((r) => r.complete || r.invalid);
+  const validTask = (a: Assignment) => isTaskValid(a, { modules, lessons, tracks });
 
   return (
     <Page>
@@ -389,8 +398,8 @@ export const TeamPage: React.FC = () => {
         <div className={t.listGroup}>
           {sorted.map((b) => {
             const p = progressOf(b.id);
-            const pct = p ? overallPercent(modules, lessons, p) : 0;
-            const mine = assignments.filter((a) => !a.baristaId || a.baristaId === b.id);
+            const pct = p ? overallPercent(modules, lessons, p, tracks) : 0;
+            const mine = assignments.filter((a) => (!a.baristaId || a.baristaId === b.id) && validTask(a));
             const openTasks = mine.filter((a) => !assignmentDone(a, p)).length;
             const overdue = mine.filter((a) => isOverdue(a, assignmentDone(a, p))).length;
             const report = badgeReport({
@@ -422,22 +431,23 @@ export const TeamPage: React.FC = () => {
         ) : (
           <div className={t.listGroup}>
             {openTaskRows.length === 0 && <div className={`${t.listRowStatic} text-[13px] text-fg-3`}>Açık görev yok, hepsi tamamlandı.</div>}
-            {[...openTaskRows, ...(showDoneTasks ? doneTaskRows : [])].map(({ a, targets, done, complete }) => {
-              const late = !complete && !!a.dueAt && a.dueAt < Date.now();
+            {[...openTaskRows, ...(showDoneTasks ? doneTaskRows : [])].map(({ a, targets, done, complete, invalid }) => {
+              const late = !complete && !invalid && !!a.dueAt && a.dueAt < Date.now();
               const waiting = targets.filter((b) => !done.includes(b));
               return (
-                <div key={a.id} className={`${t.listRowStatic} ${complete ? 'opacity-60' : ''}`}>
-                  <span className={t.iconChip(complete ? 'positive' : late ? 'negative' : 'caution')}><Icon name={complete ? 'check' : a.kind === 'lesson' ? 'book' : 'clipboard'} size={15} /></span>
+                <div key={a.id} className={`${t.listRowStatic} ${complete || invalid ? 'opacity-60' : ''}`}>
+                  <span className={t.iconChip(complete ? 'positive' : invalid ? 'neutral' : late ? 'negative' : 'caution')}><Icon name={complete ? 'check' : invalid ? 'close' : a.kind === 'lesson' ? 'book' : 'clipboard'} size={15} /></span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-medium leading-snug">{a.title}</div>
                     <div className="text-[12px] text-fg-3 mt-0.5">
-                      {a.baristaId ? (baristas.find((b) => b.id === a.baristaId)?.name || '—') : 'Tüm mağaza'} · {done.length}/{targets.length} bitirdi · Atayan: {a.createdBy === s.uid ? 'sen' : a.createdByName}
+                      {a.baristaId ? (baristas.find((b) => b.id === a.baristaId)?.name || '—') : 'Tüm mağaza'} · {done.length}/{targets.length} bitirdi {a.createdBy === s.uid ? ' · Atayan: sen' : a.createdByName ? ` · Atayan: ${a.createdByName}` : ''}
                     </div>
-                    {!complete && targets.length > 1 && waiting.length > 0 && (
+                    {invalid && <div className="text-[11.5px] text-fg-3 mt-0.5">Geçersiz: {TASK_INVALID_LABEL[invalid]}</div>}
+                    {!complete && !invalid && targets.length > 1 && waiting.length > 0 && (
                       <div className="text-[11.5px] text-fg-3 mt-0.5">Bekleyen: {waiting.map((b) => b.name.split(' ')[0]).join(', ')}</div>
                     )}
                   </div>
-                  {!complete && a.dueAt && <Badge tone={late ? 'negative' : 'neutral'}>{late ? 'Gecikti' : relDays(a.dueAt)}</Badge>}
+                  {invalid ? <Badge>Geçersiz</Badge> : !complete && a.dueAt && <Badge tone={late ? 'negative' : 'neutral'}>{late ? 'Gecikti' : relDays(a.dueAt)}</Badge>}
                   {a.createdBy === s.uid && (
                     <button className={t.iconBtn} aria-label="Görevi sil" onClick={async () => {
                       if (!confirm(`“${a.title}” görevi silinsin mi?`)) return;
@@ -449,7 +459,7 @@ export const TeamPage: React.FC = () => {
             })}
             {doneTaskRows.length > 0 && (
               <button onClick={() => setShowDoneTasks((v) => !v)} className={`${t.listRow} justify-center text-[13px] text-fg-2`}>
-                {showDoneTasks ? 'Tamamlananları gizle' : `Tamamlananları göster · ${doneTaskRows.length}`}
+                {showDoneTasks ? 'Kapananları gizle' : `Tamamlanan ve geçersizleri göster · ${doneTaskRows.length}`}
               </button>
             )}
           </div>
@@ -479,7 +489,7 @@ export const TeamPage: React.FC = () => {
 
       <MemberSheet b={memberB} onClose={() => setMember(null)} progress={memberB ? progressOf(memberB.id) : undefined}
         attempts={memberB ? attempts.filter((a) => a.baristaId === memberB.id && a.submittedAt && !a.voided) : []}
-        tasks={memberB ? assignments.filter((a) => !a.baristaId || a.baristaId === memberB.id) : []} />
+        tasks={memberB ? assignments.filter((a) => (!a.baristaId || a.baristaId === memberB.id) && validTask(a)) : []} />
     </Page>
   );
 };
@@ -497,6 +507,7 @@ const MemberSheet: React.FC<{ b: Barista | null; onClose: () => void; progress?:
   const [busy, setBusy] = useState(false);
   const p = progress || { ...EMPTY_PROGRESS, baristaId: b?.id || '', storeId: s.storeId };
   const mods = tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published));
+  const scope = { modules, tracks };
   const pinTitle = b ? `${b.name} için PIN sıfırlama` : '';
   const pinOpen = requests.find((r) => r.category === 'personel' && r.title === pinTitle && !isClosed(r.status));
 
@@ -524,7 +535,7 @@ const MemberSheet: React.FC<{ b: Barista | null; onClose: () => void; progress?:
           <div className="flex items-center gap-3">
             <Avatar name={b.name} size={44} dim={b.pinPending} />
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] text-fg-2">{BARISTA_ROLE_LABEL[b.role]} · %{overallPercent(modules, lessons, p)} ilerleme</div>
+              <div className="text-[13px] text-fg-2">{BARISTA_ROLE_LABEL[b.role]} · %{overallPercent(modules, lessons, p, tracks)} ilerleme</div>
               {b.pinPending && <div className="text-[12px] text-caution mt-0.5">Davet kodunu henüz kullanmadı</div>}
             </div>
           </div>
@@ -533,7 +544,7 @@ const MemberSheet: React.FC<{ b: Barista | null; onClose: () => void; progress?:
             <span className={t.sectionLabel}>Modüller</span>
             <div className={t.listGroup}>
               {mods.map((m) => {
-                const st = moduleState(m, lessons, p);
+                const st = moduleState(m, lessons, p, scope);
                 return (
                   <div key={m.id} className={t.listRowStatic}>
                     <span className={t.iconChip(st.passed ? 'positive' : st.lessonsDone ? 'caution' : 'neutral')}>

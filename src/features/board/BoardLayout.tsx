@@ -20,8 +20,6 @@ import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number }
 
-/** Dönem raporları için: geçen yılın başından bu yana bütün sınavlar. */
-const since = () => new Date(new Date().getFullYear() - 1, 0, 1).getTime();
 
 export const BoardLayout: React.FC = () => {
   const s = useStaffSession();
@@ -34,7 +32,11 @@ export const BoardLayout: React.FC = () => {
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
   useStaffTheme();
-  useEffect(() => subscribe({ attemptsSince: since(), requestLimit: 1000 }), [subscribe]);
+  // Panelle aynı küçük canlı veri (baristalar, ilerleme, açık talepler, bekleyen
+  // öneriler). Dönem sınavları ve talepleri sayfada, seçilen dönem için tek
+  // seferlik okunur (eskiden geçen yılın 1 Ocak'ından beri bütün sınavlar canlı
+  // dinleniyordu: açılış başına binlerce okuma, her cevap işaretlemesi de okuma).
+  useEffect(() => subscribe(), [subscribe]);
   useEffect(() => { setMore(false); window.scrollTo(0, 0); }, [pathname]);
   const { data: questions } = useBoardQuestions();
   // Yanıtı gelmiş, kurulun henüz kapatmadığı sorular.

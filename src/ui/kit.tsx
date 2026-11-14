@@ -205,6 +205,32 @@ export const useToast = create<ToastState>((set) => ({
 }));
 export const toast = (text: string, tone?: ToastState['tone']) => useToast.getState().show(text, tone);
 
+/**
+ * Firestore yazımı (addDoc, updateDoc, batch.commit) sunucu onayı gelene kadar
+ * bitmez; çevrimdışıyken yazım yerel kuyruğa alınır ama promise hiç dönmez.
+ * "Gönderiliyor" diye bekleyen pencere bu yüzden kapanamıyordu (X, dışarı
+ * dokunma ve geri tuşu yutuluyordu).
+ *
+ * Bu yardımcı yazımı bir süreyle yarıştırır: sunucu onayladıysa 'sent',
+ * bağlantı yoksa ya da süre dolduysa 'queued' döner (yazım kuyrukta durur,
+ * bağlantı gelince kendiliğinden gider). Sonradan gelen hata (ör. yetki)
+ * kaybolmasın diye onLateError ile bildirilir.
+ */
+export async function sendOrQueue(p: Promise<unknown>, opts: { ms?: number; onLateError?: (e: unknown) => void } = {}): Promise<'sent' | 'queued'> {
+  let settled = false;
+  const tracked = p.then(() => { settled = true; return 'sent' as const; }, (e) => { settled = true; throw e; });
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const timer = new Promise<'queued'>((res) => setTimeout(() => res('queued'), offline ? 1500 : opts.ms ?? 8000));
+  const r = await Promise.race([tracked, timer]);
+  if (r === 'queued' && !settled) {
+    tracked.catch((e) => (opts.onLateError ? opts.onLateError(e) : toast('Gönderilemedi: bağlantı geldiğinde sunucu kabul etmedi.', 'negative')));
+  }
+  return r;
+}
+
+/** Kuyruğa alınan yazım için kullanıcıya gösterilen metin. */
+export const QUEUED_TEXT = 'Bağlantı yok: kaydedildi, bağlantı gelince gönderilecek.';
+
 export const ToastHost: React.FC = () => {
   const { text, tone } = useToast();
   if (!text) return null;
@@ -228,8 +254,15 @@ export const fmtDate = (ms?: number | null) =>
 export const fmtDateTime = (ms?: number | null) =>
   ms ? new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
-export function relDays(ms: number): string {
-  const d = Math.round((ms - Date.now()) / 86400000);
+/**
+ * "bugün", "yarın", "3 gün sonra" — TAKVİM gününe göre. Eskiden milisaniye
+ * farkı yuvarlanıyordu: son tarihi bugün 23:59 olan görev sabah "yarın",
+ * yarın olan "2 gün sonra" görünüyordu.
+ */
+export function relDays(ms: number, now = Date.now()): string {
+  const day = (x: number) => { const t = new Date(x); return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime(); };
+  // Yaz saati geçişinde gün 23/25 saat olabilir: yuvarlama farkı tam güne indirir.
+  const d = Math.round((day(ms) - day(now)) / 86400000);
   if (d === 0) return 'bugün';
   if (d === 1) return 'yarın';
   if (d === -1) return 'dün';

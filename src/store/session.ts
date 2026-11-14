@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
 import { backend } from '../api/backend';
 import { loadDevice, saveDevice, clearDevice, type StoredDevice } from '../api/device';
@@ -28,6 +28,14 @@ export type Session =
 interface SessionState {
   session: Session;
   device: StoredDevice | null;
+  /**
+   * Oturumsuz bir aradan (çıkış, hesap değişimi sırasında boşluk) sonraki
+   * her girişte artar. İçerik dinleyicileri (App.tsx) yalnızca bu değişince
+   * yeniden kurulur: oturumsuz anda kurallar reddettiği için dinleyiciler
+   * kapanmış olur. Barista girişi/çıkışı hesabı doğrudan değiştirdiği için
+   * (arada oturumsuz an yok) 96 dersin dinleyicisi baştan kurulmaz.
+   */
+  authEpoch: number;
   boot: () => () => void;
   pair: (code: string) => Promise<void>;
   baristaLogin: (barista: Barista, pin: string) => Promise<void>;
@@ -41,18 +49,57 @@ interface SessionState {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Profil okumasının sonucu. "Pasif" ve "yok" yalnızca SUNUCUDAN doğrulanınca
+ * döner: önbellekten gelen ya da okunamayan profil eskiden "pasif hesap"
+ * sayılıyor, oturum kapanıyor ve mağaza telefonunun eşleşmesi siliniyordu
+ * (zayıf bağlantıda "Failed to get document because the client is offline").
+ */
+type ProfileRead =
+  | { kind: 'ok'; profile: Profile }
+  | { kind: 'inactive' }
+  | { kind: 'missing' }
+  | { kind: 'error' };
+
 /** Profil belgesini okur; hesap yeni açıldıysa (yazma henüz bitmediyse) kısa süre bekler. */
-async function readProfile(uid: string): Promise<Profile | null> {
+async function readProfile(uid: string): Promise<ProfileRead> {
+  const ref = doc(db, 'users', uid);
+  let sawCacheOnly = false;
   for (let i = 0; i < 6; i++) {
     try {
-      const snap = await getDoc(doc(db, 'users', uid));
-      if (snap.exists()) return { id: snap.id, ...snap.data() } as Profile;
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const profile = { id: snap.id, ...snap.data() } as Profile;
+        if (profile.active) return { kind: 'ok', profile };
+        if (!snap.metadata.fromCache) return { kind: 'inactive' };
+        sawCacheOnly = true;
+      } else if (snap.metadata.fromCache) {
+        sawCacheOnly = true;
+      }
+      // Sunucu "belge yok" dedi: hesap yeni açıldıysa yazma birazdan gelir.
     } catch {
-      /* izin yok ya da çevrimdışı — tekrar dene */
+      /* çevrimdışı ya da geçici hata — tekrar dene */
+      sawCacheOnly = true;
     }
     await sleep(400);
   }
-  return null;
+  // Son karar sunucudan: önbellekteki "pasif/yok" ile oturum kapatılmaz.
+  try {
+    const snap = await getDocFromServer(ref);
+    if (!snap.exists()) return { kind: 'missing' };
+    const profile = { id: snap.id, ...snap.data() } as Profile;
+    return profile.active ? { kind: 'ok', profile } : { kind: 'inactive' };
+  } catch {
+    return sawCacheOnly ? { kind: 'error' } : { kind: 'missing' };
+  }
+}
+
+/** Kimlik bilgisi gerçekten geçersiz (eşleşme silinmeli) mi? Ağ/zaman aşımı/iç hata değil. */
+const BAD_CREDENTIAL = ['auth/invalid-credential', 'auth/user-not-found', 'auth/user-disabled', 'auth/wrong-password', 'auth/invalid-email'];
+
+/** Kısa bildirim (ui/kit yalnızca gerektiğinde yüklenir; bu dosya node testlerinde de çalışır). */
+function notify(text: string) {
+  import('../ui/kit').then((m) => m.toast(text, 'negative')).catch(() => {});
 }
 
 export const useSession = create<SessionState>((set, get) => {
@@ -61,29 +108,67 @@ export const useSession = create<SessionState>((set, get) => {
       await backend.deviceSignIn(device);
     } catch (e) {
       const code = (e as { code?: string }).code || '';
-      if (code === 'auth/network-request-failed') {
-        set({ session: { kind: 'offline' } });
-      } else {
+      if (BAD_CREDENTIAL.includes(code)) {
         // Hesap silinmiş / şifre geçersiz — telefon yeniden eşleştirilmeli.
         await clearDevice();
         set({ device: null, session: { kind: 'unpaired' } });
+      } else {
+        // Ağ, zaman aşımı, "çok fazla deneme", Firebase iç hatası…: eşleşme
+        // silinmez, "Bağlantı yok" ekranından yeniden denenir. Eskiden her
+        // barista çıkışında küçük bir ağ aksaklığı telefonu kullanılamaz yapıyordu.
+        set({ session: { kind: 'offline' } });
       }
     }
   }
 
-  async function resolveUser(user: User) {
-    const profile = await readProfile(user.uid);
+  /** Hesap pasif ya da silinmiş (sunucudan doğrulandı): oturumu kapat. */
+  async function dropAccount(uid: string) {
     const device = get().device;
+    if (device && device.uid === uid) {
+      // Bu telefonun kendi hesabı: bağlantısı kaldırılmış.
+      await clearDevice();
+      set({ device: null });
+      notify('Bu telefonun mağaza bağlantısı kaldırıldı.');
+    } else {
+      notify('Erişimin kaldırıldı. Sorun olduğunu düşünüyorsan yöneticine danış.');
+    }
+    if (auth.currentUser?.uid === uid) await signOut(auth);
+  }
 
-    if (!profile || !profile.active) {
-      // Pasifleştirilmiş hesap. Bu telefonun kendi hesabıysa bağlantı kaldırılmıştır.
-      if (device && device.uid === user.uid) {
-        await clearDevice();
-        set({ device: null });
+  /**
+   * Oturum açıkken kendi users/{uid} belgesini dinler: hesap pasifleşince
+   * (ekipten kaldırma, telefon bağlantısını kaldırma, PIN sıfırlama, barista
+   * pasifleştirme) açık oturum da nazikçe kapanır. Kurallar zaten her şeyi
+   * reddeder; bu yalnızca ekranın boşa düşmemesi için.
+   */
+  let stopWatch: (() => void) | null = null;
+  function watchProfile(uid: string) {
+    stopWatch?.();
+    stopWatch = onSnapshot(doc(db, 'users', uid), { includeMetadataChanges: false }, (snap) => {
+      if (snap.metadata.fromCache || auth.currentUser?.uid !== uid) return;
+      if (!snap.exists() || snap.data()?.active !== true) {
+        stopWatch?.();
+        stopWatch = null;
+        void dropAccount(uid);
       }
-      await signOut(auth);
+    }, () => { /* oturum kapanırken izin hatası: yok say */ });
+  }
+
+  async function resolveUser(user: User) {
+    const read = await readProfile(user.uid);
+    if (auth.currentUser?.uid !== user.uid) return; // bu arada başka hesaba geçildi
+
+    if (read.kind === 'inactive' || read.kind === 'missing') {
+      await dropAccount(user.uid);
       return;
     }
+    if (read.kind === 'error') {
+      // Profil okunamadı (bağlantı yok): oturum ve eşleşme korunur, yeniden denenir.
+      set({ session: { kind: 'offline' } });
+      return;
+    }
+    const profile = read.profile;
+    watchProfile(user.uid);
 
     if (STAFF_ROLES.includes(profile.role as StaffRole)) {
       set({ session: { kind: 'staff', uid: user.uid, role: profile.role as StaffRole, name: profile.name || user.email || 'Yönetici', email: user.email || '' } });
@@ -121,19 +206,29 @@ export const useSession = create<SessionState>((set, get) => {
   return {
     session: { kind: 'loading' },
     device: null,
+    authEpoch: 0,
 
     boot: () => {
       let started = false;
-      return onAuthStateChanged(auth, async (user) => {
+      let hadUser = false;
+      const unsub = onAuthStateChanged(auth, async (user) => {
+        // Oturumsuz bir aradan sonra ilk giriş: içerik dinleyicileri yeniden
+        // kurulsun (bkz. authEpoch). Senkron hesaplanır: aşağıdaki await
+        // sırasında gelen olaylar sırayı bozmasın.
+        if (user && !hadUser) set({ authEpoch: get().authEpoch + 1 });
+        hadUser = !!user;
         if (!started) {
           started = true;
           set({ device: await loadDevice() });
         }
+        if ((user?.uid ?? null) !== (auth.currentUser?.uid ?? null)) return; // bu arada yeni olay geldi
         if (user) {
           set({ session: { kind: 'loading' } });
           await resolveUser(user);
           return;
         }
+        stopWatch?.();
+        stopWatch = null;
         const device = get().device;
         if (device) {
           set({ session: { kind: 'loading' } });
@@ -142,6 +237,7 @@ export const useSession = create<SessionState>((set, get) => {
           set({ session: { kind: 'unpaired' } });
         }
       });
+      return () => { unsub(); stopWatch?.(); stopWatch = null; };
     },
 
     pair: async (code) => {
@@ -171,9 +267,20 @@ export const useSession = create<SessionState>((set, get) => {
       await sendPasswordResetEmail(auth, email.trim());
     },
 
-    /** Barista ya da yönetici çıkışı. Telefon kayıtlıysa mağaza moduna döner. */
+    /**
+     * Barista ya da yönetici çıkışı. Telefon kayıtlıysa mağaza moduna döner:
+     * önce oturumu kapatmadan doğrudan telefonun hesabına geçilir. Arada
+     * oturumsuz an olmadığı için içerik dinleyicileri (96 ders) kapanıp
+     * yeniden okunmaz. Geçilemezse (ağ yok vb.) eski yol: çıkış + mağaza modu.
+     */
     logout: async () => {
-      await signOut(auth);
+      const device = get().device;
+      const cur = auth.currentUser;
+      let switched = false;
+      if (device && cur && cur.uid !== device.uid) {
+        try { await backend.deviceSignIn(device); switched = true; } catch { /* aşağıda normal çıkış */ }
+      }
+      if (!switched) await signOut(auth);
       // Geri tuşu bir önceki kişinin ekranlarına dönmesin.
       resetBackHistory();
     },
@@ -187,10 +294,19 @@ export const useSession = create<SessionState>((set, get) => {
     },
 
     retry: async () => {
+      // Oturum açık ama profil okunamamıştı: aynı hesapla yeniden dene.
+      const user = auth.currentUser;
+      if (user) {
+        set({ session: { kind: 'loading' } });
+        await resolveUser(user);
+        return;
+      }
       const device = get().device;
       if (device) {
         set({ session: { kind: 'loading' } });
         await enterStoreMode(device);
+      } else {
+        set({ session: { kind: 'unpaired' } });
       }
     }
   };

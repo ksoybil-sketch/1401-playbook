@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppError, errorText } from '../../api/backend';
 import {
-  activeAttemptIn, prepareExam, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
+  activeAttemptIn, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { examSlots, nextModuleAfter } from './Academy';
@@ -21,6 +21,12 @@ type Phase =
   | { k: 'sending' }
   | { k: 'result' } & ExamResult;
 
+/** Teslim bu kadar sürede bitmezse bağlantı yok sayılır, barista ekrandan çıkabilir. */
+const SLOW_SUBMIT_MS = 12_000;
+/** Cevaplar her işaretlemede değil, en çok bu kadar cevap ya da süre biriktikçe yazılır. */
+const SAVE_EVERY_ANSWERS = 3;
+const SAVE_EVERY_MS = 15_000;
+
 const fmtClock = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -37,6 +43,7 @@ export const ExamPage: React.FC = () => {
   // Sonuç ekranı için: sıradaki modül ve kalan haftalık hak.
   const allModules = useContent((x) => x.modules);
   const allLessons = useContent((x) => x.lessons);
+  const allTracks = useContent((x) => x.tracks);
   const { progress } = useMyProgress();
   const { items: myAttempts } = useMyAttempts(50);
   const back = lesson ? `/recete/${lesson.id}` : `/modul/${moduleId}`;
@@ -45,19 +52,36 @@ export const ExamPage: React.FC = () => {
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [now, setNow] = useState(Date.now());
-  const [resumable, setResumable] = useState<{ deadline: number } | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [slow, setSlow] = useState(false);
   const submitting = useRef(false);
 
-  // Sınavın okumaları ekran açılınca başlar ("Başla"ya basılana kadar çoğu
-  // zaman biter). Aynı okumadan: bu modülde süresi dolmamış açık deneme var
-  // mı? Varsa "Başla" yerine "Devam et".
+  // Bu modülde süresi dolmamış açık deneme var mı? Baristanın kendi denemeler
+  // dinleyicisinden (ek okuma yok). Varsa "Başla" yerine "Devam et". Soru
+  // havuzu artık ekran açılınca değil, "Başla"da okunur (kota).
+  const resumable = mod ? activeAttemptIn(myAttempts, mod.id, lesson?.id) : null;
+
+  // Cevap kaydı: her işaretleme denemeye yazılırsa açık her panel/kurul
+  // ekranına bir okuma olarak yansıyor. Cevaplar biriktirilip birkaç cevapta
+  // bir ya da en geç SAVE_EVERY_MS'de bir yazılır; ekran gizlenirken/kapanırken
+  // ve sınavdan çıkarken hemen yazılır. Teslim zaten bütün cevapları taşır.
+  const pending = useRef<{ attemptId: string; answers: Record<string, number>; count: number } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flushAnswers = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    const p = pending.current;
+    pending.current = null;
+    if (p) void saveAnswers(p.attemptId, p.answers);
+  }, []);
   useEffect(() => {
-    if (!mod) return;
-    prepareExam(mod, s.baristaId, lesson?.id)
-      .then((d) => { const a = activeAttemptIn(d.open, mod.id, lesson?.id); setResumable(a?.deadline ? { deadline: a.deadline } : null); })
-      .catch(() => {});
-  }, [s.baristaId, mod, lesson]);
+    const onHide = () => { if (document.visibilityState === 'hidden') flushAnswers(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flushAnswers);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flushAnswers);
+      flushAnswers();
+    };
+  }, [flushAnswers]);
 
   // Geri sayım
   useEffect(() => {
@@ -69,9 +93,14 @@ export const ExamPage: React.FC = () => {
   const submit = useCallback(async (attemptId: string, timedOut = false, questionIds?: string[]) => {
     if (submitting.current) return;
     submitting.current = true;
+    // Teslim bütün cevapları yazar; bekleyen ara kayda gerek yok.
     clearTimeout(saveTimer.current);
+    pending.current = null;
     setPhase({ k: 'sending' });
     try {
+      // Çevrimdışıyken toplu yazım bağlantı gelene kadar bitmez; ekran
+      // SLOW_SUBMIT_MS sonra "bağlantı gelince puanlanacak" der ve çıkışa izin
+      // verir. Bu söz arka planda tutulur: bağlantı gelince yazım tamamlanır.
       const res = await submitExam(attemptId, answers, { timedOut, questionIds, baristaId: s.baristaId });
       setPhase({ k: 'result', ...res });
     } catch (e) {
@@ -82,15 +111,25 @@ export const ExamPage: React.FC = () => {
     }
   }, [answers, s.baristaId]);
 
+  // "Puanlanıyor…" sonsuza kadar sürmesin.
+  useEffect(() => {
+    setSlow(false);
+    if (phase.k !== 'sending') return;
+    const id = setTimeout(() => setSlow(true), SLOW_SUBMIT_MS);
+    return () => clearTimeout(id);
+  }, [phase.k]);
+
   // Süre dolunca o ana kadarki cevaplarla otomatik teslim.
   useEffect(() => {
     if (phase.k === 'run' && now >= phase.deadline) submit(phase.attemptId, true, phase.questions.map((x) => x.id));
   }, [now, phase, submit]);
 
-  // Android geri tuşu: sınav çözülürken çıkmadan önce onay iste.
+  // Android geri tuşu: sınav çözülürken çıkmadan önce onay iste. Teslim
+  // sürerken (bağlantı yoksa) de çalışır: teslim arka planda sürer.
   const EXIT_CONFIRM = 'Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?';
   useBackHandler(phase.k === 'run' || phase.k === 'sending' || phase.k === 'loading', () => {
-    if (phase.k === 'run' && confirm(EXIT_CONFIRM)) navigate(back, { replace: true });
+    if (phase.k === 'run') { if (confirm(EXIT_CONFIRM)) navigate(back, { replace: true }); }
+    else navigate(back, { replace: true });
     return true;
   });
 
@@ -111,7 +150,7 @@ export const ExamPage: React.FC = () => {
     setError(null);
     setPhase({ k: 'loading' });
     try {
-      const res = await startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name }, lesson);
+      const res = await startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name }, lesson, { resume: !!resumable });
       setAnswers(res.answers);
       // Devam edilen denemede ilk boş soruya git.
       const firstBlank = res.questions.findIndex((q) => res.answers[q.id] === undefined);
@@ -132,13 +171,15 @@ export const ExamPage: React.FC = () => {
   const choose = (attemptId: string, qid: string, i: number) => {
     const next = { ...answers, [qid]: i };
     setAnswers(next);
-    // Her işaretleme denemeye yazılır; uygulama kapanırsa kaybolmaz.
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveAnswers(attemptId, next), 500);
+    // Cevaplar biriktirilerek yazılır (bkz. flushAnswers); uygulama kapanırsa kaybolmaz.
+    const had = pending.current;
+    pending.current = { attemptId, answers: next, count: (had?.count || 0) + 1 };
+    if (pending.current.count >= SAVE_EVERY_ANSWERS) flushAnswers();
+    else if (!had) saveTimer.current = setTimeout(flushAnswers, SAVE_EVERY_MS);
   };
 
   if (phase.k === 'intro' || phase.k === 'loading') {
-    const left = resumable ? resumable.deadline - Date.now() : 0;
+    const left = resumable?.deadline ? resumable.deadline - Date.now() : 0;
     return (
       <Page>
         <div className="flex items-center gap-3">
@@ -175,7 +216,26 @@ export const ExamPage: React.FC = () => {
   }
 
   if (phase.k === 'sending') {
-    return <Page><div className="flex flex-col items-center gap-3 pt-24"><Spinner size={26} /><span className="text-[13px] text-fg-3">Puanlanıyor…</span></div></Page>;
+    return (
+      <Page>
+        <div className="flex flex-col items-center gap-3 pt-24 text-center">
+          <Spinner size={26} />
+          {slow ? (
+            <>
+              <span className="text-[15px] font-semibold">Bağlantı yok</span>
+              <p className="text-[13px] text-fg-2 leading-relaxed max-w-[300px]">
+                Cevapların telefonda kayıtlı; bağlantı gelince puanlanacak. Sonucunu Ben → Sınav geçmişi'nde görürsün.
+              </p>
+              <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnSecondary} ${t.btnLg} mt-2`}>
+                Tamam, çık
+              </button>
+            </>
+          ) : (
+            <span className="text-[13px] text-fg-3">Puanlanıyor…</span>
+          )}
+        </div>
+      </Page>
+    );
   }
 
   if (phase.k === 'result') {
@@ -207,7 +267,7 @@ export const ExamPage: React.FC = () => {
             </div>
           );
           const nextMod = phase.passed ? nextModuleAfter(mod, allModules) : undefined;
-          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: Date.now() } } }).locked ? nextMod : undefined;
+          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: Date.now() } } }, { modules: allModules, tracks: allTracks }).locked ? nextMod : undefined;
           const slots = examSlots(myAttempts, mod.id);
           return (
             <div className="flex flex-col gap-2">
@@ -235,8 +295,19 @@ export const ExamPage: React.FC = () => {
     );
   }
 
-  // Sınav çözülüyor
-  const q = phase.questions[idx];
+  // Sınav çözülüyor. Soru listesi boş gelemez (exam.ts resumeExam denemeyi
+  // kapatır) ama yine de korunur: eskiden boş listede ekran çöküyordu.
+  const q = phase.questions[Math.min(idx, phase.questions.length - 1)];
+  if (!q) {
+    return (
+      <Page>
+        <div className="flex flex-col items-center gap-3 pt-24 text-center">
+          <p className="text-[14px] text-fg-2 leading-relaxed max-w-[300px]">Bu sınavın soruları güncellendi. Yeniden başlayabilirsin.</p>
+          <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Geri dön</button>
+        </div>
+      </Page>
+    );
+  }
   const picked = answers[q.id];
   const isLast = idx === phase.questions.length - 1;
   const answeredCount = phase.questions.filter((x) => answers[x.id] !== undefined).length;

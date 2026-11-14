@@ -127,7 +127,7 @@ export const BadgeGrid: React.FC<{ report: BadgeReport }> = ({ report }) => {
                 <div className={`text-[14px] font-semibold ${b.earned ? 'text-positive' : b.revoked ? 'text-negative' : ''}`}>
                   {b.revoked ? 'Geri alındı' : b.granted ? 'Kahve Operasyonu verdi' : b.earned ? 'Kazanıldı' : 'Henüz kazanılmadı'}
                 </div>
-                {(b.revoked || b.granted) && <div className="text-[12px] text-fg-3">{(b.revoked || b.granted)!.reason} · {(b.revoked || b.granted)!.byName}</div>}
+                {(b.revoked || b.granted) && <div className="text-[12px] text-fg-3">{(b.revoked || b.granted)!.reason}{(b.revoked || b.granted)!.byName ? ` · ${(b.revoked || b.granted)!.byName}` : ''}</div>}
               </div>
             </div>
             <p className="text-[14px] leading-relaxed">{b.rule}</p>

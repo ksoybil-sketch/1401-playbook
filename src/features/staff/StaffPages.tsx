@@ -4,26 +4,31 @@ import { useBadgeConfig } from '../../store/badgeConfig';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { BadgeOverridesSheet } from './BadgeOverridesSheet';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { backend, errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { assignmentDone, assignmentDoneAt, isOverdue, overallPercent, moduleState } from '../../lib/progress';
+import { assignmentDone, assignmentDoneAt, isOverdue, overallPercent, moduleState, visibleModules } from '../../lib/progress';
+import { taskInvalidReason, taskTargets, TASK_INVALID_LABEL, type TaskValidityContext } from '../../lib/taskValidity';
+import { localDay } from '../../lib/day';
+import { norm } from '../../lib/search';
 import { Icon } from '../../ui/Icon';
 import { Page, PageTitle, Section, Stat, Empty, Badge, Avatar, ProgressBar, Sheet, ErrorText, Spinner, toast, fmtDate, fmtDateTime, relDays } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { AssignSheet } from '../shared/AssignSheet';
 import { AttemptRow } from '../barista/HomePages';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
-import { useStaffData } from './staffData';
+import {
+  useStaffData, useExamsSince, useFetched, useBaristaAttempts, useStoreAssignments, useHistory, useHistoryIfLoaded,
+  loadBaristaAttempts, loadStoreAssignments, loadOlderAssignments, invalidate
+} from './staffData';
 import { isClosed } from '../../api/requests';
 import { useStaffSession } from './StaffLayout';
-import type { Attempt, Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
+import type { Assignment, Attempt, Barista, BaristaRole, Progress, Question, StaffRole } from '../../../shared/types';
 import { allowed, domainOf } from '../../lib/permissions';
-import { can, assignableRoles, visibleStaffRoles, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
+import { can, assignableRoles, authorName, visibleStaffRoles, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
-const WEEK = 7 * 86400000;
 const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, updatedAt: 0 };
 
 /* ------------------------------------------------------------------ */
@@ -67,7 +72,7 @@ interface MissedQuestion {
 }
 
 /** Yanlış yapılan bir soru: hangi şık kaç kez seçildi, kim seçti. */
-const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; storeName: (id: string) => string }> = ({ q, onClose, storeName }) => {
+const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; storeName: (id: string) => string; days: number }> = ({ q, onClose, storeName, days }) => {
   const me = useStaffSession();
   const seesBaristas = allowed(me.role, 'ekran.baristalar');
   const seesPool = allowed(me.role, 'ekran.soruHavuzu');
@@ -80,7 +85,7 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
       {q && (
         <div className="flex flex-col gap-4">
           <div>
-            <div className="text-[12px] text-fg-3">{q.module} · son 30 gün · {q.n} yanlış</div>
+            <div className="text-[12px] text-fg-3">{q.module} · son {days} gün · {q.n} yanlış</div>
             <p className="text-[15px] font-semibold leading-snug mt-1">{q.prompt}</p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -114,7 +119,7 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
             </div>
           </div>
 {seesPool && (
-          <Link to={`/soru-havuzu?soru=${q.questionId}`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
+          <Link to={`/soru-havuzu?soru=${q.questionId}&modul=${q.moduleId}`} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`}>
             <Icon name="edit" size={14} /> Soru havuzunda aç: düzelt ya da iptal et
           </Link>
           )}
@@ -137,7 +142,7 @@ const WaitingStrip: React.FC = () => {
   const items: { key: string; n: number; text: string; hint?: string; icon: Parameters<typeof Icon>[0]['name']; tone: 'caution' | 'negative' | 'accent'; to?: string; onClick?: () => void }[] = [];
 
   if (ok('ekran.talepler') && ok('talepYanit')) {
-    const waiting = requests.filter((r) => r.lastSide === 'store');
+    const waiting = requests.filter((r) => r.lastSide === 'store' && !isClosed(r.status));
     const urgent = waiting.filter((r) => r.priority === 'urgent' && !isClosed(r.status)).length;
     items.push({ key: 'talep', n: waiting.length, text: `${waiting.length} talep yanıt bekliyor`, hint: urgent ? `${urgent} acil` : undefined, icon: 'wrench', tone: urgent ? 'negative' : 'caution', to: '/talepler' });
   }
@@ -190,39 +195,60 @@ const WaitingStrip: React.FC = () => {
 };
 
 export const OverviewPage: React.FC = () => {
-  const { stores, modules, lessons } = useContent();
+  const { stores, modules, lessons, tracks } = useContent();
   // Kısayollar yalnızca rolün açabildiği ekranlara gider (kapalı ekrana giden
   // kart sessizce ana sayfaya atıyor, "bozuk" izlenimi veriyordu).
   const me = useStaffSession();
   const can = (p: Parameters<typeof allowed>[1]) => allowed(me.role, p);
-  const { baristas, progress, attempts, assignments } = useStaffData();
-  const active = baristas.filter((b) => b.active);
-  const weekAttempts = attempts.filter((a) => a.submittedAt && !a.voided && a.startedAt > Date.now() - WEEK);
+  const { baristas, progress, attempts: recent, assignments } = useStaffData();
+  const activeStores = stores.filter((s) => s.active);
+  // Pasif mağazanın baristası "aktif barista" sayılmaz (ipucundaki mağaza sayısı da yalnızca aktifleri sayıyor).
+  const active = baristas.filter((b) => b.active && activeStores.some((s) => s.id === b.storeId));
+  // Son 7 günün sınavları: tek seferlik ve kesin (eskiden son 300 denemeden
+  // hesaplanıyordu; yoğun haftada 416 sınav 299 görünüyordu). Mini sınavlar
+  // (Yeni ürün, 3 soru) modül sınavı sayılmaz, ayrıca yazılır.
+  const week = useExamsSince(7);
+  const weekAll = (week.data || []).filter((a) => !a.voided);
+  const weekAttempts = weekAll.filter((a) => !a.lessonId);
+  const weekMini = weekAll.length - weekAttempts.length;
   const avgScore = weekAttempts.length ? Math.round(weekAttempts.reduce((s, a) => s + (a.score || 0), 0) / weekAttempts.length) : null;
-  const avgProgress = active.length ? Math.round(active.reduce((s, b) => s + overallPercent(modules, lessons, progress[b.id] || EMPTY), 0) / active.length) : 0;
+  const avgProgress = active.length ? Math.round(active.reduce((s, b) => s + overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks), 0) / active.length) : 0;
 
+  // Geçersiz görevler (hedef kalmadı / bağlı içerik silindi) gecikmiş sayılmaz.
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
+  const validTasks = useMemo(() => assignments.filter((a) => !taskInvalidReason(a, vctx)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assignments, modules, lessons, tracks, baristas]);
   const overdueCount = useMemo(() => {
     let n = 0;
-    for (const a of assignments) {
-      const targets = a.baristaId ? active.filter((b) => b.id === a.baristaId) : active.filter((b) => b.storeId === a.storeId);
-      for (const b of targets) if (isOverdue(a, assignmentDone(a, progress[b.id]))) n++;
-    }
+    for (const a of validTasks) for (const b of taskTargets(a, baristas)) if (isOverdue(a, assignmentDone(a, progress[b.id]))) n++;
     return n;
-  }, [assignments, active, progress]);
+  }, [validTasks, baristas, progress]);
 
   // En çok yanlış yapılan sorular — eğitim içeriğinde neyin anlaşılmadığını gösterir.
-  const missed = useMemo(() => {
+  const [missDays, setMissDays] = useState<7 | 30>(7);
+  const missSrc = useExamsSince(missDays);
+  const candidates = useMemo(() => {
     const map = new Map<string, MissedQuestion>();
-    attempts.filter((a) => a.startedAt > Date.now() - 30 * 86400000).forEach((a) =>
-      (a.mistakes || []).forEach((m) => {
+    (missSrc.data || []).filter((a) => !a.voided).forEach((a) =>
+      (a.mistakes || []).filter((m) => !(a.voidedQuestions || []).includes(m.questionId)).forEach((m) => {
         const cur = map.get(m.questionId) || { questionId: m.questionId, prompt: m.prompt, options: m.options, answerIndex: m.answer, module: a.moduleTitle, moduleId: a.moduleId, n: 0, answer: m.options[m.answer], who: [] };
         cur.n++;
         cur.who.push({ baristaId: a.baristaId, name: a.baristaName, storeId: a.storeId, at: a.submittedAt || a.startedAt, given: m.given });
         map.set(m.questionId, cur);
       }));
-    return [...map.values()].sort((a, b) => b.n - a.n).slice(0, 6);
-  }, [attempts]);
+    return [...map.values()].sort((a, b) => b.n - a.n).slice(0, 12);
+  }, [missSrc.data]);
+  // İptal edilen ya da bankadan silinen sorular listede kalmasın: düzeltilecek soru yok.
+  const ids = candidates.map((c) => c.questionId);
+  const qState = useFetched<Record<string, boolean>>(ids.length ? `qok:${ids.join(',')}` : null, async () =>
+    Object.fromEntries(await Promise.all(ids.map(async (id) => {
+      const snap = await getDoc(doc(db, 'questions', id)).catch(() => null);
+      return [id, !snap || (snap.exists() && !(snap.data() as Question).disabled)] as const;
+    }))));
+  const missed = candidates.filter((c) => !qState.data || qState.data[c.questionId] !== false).slice(0, 6);
   const [openQ, setOpenQ] = useState<MissedQuestion | null>(null);
+  const done = recent.filter((a) => a.submittedAt && !a.voided);
 
   return (
     <Page wide>
@@ -231,9 +257,11 @@ export const OverviewPage: React.FC = () => {
       <WaitingStrip />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
+        <Stat label="Aktif barista" value={active.length} hint={`${activeStores.length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
         <Stat label="Ortalama ilerleme" value={`%${avgProgress}`} icon="target" tone="positive" to={can('ekran.baristalar') ? '/baristalar?gorunum=tablo' : undefined} />
-        <Stat label="Bu hafta sınav" value={weekAttempts.length} hint={avgScore !== null ? `Ortalama ${avgScore} puan` : 'Henüz yok'} icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Son 7 günde sınav" value={week.loading && !week.data ? '…' : weekAttempts.length}
+          hint={week.error ? week.error : `${avgScore !== null ? `Ortalama ${avgScore} puan` : 'Henüz yok'}${weekMini ? ` · +${weekMini} mini sınav` : ''}`}
+          icon="clipboard" tone="accent" onClick={() => document.getElementById('son-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <Stat label="Gecikmiş görev" value={overdueCount} icon="alert" tone={overdueCount ? 'negative' : 'neutral'} to={can('ekran.gorevler') ? '/gorevler?durum=geciken' : undefined} />
       </div>
 
@@ -243,20 +271,20 @@ export const OverviewPage: React.FC = () => {
             <div className="grid grid-cols-[1.6fr_0.7fr_1.2fr_0.8fr_0.8fr] gap-3 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-fg-3">
               <span>Mağaza</span><span>Barista</span><span>İlerleme</span><span>Sınav (7g)</span><span>Gecikmiş</span>
             </div>
-            {stores.filter((s) => s.active).map((s) => {
+            {activeStores.map((s) => {
               const team = active.filter((b) => b.storeId === s.id);
-              const pct = team.length ? Math.round(team.reduce((x, b) => x + overallPercent(modules, lessons, progress[b.id] || EMPTY), 0) / team.length) : 0;
+              const pct = team.length ? Math.round(team.reduce((x, b) => x + overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks), 0) / team.length) : null;
               const wk = weekAttempts.filter((a) => a.storeId === s.id);
               const passRate = wk.length ? Math.round((wk.filter((a) => a.passed).length / wk.length) * 100) : null;
               let od = 0;
-              assignments.filter((a) => a.storeId === s.id).forEach((a) =>
-                team.filter((b) => !a.baristaId || a.baristaId === b.id).forEach((b) => { if (isOverdue(a, assignmentDone(a, progress[b.id]))) od++; }));
+              validTasks.filter((a) => a.storeId === s.id).forEach((a) =>
+                taskTargets(a, team).forEach((b) => { if (isOverdue(a, assignmentDone(a, progress[b.id]))) od++; }));
               return (
                 <Link key={s.id} to={can('ekran.magazalar') ? `/magazalar/${s.id}` : '#'} onClick={(e) => !can('ekran.magazalar') && e.preventDefault()} className="grid grid-cols-[1.6fr_0.7fr_1.2fr_0.8fr_0.8fr] gap-3 px-4 py-3 items-center hover:bg-panel-2 transition-colors">
                   <span className="text-[14px] font-medium truncate">{s.name}</span>
                   <span className="text-[13px] tnum text-fg-2">{team.length}</span>
-                  <span className="flex items-center gap-2"><ProgressBar value={pct} className="flex-1" /><span className="text-[12px] tnum w-9 text-right">%{pct}</span></span>
-                  <span className="text-[13px] tnum text-fg-2">{wk.length}{passRate !== null ? ` · %${passRate} geçti` : ''}</span>
+                  <span className="flex items-center gap-2"><ProgressBar value={pct ?? 0} className="flex-1" /><span className="text-[12px] tnum w-9 text-right">{pct === null ? '—' : `%${pct}`}</span></span>
+                  <span className="text-[13px] tnum text-fg-2">{week.data ? `${wk.length}${passRate !== null ? ` · %${passRate} geçti` : ''}` : '…'}</span>
                   <span>{od ? <Badge tone="negative">{od}</Badge> : <span className="text-[13px] text-fg-3">—</span>}</span>
                 </Link>
               );
@@ -266,8 +294,17 @@ export const OverviewPage: React.FC = () => {
       </Section>
 
       <div className="grid lg:grid-cols-2 gap-5">
-        <Section label="En çok yanlış yapılan sorular (30 gün)">
-          {missed.length === 0 ? <Empty icon="target" text="Henüz yeterli sınav verisi yok." /> : (
+        <Section label={`En çok yanlış yapılan sorular (${missDays} gün)`}
+          action={
+            <div className={t.segment}>
+              {([7, 30] as const).map((d) => (
+                <button key={d} onClick={() => setMissDays(d)} className={`${t.segmentItem} ${missDays === d ? t.segmentItemOn : t.segmentItemOff}`}>{d} gün</button>
+              ))}
+            </div>
+          }>
+          {missSrc.loading && !missSrc.data ? <div className="py-6 flex justify-center"><Spinner /></div>
+            : missSrc.error ? <ErrorText>{missSrc.error}</ErrorText>
+            : missed.length === 0 ? <Empty icon="target" text="Henüz yeterli sınav verisi yok." /> : (
             <div className={t.listGroup}>
               {missed.map((m, i) => (
                 // Kim yanlış yaptı, hangi şıkkı işaretledi: pencerede açılır.
@@ -284,13 +321,13 @@ export const OverviewPage: React.FC = () => {
             </div>
           )}
         </Section>
-        <MissedSheet q={openQ} onClose={() => setOpenQ(null)} storeName={(id) => stores.find((s) => s.id === id)?.name || ''} />
+        <MissedSheet q={openQ} onClose={() => setOpenQ(null)} storeName={(id) => stores.find((s) => s.id === id)?.name || ''} days={missDays} />
 
         <div id="son-sinavlar" className="scroll-mt-20 flex flex-col">
         <Section label="Son sınavlar">
-          {attempts.filter((a) => a.submittedAt && !a.voided).length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
+          {done.length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
             <div className={t.listGroup}>
-              {attempts.filter((a) => a.submittedAt && !a.voided).slice(0, 8).map((a) => (
+              {done.slice(0, 8).map((a) => (
                 <Link key={a.id} to={can('ekran.baristalar') ? `/baristalar/${a.baristaId}` : '#'} onClick={(e) => !can('ekran.baristalar') && e.preventDefault()} className={t.listRow}>
                   <Badge tone={a.passed ? 'positive' : 'negative'}>{a.score} puan</Badge>
                   <div className="flex-1 min-w-0">
@@ -335,6 +372,8 @@ const StaffTeamSection: React.FC = () => {
     setError(null);
     if (name.trim().length < 2) return setError('Ad soyad gir.');
     if (!email.includes('@')) return setError('Geçerli bir e-posta gir.');
+    const gone = staff.find((x) => !x.active && (x.email || '').toLowerCase() === email.trim().toLowerCase());
+    if (gone) return setError(`${gone.name} daha önce kaldırılmış. "Kaldırılanlar" listesinden yeniden etkinleştir.`);
     setBusy(true);
     try {
       await backend.createStaff(name, email, role);
@@ -347,6 +386,16 @@ const StaffTeamSection: React.FC = () => {
 
   // Müdür yalnızca kendi verebildiği rollerdeki kişileri değiştirebilir.
   const editable = (s: StaffRow) => manage && s.id !== me.uid && roles.includes(s.role);
+  // Kaldırılan kişi aynı e-postayla yeniden eklenemiyordu (hesap zaten var):
+  // listede kalır, yeniden etkinleştirilebilir. Geliştirici bu listede de
+  // başkalarına görünmez (sorgu rolü süzüyor).
+  const removed = staff.filter((s) => !s.active).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const [showRemoved, setShowRemoved] = useState(false);
+  const reactivate = async (s: StaffRow) => {
+    if (!confirm(`${s.name} yeniden etkinleştirilsin mi? ${STAFF_ROLE_LABEL[s.role] || s.role} olarak panele yeniden girebilir.`)) return;
+    try { await updateDoc(doc(db, 'users', s.id), { active: true }); toast(`${s.name} yeniden etkin`, 'positive'); }
+    catch (err) { toast(errorText(err), 'negative'); }
+  };
 
   return (
     <Section label={`Kahve Operasyonu ekibi · ${staff.filter((s) => s.active).length}`}
@@ -382,6 +431,27 @@ const StaffTeamSection: React.FC = () => {
           </div>
         ))}
       </div>
+      {removed.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <button className="self-start text-[12.5px] text-fg-3 inline-flex items-center gap-1.5 hover:text-crema" onClick={() => setShowRemoved(!showRemoved)}>
+            <Icon name={showRemoved ? 'arrowUp' : 'arrowDown'} size={12} /> Kaldırılanlar · {removed.length}
+          </button>
+          {showRemoved && (
+            <div className={t.listGroup}>
+              {removed.map((s) => (
+                <div key={s.id} className={`${t.listRowStatic} flex-wrap`}>
+                  <Avatar name={s.name} size={32} dim />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-medium truncate text-fg-2">{s.name}</div>
+                    <div className="text-[12px] text-fg-3 truncate">{s.email} · {STAFF_ROLE_LABEL[s.role] || s.role} · erişimi kaldırıldı</div>
+                  </div>
+                  {editable(s) && <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => reactivate(s)}>Yeniden etkinleştir</button>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <Sheet open={open} title="Kahve Operasyonu ekibine ekle" onClose={() => setOpen(false)}
         footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={add} disabled={busy}>{busy ? <Spinner size={14} /> : 'Ekle'}</button>}>
         <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
@@ -425,18 +495,21 @@ const APRON_RANK = { rookie: 1, specialist: 2, senior: 3, pro: 4 } as const;
 export const ApronBadgesSection: React.FC = () => {
   const me = useStaffSession();
   const { stores, tracks, modules, lessons } = useContent();
-  const { baristas, progress, attempts, assignments } = useStaffData();
+  const { baristas, progress } = useStaffData();
   const canMark = allowed(me.role, 'rozetAyar') || can(me.role, 'manageBaristas');
   const badgeConfig = useBadgeConfig((x) => x.config);
-  const rows = useMemo(() => baristas.filter((b) => b.active).map((b) => {
+  // Önlük kararı kesik veriye dayanmasın: bütün sınav geçmişi ve bütün görevler
+  // (eskiden zincirin son 300 sınavı; "önlükten al" haksız yere çıkabiliyordu).
+  const history = useHistory(true);
+  const rows = useMemo(() => !history.data ? [] : baristas.filter((b) => b.active).map((b) => {
     const report = badgeReport({
       tracks, modules, lessons, progress: progress[b.id] || EMPTY,
-      attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
-      assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
+      attempts: history.data!.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
+      assignments: history.data!.assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
       config: badgeConfig, ...fromBarista(b)
     });
     return { b, report };
-  }), [baristas, tracks, modules, lessons, progress, attempts, assignments, badgeConfig]);
+  }), [baristas, tracks, modules, lessons, progress, history.data, badgeConfig]);
   // Teslim edilecekler: şartı sağladığı rozet önlüktekinden yüksek ya da
   // önlükteki rozetin geçerlilik süresi dolmuş ve hâlâ şartları sağlıyor.
   const due = rows.filter(({ b, report }) => report.qualified
@@ -444,8 +517,34 @@ export const ApronBadgesSection: React.FC = () => {
   // Önlükte olup artık hak edilmeyenler (süresi dolup şartı kaybeden ya da geri alınan).
   const lost = rows.filter(({ b, report }) => b.apronBadge
     && (!report.qualified || APRON_RANK[report.qualified.id] < APRON_RANK[b.apronBadge]));
-  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: rows[0]?.report.titles.find((x) => x.id === id)?.label || id, n: rows.filter((r) => (r.b.apronBadge || null) === id).length }));
+  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: rows[0]?.report.titles.find((x) => x.id === id)?.label || id, n: baristas.filter((b) => b.active && (b.apronBadge || null) === id).length }));
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
+  /**
+   * Önlüğe dokunan karar yazılmadan önce o baristanın güncel bütün geçmişiyle
+   * yeniden hesaplanır (liste en çok 30 dakikalık önbellekten gelir).
+   */
+  const fresh = async (b: Barista) => {
+    const [atts, tasks] = await Promise.all([loadBaristaAttempts(b.id), loadStoreAssignments(b.storeId)]);
+    return badgeReport({
+      tracks, modules, lessons, progress: progress[b.id] || EMPTY,
+      attempts: atts.filter((a) => a.submittedAt && !a.voided),
+      assignments: tasks.filter((a) => !a.baristaId || a.baristaId === b.id),
+      config: badgeConfig, ...fromBarista(b)
+    });
+  };
+  const markApron = async (b: Barista, expect: string | null, confirmText?: string) => {
+    if (confirmText && !confirm(confirmText)) return;
+    try {
+      const r = await fresh(b);
+      if ((r.qualified?.id || null) !== expect) {
+        toast(`${b.name.split(' ')[0]}: güncel sınav geçmişine göre hak ettiği rozet ${r.qualified?.label || 'yok'}. Liste yenilendi, tekrar bak.`, 'negative');
+        history.reload();
+        return;
+      }
+      await updateDoc(doc(db, 'baristas', b.id), { apronBadge: expect, apronBadgeAt: Date.now(), apronBadgeByName: authorName(me.role, me.name) });
+      toast(expect ? `${b.name.split(' ')[0]}: ${r.qualified!.label} rozeti teslim edildi` : 'Önlük rozeti güncellendi', 'positive');
+    } catch (e) { toast(errorText(e), 'negative'); }
+  };
   return (
     <Section label={`Önlük rozetleri${due.length ? ` · ${due.length} teslim bekliyor` : ''}`}>
       <div className="grid grid-cols-4 gap-2">
@@ -456,6 +555,8 @@ export const ApronBadgesSection: React.FC = () => {
           </div>
         ))}
       </div>
+      {history.loading && !history.data && <div className="py-4 flex justify-center"><Spinner /></div>}
+      {history.error && <ErrorText>{history.error}</ErrorText>}
       {due.length > 0 && (
         <div className={t.listGroup}>
           {due.map(({ b, report }) => (
@@ -468,12 +569,7 @@ export const ApronBadgesSection: React.FC = () => {
                 </div>
               </div>
               {canMark && (
-                <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
-                  try {
-                    await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.qualified!.id, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
-                    toast(`${b.name.split(' ')[0]}: ${report.qualified!.label} rozeti teslim edildi`, 'positive');
-                  } catch (e) { toast(errorText(e), 'negative'); }
-                }}><Icon name="check" size={13} /> Teslim edildi</button>
+                <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => markApron(b, report.qualified!.id)}><Icon name="check" size={13} /> Teslim edildi</button>
               )}
             </div>
           ))}
@@ -494,13 +590,7 @@ export const ApronBadgesSection: React.FC = () => {
                   </div>
                 </div>
                 {canMark && (
-                  <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={async () => {
-                    if (!confirm(`${b.name}: önlükteki rozet değişsin mi?`)) return;
-                    try {
-                      await updateDoc(doc(db, 'baristas', b.id), { apronBadge: report.qualified?.id || null, apronBadgeAt: Date.now(), apronBadgeByName: me.name });
-                      toast('Önlük rozeti güncellendi');
-                    } catch (e) { toast(errorText(e), 'negative'); }
-                  }}>Önlükten al</button>
+                  <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => markApron(b, report.qualified?.id || null, `${b.name}: önlükteki rozet değişsin mi?`)}>Önlükten al</button>
                 )}
               </div>
             ))}
@@ -621,7 +711,7 @@ export const StoreDetailPage: React.FC = () => {
   const me = useStaffSession();
   // Barista ekleme, telefon bağlama ve kodlar Bölge Müdürü'nde.
   const manage = can(me.role, 'manageBaristas');
-  const { stores, modules, lessons } = useContent();
+  const { stores, modules, lessons, tracks } = useContent();
   const { baristas, progress } = useStaffData();
   const store = stores.find((s) => s.id === storeId);
   const { data: devices } = useQueryLive<DeviceRow>(
@@ -662,7 +752,7 @@ export const StoreDetailPage: React.FC = () => {
         <Section label={`Baristalar · ${team.filter((b) => b.active).length}`} action={manage ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnSm}`} onClick={() => setAddOpen(true)}><Icon name="plus" size={14} /> Barista ekle</button> : undefined}>
           {team.length === 0 ? <Empty icon="users" text="Bu mağazada henüz barista yok." /> : (
             <div className={t.listGroup}>
-              {team.map((b) => <BaristaRow key={b.id} b={b} pct={overallPercent(modules, lessons, progress[b.id] || EMPTY)} />)}
+              {team.map((b) => <BaristaRow key={b.id} b={b} pct={overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks)} />)}
             </div>
           )}
         </Section>
@@ -694,17 +784,22 @@ export const StoreDetailPage: React.FC = () => {
   );
 };
 
-/** Panelde bir baristanın rozet raporu (staffData'daki son 300 sınavdan). */
+/**
+ * Listede bir baristanın unvanı. Kesik veriden hesaplanmaz: bütün sınav
+ * geçmişi bu oturumda okunduysa (Rozetler ya da "Unvanları göster") hesaplanır,
+ * okunmadıysa unvan gösterilmez. Kesin unvan barista ayrıntısında.
+ */
 function useStaffBadgeReport(b: Barista) {
   const { tracks, modules, lessons } = useContent();
   const badgeConfig = useBadgeConfig((x) => x.config);
-  const { progress, attempts, assignments } = useStaffData();
-  return useMemo(() => badgeReport({
+  const { progress } = useStaffData();
+  const history = useHistoryIfLoaded();
+  return useMemo(() => !history ? null : badgeReport({
     tracks, modules, lessons, progress: progress[b.id] || EMPTY,
-    attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
-    assignments: assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
+    attempts: history.attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided),
+    assignments: history.assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id)),
     config: badgeConfig, ...fromBarista(b)
-  }), [tracks, modules, lessons, progress, attempts, assignments, b, badgeConfig]);
+  }), [tracks, modules, lessons, progress, history, b, badgeConfig]);
 }
 
 const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string; lastAt?: number | null }> = ({ b, pct, showStore, lastAt }) => {
@@ -721,7 +816,7 @@ const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string; lastAt
       <div className="text-[14px] font-medium truncate flex items-center gap-2">
         {b.name}
         {b.role !== 'barista' && <Badge>{BARISTA_ROLE_LABEL[b.role]}</Badge>}
-        <TitleChip report={report} />
+        {report && <TitleChip report={report} />}
       </div>
       <div className="text-[12px] text-fg-3 truncate">
         {showStore ? `${showStore} · ` : ''}
@@ -741,7 +836,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
   const { stores } = useContent();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [startedAt, setStartedAt] = useState(() => localDay());
   const [storeId, setStoreId] = useState(fixed || '');
   const [role, setRole] = useState<BaristaRole>('barista');
   const [busy, setBusy] = useState(false);
@@ -751,10 +846,10 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
     setError(null);
     setBusy(true);
     try {
-      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone, startedAt, createdByName: me.name });
+      const r = await backend.createBarista({ name, storeId: fixed || storeId, role, phone, startedAt, createdByName: authorName(me.role, me.name) });
       onClose();
       onCreated({ code: r.code, expiresAt: r.expiresAt, title: `${name.trim()} için davet kodu`, hint: inviteHint(name.trim().split(' ')[0]) });
-      setName(''); setPhone(''); setRole('barista'); setStartedAt(new Date().toISOString().slice(0, 10));
+      setName(''); setPhone(''); setRole('barista'); setStartedAt(localDay());
     } catch (e) { setError(errorText(e)); }
     setBusy(false);
   };
@@ -772,7 +867,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
         </label>
       )}
       <label className={t.field}><span className={t.label}>İşe başlama tarihi</span>
-        <input className={t.input} type="date" value={startedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartedAt(e.target.value)} />
+        <input className={t.input} type="date" value={startedAt} max={localDay()} onChange={(e) => setStartedAt(e.target.value)} />
         <span className="text-[11px] text-fg-3">1401'de çalışmaya başladığı gün. Kıdem rozetleri (6 ay, 1 yıl) ve Pro önlük rozeti buna göre hesaplanır.</span>
       </label>
       <label className={t.field}><span className={t.label}>Telefon (isteğe bağlı — kodu iletmek için)</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="05xx xxx xx xx" /></label>
@@ -817,7 +912,12 @@ const STALE_DAYS = 14;
 export const BaristasPage: React.FC = () => {
   const me = useStaffSession();
   const { stores, modules, lessons, tracks } = useContent();
-  const { baristas, progress, attempts } = useStaffData();
+  const { baristas, progress, attempts: recent } = useStaffData();
+  // Unvanlar ve son etkinlik bütün sınav geçmişini ister (pahalı): istek üzerine okunur.
+  const [wantTitles, setWantTitles] = useState(false);
+  const loaded = useHistoryIfLoaded();
+  const historyQ = useHistory(wantTitles);
+  const attempts = loaded?.attempts || recent;
   // Süzgeçler adreste: bir baristaya girip dönünce liste aynı kalsın.
   const [params, setParams] = useSearchParams();
   const setParam = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
@@ -838,14 +938,17 @@ export const BaristasPage: React.FC = () => {
     attempts.forEach((a) => { const l = byB.get(a.baristaId) || []; l.push(a); byB.set(a.baristaId, l); });
     return new Map(baristas.map((b) => [b.id, lastActivity(progress[b.id], byB.get(b.id) || [])]));
   }, [baristas, progress, attempts]);
-  const pctOf = (b: Barista) => overallPercent(modules, lessons, progress[b.id] || EMPTY);
-  const list = baristas.filter((b) => (showInactive || b.active) && (!storeFilter || b.storeId === storeFilter) && b.name.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+  const pctOf = (b: Barista) => overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks);
+  // Türkçe ve aksan katlamalı arama: "ilgaz" Ilgaz'ı, "cagla" Çağla'yı bulur.
+  const nq = norm(q);
+  const list = baristas.filter((b) => (showInactive || b.active) && (!storeFilter || b.storeId === storeFilter) && norm(b.name).includes(nq))
     .sort(sort === 'ilerleme' ? (a, b) => pctOf(a) - pctOf(b) || a.name.localeCompare(b.name, 'tr')
       // En uzun süredir hiçbir şey yapmayan üstte; hiç etkinliği olmayan en başta.
       : sort === 'etkinlik' ? (a, b) => (activity.get(a.id) || 0) - (activity.get(b.id) || 0) || a.name.localeCompare(b.name, 'tr')
         : (a, b) => a.name.localeCompare(b.name, 'tr'));
   const pubMods = tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published));
   const storeName = (id: string) => stores.find((s) => s.id === id)?.name || '—';
+  // Etkinlik: tam geçmiş yoksa son 50 sınav + ilerleme kayıtları (dersler, modüller, bültenler).
 
   return (
     <Page wide>
@@ -874,7 +977,13 @@ export const BaristasPage: React.FC = () => {
         <label className="flex items-center gap-2 text-[13px] text-fg-2 px-1">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Pasifler
         </label>
+        {view === 'list' && !loaded && (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} disabled={historyQ.loading && wantTitles} onClick={() => setWantTitles(true)}>
+            {historyQ.loading && wantTitles ? <Spinner size={13} /> : <Icon name="medal" size={13} />} Unvanları göster
+          </button>
+        )}
       </div>
+      {historyQ.error && <ErrorText>{historyQ.error}</ErrorText>}
 
       {list.length === 0 ? <Empty icon="users" text="Barista bulunamadı." /> : view === 'list' ? (
         <div className={t.listGroup}>
@@ -903,7 +1012,7 @@ export const BaristasPage: React.FC = () => {
                       <div className="text-[11px] text-fg-3">{storeName(b.storeId)}</div>
                     </td>
                     {pubMods.map((m) => {
-                      const st = moduleState(m, lessons, p);
+                      const st = moduleState(m, lessons, p, { modules, tracks });
                       return (
                         <td key={m.id} className="px-2 py-2 text-center">
                           {st.passed ? (
@@ -934,9 +1043,14 @@ export const BaristaDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const s = useStaffSession();
   const { stores, tracks, modules, lessons } = useContent();
-  const { baristas, progress, attempts, assignments } = useStaffData();
+  const { baristas, progress } = useStaffData();
   const badgeConfig = useBadgeConfig((x) => x.config);
   const b = baristas.find((x) => x.id === baristaId);
+  // Baristanın BÜTÜN sınav geçmişi ve mağazasının bütün görevleri kendi
+  // sorgusuyla: rozet ve önlük kararı kesik veriye dayanmasın (eskiden zincirin
+  // son 300 sınavından ve son görevlerden hesaplanıyordu).
+  const own = useBaristaAttempts(b?.id || null);
+  const storeTasks = useStoreAssignments(b?.storeId || null);
   const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -946,10 +1060,16 @@ export const BaristaDetailPage: React.FC = () => {
 
   if (!b) return <Page wide><PageTitle title="Barista bulunamadı" back="/baristalar" /></Page>;
   const p = progress[b.id] || EMPTY;
-  const pct = overallPercent(modules, lessons, p);
-  const mine = attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided);
-  const tasks = assignments.filter((a) => a.storeId === b.storeId && (!a.baristaId || a.baristaId === b.id));
+  const pct = overallPercent(modules, lessons, p, tracks);
+  const mine = (own.data || []).filter((a) => a.submittedAt && !a.voided);
+  const tasks = (storeTasks.data || []).filter((a) => !a.baristaId || a.baristaId === b.id).sort((x, y) => y.createdAt - x.createdAt);
   const first = b.name.split(' ')[0];
+  // Silinmiş/görünmeyen içerik sayılmaz ("Geçilen modül 15/14" görünüyordu).
+  const visMods = visibleModules(modules, tracks);
+  const passedVisible = visMods.filter((m) => p.modules?.[m.id]).length;
+  const lessonsDone = lessons.filter((l) => p.lessons?.[l.id]).length;
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
+  const historyReady = !!own.data && !!storeTasks.data;
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } catch (e) { toast(errorText(e), 'negative'); } setBusy(false); };
   const manage = can(s.role, 'manageBaristas');
@@ -967,7 +1087,7 @@ export const BaristaDetailPage: React.FC = () => {
         {manage && b.active && (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
             if (!confirm(`${first} için PIN sıfırlansın mı? Mevcut PIN hemen geçersiz olur.`)) return;
-            const r = await backend.resetBaristaPin(b, s.name);
+            const r = await backend.resetBaristaPin(b, authorName(s.role, s.name));
             setCode({ ...r, title: `${first} için yeni davet kodu`, hint: inviteHint(first) });
           })}><Icon name="key" size={15} /> {b.pinPending ? 'Yeni davet kodu' : 'PIN sıfırla'}</button>
         )}
@@ -979,7 +1099,7 @@ export const BaristaDetailPage: React.FC = () => {
           })}>İşten ayrıldı</button>
         ) : (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} disabled={busy} onClick={() => run(async () => {
-            const r = await backend.setBaristaActive(b, true, s.name);
+            const r = await backend.setBaristaActive(b, true, authorName(s.role, s.name));
             if (r.code) setCode({ code: r.code, expiresAt: r.expiresAt!, title: `${first} için davet kodu`, hint: inviteHint(first) });
           })}>Yeniden aktifleştir</button>
         )}
@@ -997,9 +1117,9 @@ export const BaristaDetailPage: React.FC = () => {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Genel ilerleme" value={`%${pct}`} icon="target" tone="positive" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <Stat label="Geçilen modül" value={`${Object.keys(p.modules || {}).length}/${modules.filter((m) => m.published).length}`} icon="award" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <Stat label="Tamamlanan ders" value={Object.keys(p.lessons || {}).length} icon="book" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <Stat label="Sınav denemesi" value={mine.length} hint={mine.length ? `Ortalama ${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)} puan` : undefined} icon="clipboard" onClick={() => document.getElementById('b-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Geçilen modül" value={`${passedVisible}/${visMods.length}`} icon="award" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Tamamlanan ders" value={lessonsDone} icon="book" onClick={() => document.getElementById('b-moduller')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Stat label="Sınav denemesi" value={own.data ? mine.length : '…'} hint={mine.length ? `Ortalama ${Math.round(mine.reduce((x, a) => x + (a.score || 0), 0) / mine.length)} puan` : undefined} icon="clipboard" onClick={() => document.getElementById('b-sinavlar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 items-start">
@@ -1007,7 +1127,7 @@ export const BaristaDetailPage: React.FC = () => {
         <Section label="Modüller">
           <div className={t.listGroup}>
             {tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published)).map((m) => {
-              const st = moduleState(m, lessons, p);
+              const st = moduleState(m, lessons, p, { modules, tracks });
               return (
                 <div key={m.id} className={t.listRowStatic}>
                   <span className={t.iconChip(st.passed ? 'positive' : st.lessonsDone ? 'caution' : 'neutral')}>
@@ -1025,27 +1145,30 @@ export const BaristaDetailPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-5">
-          <TitleCard report={report} />
-          {allowed(s.role, 'rozetAyar') && (
+          {historyReady ? <TitleCard report={report} /> : own.error || storeTasks.error ? <ErrorText>{own.error || storeTasks.error}</ErrorText> : <div className="py-4 flex justify-center"><Spinner /></div>}
+          {historyReady && allowed(s.role, 'rozetAyar') && (
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm} self-start`} onClick={() => setBadgeEdit(true)}>
               <Icon name="edit" size={13} /> Rozet ve başarımları düzenle
             </button>
           )}
-          <Section label={`Başarımlar · ${report.earned}/${report.badges.length}`}>
-            <BadgeGrid report={report} />
-          </Section>
+          {historyReady && (
+            <Section label={`Başarımlar · ${report.earned}/${report.badges.length}`}>
+              <BadgeGrid report={report} />
+            </Section>
+          )}
           <Section label="Görevler">
-            {tasks.length === 0 ? <Empty icon="flag" text="Atanmış görev yok." /> : (
+            {!storeTasks.data ? <div className="py-4 flex justify-center"><Spinner /></div> : tasks.length === 0 ? <Empty icon="flag" text="Atanmış görev yok." /> : (
               <div className={t.listGroup}>
                 {tasks.map((a) => {
                   const done = assignmentDone(a, p);
+                  const invalid = !done && taskInvalidReason(a, vctx);
                   return (
-                    <div key={a.id} className={t.listRowStatic}>
-                      <span className={t.iconChip(done ? 'positive' : isOverdue(a, done) ? 'negative' : 'caution')}><Icon name={done ? 'check' : 'flag'} size={15} /></span>
+                    <div key={a.id} className={`${t.listRowStatic} ${invalid ? 'opacity-60' : ''}`}>
+                      <span className={t.iconChip(done ? 'positive' : invalid ? 'neutral' : isOverdue(a, done) ? 'negative' : 'caution')}><Icon name={done ? 'check' : 'flag'} size={15} /></span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium">{a.title}</div>
+                        <div className="text-[13px] font-medium flex items-center gap-2">{a.title}{invalid && <Badge>Geçersiz</Badge>}</div>
                         <div className="text-[11px] text-fg-3">
-                          {done ? `Tamamlandı ${fmtDate(assignmentDoneAt(a, p))}` : a.dueAt ? `Son tarih ${fmtDate(a.dueAt)}` : 'Süresiz'}{!a.baristaId ? ' · Mağaza geneli' : ''}
+                          {done ? `Tamamlandı ${fmtDate(assignmentDoneAt(a, p))}` : invalid ? TASK_INVALID_LABEL[invalid] : a.dueAt ? `Son tarih ${fmtDate(a.dueAt)}` : 'Süresiz'}{!a.baristaId ? ' · Mağaza geneli' : ''}
                         </div>
                       </div>
                     </div>
@@ -1056,7 +1179,7 @@ export const BaristaDetailPage: React.FC = () => {
           </Section>
           <div id="b-sinavlar" className="scroll-mt-20 flex flex-col">
           <Section label="Sınav geçmişi">
-            {mine.length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
+            {!own.data ? (own.error ? <ErrorText>{own.error}</ErrorText> : <div className="py-4 flex justify-center"><Spinner /></div>) : mine.length === 0 ? <Empty icon="clipboard" text="Henüz sınav yok." /> : (
               <div className="flex flex-col gap-2">
                 {mine.map((a) => <AttemptRow key={a.id} a={a} open={openAttempt === a.id} onToggle={() => setOpenAttempt(openAttempt === a.id ? null : a.id)} />)}
               </div>
@@ -1067,8 +1190,8 @@ export const BaristaDetailPage: React.FC = () => {
       </div>
 
       <EditBaristaSheet open={editOpen} onClose={() => setEditOpen(false)} b={b} />
-      <BadgeOverridesSheet open={badgeEdit} onClose={() => setBadgeEdit(false)} b={b} report={report} byName={s.name} />
-      <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} progressOf={(id) => progress[id]} />
+      <BadgeOverridesSheet open={badgeEdit} onClose={() => setBadgeEdit(false)} b={b} report={report} byName={authorName(s.role, s.name)} />
+      <AssignSheet open={assignOpen} onClose={() => { setAssignOpen(false); invalidate(`assign-store:${b.storeId}`); storeTasks.reload(); }} creator={{ uid: s.uid, name: authorName(s.role, s.name) }} domain={domainOf(s.role)} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} progressOf={(id) => progress[id]} />
       <CodeSheet code={code} onClose={() => { setCode(null); if (!b.active) navigate('/baristalar'); }} />
     </Page>
   );
@@ -1080,12 +1203,12 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
   const [storeId, setStoreId] = useState(b.storeId);
   const [role, setRole] = useState<BaristaRole>(b.role);
   const [phone, setPhone] = useState(b.phone || '');
-  const [startedAt, setStartedAt] = useState(b.startedAt || new Date(b.createdAt).toISOString().slice(0, 10));
+  const [startedAt, setStartedAt] = useState(b.startedAt || localDay(b.createdAt));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Her açılışta güncel bilgiyle başla: vazgeçilen düzenleme bir sonraki
   // açılışta duruyor ve fark edilmeden kaydedilebiliyordu.
-  const initialStart = b.startedAt || new Date(b.createdAt).toISOString().slice(0, 10);
+  const initialStart = b.startedAt || localDay(b.createdAt);
   useEffect(() => {
     if (!open) return;
     setName(b.name); setStoreId(b.storeId); setRole(b.role); setPhone(b.phone || ''); setStartedAt(initialStart); setError(null);
@@ -1113,7 +1236,7 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
       </label>
       <label className={t.field}><span className={t.label}>Telefon</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
       <label className={t.field}><span className={t.label}>İşe başlama tarihi</span>
-        <input className={t.input} type="date" value={startedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartedAt(e.target.value)} />
+        <input className={t.input} type="date" value={startedAt} max={localDay()} onChange={(e) => setStartedAt(e.target.value)} />
         <span className="text-[11px] text-fg-3">Kıdem rozetleri buna göre hesaplanır.</span>
       </label>
       <div className={t.field}>
@@ -1135,14 +1258,24 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
 
 export const TasksPage: React.FC = () => {
   const s = useStaffSession();
-  const { stores } = useContent();
-  const { baristas, progress, assignments } = useStaffData();
+  const { stores, modules, lessons, tracks } = useContent();
+  const { baristas, progress, assignments: recent, assignmentsFrom } = useStaffData();
   const [open, setOpen] = useState(false);
   const [storeFilter, setStoreFilter] = useState('');
+  // Canlı dinlenen: son ASSIGN_DAYS günde açılanlar. Daha eskiler istek üzerine (kota).
+  const [older, setOlder] = useState<Assignment[] | null>(null);
+  const [olderBusy, setOlderBusy] = useState(false);
+  const loadOlder = async () => {
+    setOlderBusy(true);
+    try { setOlder(await loadOlderAssignments(assignmentsFrom)); } catch (e) { toast(errorText(e), 'negative'); }
+    setOlderBusy(false);
+  };
+  const assignments = useMemo(() => (older ? [...recent, ...older.filter((o) => !recent.some((r) => r.id === o.id))] : recent), [recent, older]);
   // Bölge müdürünün ve mağaza müdürlerinin atadığı görevler de burada;
   // Kahve Operasyon Direktörü kimin ne atadığını bu süzgeçle görür.
+  // Adı boş yazılmış atayan (uygulama geliştiricisi) süzgeçte görünmez.
   const [byFilter, setByFilter] = useState('');
-  const creators = [...new Map(assignments.map((a) => [a.createdBy, a.createdByName])).entries()];
+  const creators = [...new Map(assignments.filter((a) => a.createdByName).map((a) => [a.createdBy, a.createdByName])).entries()];
   const [params, setParams] = useSearchParams();
   const onlyOverdue = params.get('durum') === 'geciken';
 
@@ -1150,14 +1283,18 @@ export const TasksPage: React.FC = () => {
   // gecikenler aşağıda kalıyordu.
   const tab: 'open' | 'done' = params.get('sekme') === 'tamamlanan' ? 'done' : 'open';
   const setTab = (x: 'open' | 'done') => setParams(x === 'done' ? { sekme: 'tamamlanan' } : {}, { replace: true });
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
   const all = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
-    const targets = baristas.filter((b) => b.active && b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
+    const targets = taskTargets(a, baristas);
     const done = targets.filter((b) => assignmentDone(a, progress[b.id]));
     const complete = targets.length > 0 && done.length === targets.length;
     const doneAt = complete ? Math.max(...done.map((b) => assignmentDoneAt(a, progress[b.id]) || 0)) : 0;
-    return { a, targets, done, complete, doneAt };
+    // Hiç tamamlanamayacak görev: hedef kalmadı ya da bağlı içerik silindi.
+    const invalid = complete ? null : taskInvalidReason(a, vctx);
+    return { a, targets, done, complete, doneAt, invalid };
   });
-  const openAll = all.filter((r) => !r.complete);
+  const openAll = all.filter((r) => !r.complete && !r.invalid);
+  const invalidAll = all.filter((r) => !r.complete && r.invalid);
   const doneAll = all.filter((r) => r.complete);
   // Açıklar son tarihe göre (gecikenler doğal olarak en üstte), tarihsizler sonda;
   // tamamlananlar bitiş tarihine göre, en yeni üstte.
@@ -1165,6 +1302,42 @@ export const TasksPage: React.FC = () => {
     ? [...doneAll].sort((x, y) => y.doneAt - x.doneAt)
     : [...openAll].sort((x, y) => (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt)
   ).filter(({ a, complete }) => tab === 'done' || !onlyOverdue || (!complete && !!a.dueAt && a.dueAt < Date.now()));
+  const shownInvalid = tab === 'open' && !onlyOverdue ? invalidAll : [];
+
+  const remove = async (a: Assignment) => {
+    if (!confirm('Görev silinsin mi?')) return;
+    try { await deleteDoc(doc(db, 'assignments', a.id)); setOlder((o) => o && o.filter((x) => x.id !== a.id)); toast('Görev silindi'); }
+    catch (e) { toast(errorText(e), 'negative'); }
+  };
+
+  const Row: React.FC<{ r: (typeof all)[number] }> = ({ r: { a, targets, done, complete, doneAt, invalid } }) => {
+    const overdue = !complete && !invalid && a.dueAt && a.dueAt < Date.now();
+    const who = a.baristaId ? baristas.find((b) => b.id === a.baristaId)?.name || 'Ayrılan barista' : 'Tüm mağaza';
+    return (
+      <div className={`${t.listRowStatic} flex-wrap ${invalid ? 'opacity-60' : ''}`}>
+        <span className={t.iconChip(complete ? 'positive' : invalid ? 'neutral' : overdue ? 'negative' : 'caution')}><Icon name={a.kind === 'lesson' ? 'book' : 'clipboard'} size={15} /></span>
+        <div className="flex-1 min-w-[200px]">
+          <div className="text-[14px] font-medium flex items-center gap-2 flex-wrap">{a.title}{invalid && <Badge>Geçersiz</Badge>}</div>
+          <div className="text-[12px] text-fg-3">
+            {stores.find((x) => x.id === a.storeId)?.name} · {who}{a.createdByName ? ` · Atayan: ${a.createdByName}` : ''}
+            {complete ? ` · Tamamlandı ${fmtDate(doneAt)}` : invalid ? ` · ${TASK_INVALID_LABEL[invalid]}` : a.dueAt ? ` · ${overdue ? 'Gecikti' : relDays(a.dueAt)}` : ''}
+          </div>
+          {!invalid && targets.length > 1 && (
+            <div className="text-[11px] text-fg-3 mt-1">
+              Bekleyen: {targets.filter((b) => !done.includes(b)).map((b) => b.name.split(' ')[0]).join(', ') || '—'}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {!invalid && <div className="w-24"><ProgressBar value={targets.length ? (done.length / targets.length) * 100 : 0} /></div>}
+          {!invalid && <span className="text-[12px] tnum w-10">{done.length}/{targets.length}</span>}
+          {(a.createdBy === s.uid || can(s.role, 'manageTeam')) && (
+            <button className={t.iconBtn} title="Sil" aria-label="Görevi sil" onClick={() => remove(a)}><Icon name="trash" size={14} /></button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Page wide>
@@ -1189,38 +1362,25 @@ export const TasksPage: React.FC = () => {
           </button>
         )}
       </div>
-      {rows.length === 0 ? <Empty icon="flag" text={tab === 'done' ? 'Tamamlanan görev yok.' : onlyOverdue ? 'Gecikmiş görev yok.' : all.length ? 'Açık görev yok, hepsi tamamlandı.' : 'Henüz görev atanmadı.'} /> : (
-        <div className={t.listGroup}>
-          {rows.map(({ a, targets, done, complete, doneAt }) => {
-            const overdue = !complete && a.dueAt && a.dueAt < Date.now();
-            return (
-              <div key={a.id} className={`${t.listRowStatic} flex-wrap`}>
-                <span className={t.iconChip(complete ? 'positive' : overdue ? 'negative' : 'caution')}><Icon name={a.kind === 'lesson' ? 'book' : 'clipboard'} size={15} /></span>
-                <div className="flex-1 min-w-[200px]">
-                  <div className="text-[14px] font-medium">{a.title}</div>
-                  <div className="text-[12px] text-fg-3">
-                    {stores.find((x) => x.id === a.storeId)?.name} · {a.baristaId ? baristas.find((b) => b.id === a.baristaId)?.name : 'Tüm mağaza'} · Atayan: {a.createdByName}
-                    {complete ? ` · Tamamlandı ${fmtDate(doneAt)}` : a.dueAt ? ` · ${overdue ? 'Gecikti' : relDays(a.dueAt)}` : ''}
-                  </div>
-                  {targets.length > 1 && (
-                    <div className="text-[11px] text-fg-3 mt-1">
-                      Bekleyen: {targets.filter((b) => !done.includes(b)).map((b) => b.name.split(' ')[0]).join(', ') || '—'}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-24"><ProgressBar value={targets.length ? (done.length / targets.length) * 100 : 0} /></div>
-                  <span className="text-[12px] tnum w-10">{done.length}/{targets.length}</span>
-                  {(a.createdBy === s.uid || can(s.role, 'manageTeam')) && (
-                    <button className={t.iconBtn} title="Sil" onClick={async () => { if (confirm('Görev silinsin mi?')) await deleteDoc(doc(db, 'assignments', a.id)); }}><Icon name="trash" size={14} /></button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {rows.length === 0 && shownInvalid.length === 0 ? <Empty icon="flag" text={tab === 'done' ? 'Tamamlanan görev yok.' : onlyOverdue ? 'Gecikmiş görev yok.' : all.length ? 'Açık görev yok, hepsi tamamlandı.' : 'Henüz görev atanmadı.'} /> : (
+        <>
+          {rows.length > 0 && <div className={t.listGroup}>{rows.map((r) => <Row key={r.a.id} r={r} />)}</div>}
+          {shownInvalid.length > 0 && (
+            <Section label={`Geçersiz · ${shownInvalid.length}`}>
+              <p className="text-[12px] text-fg-3 -mt-1">Hiç tamamlanamayacak görevler: gecikmiş sayılmaz. İstersen silebilirsin.</p>
+              <div className={t.listGroup}>{shownInvalid.map((r) => <Row key={r.a.id} r={r} />)}</div>
+            </Section>
+          )}
+        </>
       )}
-      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} progressOf={(id) => progress[id]} />
+      <div className="flex items-center gap-2">
+        {older === null ? (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} disabled={olderBusy} onClick={loadOlder}>
+            {olderBusy ? <Spinner size={13} /> : <Icon name="clock" size={13} />} {fmtDate(assignmentsFrom)} tarihinden önceki görevleri göster
+          </button>
+        ) : <span className="text-[12px] text-fg-3">Eski görevler de listede ({older.length}).</span>}
+      </div>
+      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: authorName(s.role, s.name) }} domain={domainOf(s.role)} baristas={baristas} progressOf={(id) => progress[id]} />
     </Page>
   );
 };

@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Avatar, Sheet } from '../../ui/kit';
+import { Avatar, Sheet, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { can, STAFF_ROLE_LABEL } from '../../lib/roles';
 import { useAllow, type Perm } from '../../lib/permissions';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
+import { isClosed } from '../../api/requests';
 import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
@@ -14,6 +15,15 @@ import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 import { confirmLeave } from '../../lib/unsaved';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean; perm?: Perm }
+
+/** Yetkiye bağlı ekranların adresleri (yetkisi kaldırılınca bildirim için). */
+const ALL_PERM_PATHS: { to: string; perm: Perm }[] = [
+  { to: '/talepler', perm: 'ekran.talepler' }, { to: '/onaylar', perm: 'ekran.onaylar' }, { to: '/baristalar', perm: 'ekran.baristalar' },
+  { to: '/kurul-sorulari', perm: 'ekran.kurulSorulari' }, { to: '/magazalar', perm: 'ekran.magazalar' }, { to: '/gorevler', perm: 'ekran.gorevler' },
+  { to: '/bulten', perm: 'ekran.bulten' }, { to: '/rozetler', perm: 'ekran.rozetler' }, { to: '/yeni-urun', perm: 'ekran.yeniUrun' },
+  { to: '/icerik', perm: 'ekran.akademi' }, { to: '/soru-havuzu', perm: 'ekran.soruHavuzu' }, { to: '/geri-bildirim', perm: 'ekran.geriBildirim' },
+  { to: '/bildirimler', perm: 'ekran.bildirimler' }
+];
 
 type StaffSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'staff' }>;
 let lastStaff: StaffSession | null = null;
@@ -40,6 +50,7 @@ export const StaffLayout: React.FC = () => {
   const subscribe = useStaffData((x) => x.subscribe);
   const proposals = useStaffData((x) => x.proposals);
   const requests = useStaffData((x) => x.requests);
+  const dataError = useStaffData((x) => x.error);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
   useStaffTheme();
@@ -55,9 +66,10 @@ export const StaffLayout: React.FC = () => {
   // Yönetim Kurulu'nun bana sorduğu, yanıt bekleyen sorular.
   const board = useBoardQuestions(allow(s.role, 'ekran.kurulSorulari'));
   const boardWaiting = board.data.filter((q) => q.status === 'open' && askedTo(q, s.role)).length;
-  // Kapanmış talebe mağaza yeniden yazdıysa o da sayılır (kapatınca son söz
-  // operasyonda olur; mağaza sonradan yazdıysa yanıt bekliyor demektir).
-  const openRequests = requests.filter((r) => r.lastSide === 'store').length;
+  // Yalnızca açık talepler: mağaza kapanmış talebe artık yazamıyor (14.11.2026
+  // kararı). Eskiden kapalı talebe yazılan mesaj rozeti artırıyor ama Açık
+  // listesinde görünmüyordu; sayı ile liste aynı olsun.
+  const openRequests = requests.filter((r) => r.lastSide === 'store' && !isClosed(r.status)).length;
 
   // Her menü satırı Yetkiler ayarına bağlı (perm). Kapalı olan görünmez.
   const NAV: NavItem[] = ([
@@ -86,6 +98,18 @@ export const StaffLayout: React.FC = () => {
     ...(ACTIVITY_LOG && can(s.role, 'manageAi') ? [{ to: '/demo-kaydi', label: 'Demo kaydı', icon: 'info' as IconName }] : [])
   ] as NavItem[]).filter((n) => !n.perm || allow(s.role, n.perm));
   const primary = NAV.filter((n) => n.primary);
+
+  // Açık ekranın yetkisi kapatılınca uygulama Genel bakış'a atıyor; neden
+  // atıldığı söylenmiyordu.
+  const lastPath = useRef(pathname);
+  useEffect(() => {
+    const prev = lastPath.current;
+    lastPath.current = pathname;
+    if (pathname !== '/' || prev === '/') return;
+    const item = ALL_PERM_PATHS.find((x) => prev.startsWith(x.to));
+    if (item && !allow(s.role, item.perm)) toast('Bu ekranın yetkisi kaldırıldı.', 'negative');
+  }, [pathname, allow, s.role]);
+  const doLogout = () => { if (confirmLeave()) logout(); };
   const rest = NAV.filter((n) => !n.primary);
   const restBadge = rest.reduce((x, n) => x + (n.badge || 0), 0);
 
@@ -132,7 +156,7 @@ export const StaffLayout: React.FC = () => {
             {/* Uzun unvan ("Kahve Operasyon Direktörü") kesilmesin: iki satıra iner. */}
             <div className="text-[11px] text-fg-3 leading-snug">{STAFF_ROLE_LABEL[s.role]}</div>
           </div>
-          <button onClick={logout} className={t.iconBtn} aria-label="Çıkış" title="Çıkış"><Icon name="logout" size={15} /></button>
+          <button onClick={doLogout} className={t.iconBtn} aria-label="Çıkış" title="Çıkış"><Icon name="logout" size={15} /></button>
         </div>
       </aside>
 
@@ -146,11 +170,16 @@ export const StaffLayout: React.FC = () => {
             <div className="text-[14px] font-semibold">Kahve Operasyonu</div>
             <div className="text-[11px] text-fg-3 truncate">{s.name} · {STAFF_ROLE_LABEL[s.role]}</div>
           </div>
-          <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}><Icon name="logout" size={14} /> Çıkış</button>
+          <button onClick={doLogout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}><Icon name="logout" size={14} /> Çıkış</button>
         </div>
       </header>
 
       <main className="flex-1 min-w-0">
+        {dataError && (
+          <div className="mx-4 mt-4 flex gap-2 items-start text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5">
+            <Icon name="alert" size={16} className="mt-0.5" /><span>{dataError}</span>
+          </div>
+        )}
         <Outlet />
       </main>
 

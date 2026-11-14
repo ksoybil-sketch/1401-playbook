@@ -25,6 +25,7 @@ export const RequestsPage: React.FC = () => {
   // Servis onayı: Kahve Operasyon Direktörü ve Operasyon Müdürü (Yetkiler ayarı).
   const approver = allowed(me.role, 'servisOnay');
   const requests = useStaffData((x) => x.requests);
+  const moreRequests = useStaffData((x) => x.moreRequests);
   const { stores } = useContent();
   // Kartlar listeyi süzer; adres çubuğunda da tutulur (?durum=acil) ki
   // Genel bakış'tan ya da paylaşılan bağlantıdan aynı görünüm açılsın.
@@ -130,10 +131,16 @@ export const RequestsPage: React.FC = () => {
           <div className="flex flex-col gap-2">
             {list.map((r) => (
               <button key={r.id} onClick={() => open(r)} className={`${t.cardInteractive} p-4 text-left flex`}>
-                <RequestSummary r={r} showStore unread={r.lastSide === 'store'} />
+                <RequestSummary r={r} showStore unread={r.lastSide === 'store' && !isClosed(r.status)} />
               </button>
             ))}
           </div>
+        )}
+        {/* Açık talepler hep listede; kapananların yalnızca son güncellenenleri okunur (kota). */}
+        {tab === 'closed' && (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start mt-2`} onClick={moreRequests}>
+            <Icon name="clock" size={13} /> Daha eski talepleri göster
+          </button>
         )}
       </Section>
 

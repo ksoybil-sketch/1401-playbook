@@ -3,6 +3,7 @@ import { db } from './firebase';
 import { useSession } from '../store/session';
 import { useContent } from '../store/content';
 import { allowed, domainOf } from '../lib/permissions';
+import { authorName } from '../lib/roles';
 import type { ChangeOp, Proposal, ProposalKind, StaffRole } from '../../shared/types';
 
 /**
@@ -32,6 +33,66 @@ function staff() {
   const s = useSession.getState().session;
   if (s.kind !== 'staff') throw new Error('Kahve Operasyonu oturumu yok.');
   return s;
+}
+/** Kayda yazılan ad: uygulama geliştiricisi iz bırakmaz (boş). */
+const nameOf = (s: ReturnType<typeof staff>) => authorName(s.role, s.name);
+
+/* ------------------------------------------------------------------ */
+/* Sürüm denetimi: eski öneri / eşzamanlı düzenleme                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * İçerik ve bülten belgelerine her yazımda `updatedAt` işlenir. Bir editör
+ * belgeyi açtığı andaki updatedAt'i (ya da öneri oluşturulduğu andakini)
+ * saklar; kaydederken belge sunucuda o andan beri değiştiyse sessizce
+ * ezilmez, StaleError atılır. Ekran kullanıcıya sorar, isterse force ile
+ * yeniden dener.
+ *   - A20: "Olduğu gibi yayınla" öneriden sonra yapılan düzeltmeyi eziyordu.
+ *   - B17: aynı dersi/bülteni iki kişi düzenleyince sonraki öncekini siliyordu.
+ */
+const VERSIONED = new Set<ChangeOp['col']>(['lessons', 'modules', 'tracks', 'questions', 'bulletins']);
+/** Sürüm haritasının anahtarı. */
+export const versionKey = (col: string, id: string) => `${col}:${id}`;
+/** Belgenin sürümü: updatedAt (yoksa 0); belge yoksa null. */
+export const verOf = (d: Record<string, unknown> | null | undefined): number | null =>
+  d ? (typeof d.updatedAt === 'number' ? d.updatedAt : 0) : null;
+export type Versions = Record<string, number | null>;
+
+export class StaleError extends Error {
+  constructor(public titles: string[]) {
+    super(`Bu kayıt sen açtıktan sonra değişti${titles.length ? `: ${titles.join(', ')}` : ''}. Kaydedersen sonraki değişiklikler gider.`);
+    this.name = 'StaleError';
+  }
+}
+
+/** Sürüm denetlenen belgelerin şu anki sürümleri (sunucudan). */
+async function currentVersions(ops: ChangeOp[]): Promise<Record<string, { v: number | null; title: string }>> {
+  const keys = [...new Map(ops.filter((o) => VERSIONED.has(o.col)).map((o) => [versionKey(o.col, o.id), o])).values()];
+  const rows = await Promise.all(keys.map(async (o) => {
+    // Çevrimdışıyken (önbellekte de yoksa) okunamaz: o belge denetlenmez,
+    // yazım yine kuyruğa alınır.
+    const snap = await getDoc(doc(db, o.col, o.id)).catch(() => null);
+    if (!snap) return null;
+    const d = snap.exists() ? (snap.data() as Record<string, unknown>) : null;
+    const title = String(d?.title || d?.prompt || o.data?.title || o.data?.prompt || '').slice(0, 60);
+    return [versionKey(o.col, o.id), { v: verOf(d), title }] as const;
+  }));
+  return Object.fromEntries(rows.filter((r): r is NonNullable<typeof r> => !!r));
+}
+
+/** base'deki sürümlerden farklı olanların başlıkları (boşsa her şey güncel). */
+async function staleTitles(ops: ChangeOp[], base: Versions): Promise<string[]> {
+  const relevant = ops.filter((o) => VERSIONED.has(o.col) && versionKey(o.col, o.id) in base);
+  if (!relevant.length) return [];
+  const cur = await currentVersions(relevant);
+  return Object.entries(cur).filter(([k, x]) => base[k] !== x.v).map(([, x]) => x.title || 'kayıt');
+}
+
+/** Öneri oluşturulurken hedef belgelerin sürümü (sonradan değişti mi diye bakılır). */
+async function baseVersions(ops: ChangeOp[], known?: Versions): Promise<Versions> {
+  const missing = ops.filter((o) => VERSIONED.has(o.col) && !(known && versionKey(o.col, o.id) in known));
+  const cur = missing.length ? await currentVersions(missing) : {};
+  return { ...Object.fromEntries(Object.entries(cur).map(([k, x]) => [k, x.v])), ...(known || {}) };
 }
 
 /**
@@ -80,11 +141,14 @@ function clean<T>(v: T): T {
 
 export async function applyOps(ops: ChangeOp[]): Promise<void> {
   const batch = writeBatch(db);
+  const now = Date.now();
   for (const o of ops) {
     const ref = doc(db, o.col, o.id);
+    // Sürüm: içerik ve bülten belgesi her yazımda updatedAt alır (bkz. StaleError).
+    const data = VERSIONED.has(o.col) ? { ...(o.data || {}), updatedAt: now } : (o.data || {});
     if (o.op === 'delete') batch.delete(ref);
-    else if (o.op === 'update') batch.update(ref, o.data || {});
-    else batch.set(ref, o.data || {});
+    else if (o.op === 'update') batch.update(ref, data);
+    else batch.set(ref, data);
   }
   await batch.commit();
 }
@@ -92,33 +156,71 @@ export async function applyOps(ops: ChangeOp[]): Promise<void> {
 /** Yeni belge için kimlik (yazmadan). */
 export const newId = (col: ChangeOp['col']) => doc(collection(db, col)).id;
 
-export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId?: string | null): Promise<ChangeResult> {
+/** Öneri belgesi + oluşturulduğu andaki hedef sürümleri. */
+export type ProposalDoc = Proposal & { baseUpdatedAt?: Versions };
+
+export interface CommitOptions {
+  /**
+   * Editörün belgeyi açtığı andaki sürümler (versionKey → updatedAt). Verilirse
+   * kaydetmeden önce sunucudaki hâliyle karşılaştırılır.
+   */
+  base?: Versions;
+  /** Sürüm farkına rağmen kaydet (kullanıcı "üzerine yaz" dedi). */
+  force?: boolean;
+}
+
+export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId?: string | null, opts: CommitOptions = {}): Promise<ChangeResult> {
   const s = staff();
   const data = clean(ops);
+  // Öneri üzerinde çalışılıyorsa önce öneriyi oku: kimin, hangi sürüme göre yapıldığı.
+  const proposal = proposalId
+    ? (await getDoc(doc(db, 'proposals', proposalId)).catch(() => null))?.data() as ProposalDoc | undefined
+    : undefined;
   if (canPublishOps(data)) {
+    if (proposalId && !proposal) throw new Error('Öneri okunamadı. İnternet bağlantını kontrol edip yeniden dene.');
+    const own = !!proposal && proposal.createdBy === s.uid;
+    // Ayar uyuşmazlığı: içeriği yayınlayabilen ama önerileri onaylayamayan
+    // biri başkasının önerisini "onaylayıp yayınlarsa" içerik yayına girip
+    // öneri "bekliyor" kalıyordu (kural öneri güncellemesini reddediyor).
+    if (proposal && !own && !allowed(s.role, 'oneriOnay')) {
+      throw new Error('Önerileri onaylama yetkin yok. Bu öneriyi yetkili yönetici yayınlar.');
+    }
+    if (!opts.force) {
+      // Önerinin sürümü önceliklidir: onaylayan editörü sonradan açmış olsa
+      // da öneriden sonraki değişiklik ezilmesin.
+      const base = { ...(opts.base || {}), ...(proposal?.baseUpdatedAt || {}) };
+      const stale = await staleTitles(data, base);
+      if (stale.length) throw new StaleError(stale);
+    }
     // Görev (yeni ürün akışı) onaylanınca yayınlayanın adına yazılır:
     // kurallar görevi yalnızca atayanın kendi kimliğiyle yazmasına izin verir.
     const applied = data.map((o) => (o.col === 'assignments' && o.op === 'set'
-      ? { ...o, data: { ...o.data, createdBy: s.uid, createdByName: s.name } } : o));
+      ? { ...o, data: { ...o.data, createdBy: s.uid, createdByName: nameOf(s) } } : o));
     await applyOps(applied);
-    if (proposalId) {
-      const before = await getDoc(doc(db, 'proposals', proposalId));
-      const original = JSON.stringify(before.data()?.ops || []);
-      await updateDoc(doc(db, 'proposals', proposalId), {
-        status: 'approved', reviewedAt: Date.now(), reviewedBy: s.uid, reviewedByName: s.name,
-        editedOnReview: original !== JSON.stringify(data), ops: data
-      });
+    if (proposalId && proposal) {
+      if (own && !allowed(s.role, 'oneriOnay')) {
+        // Kendi önerisini (sonradan yetki aldığı için) doğrudan yayınladı: öneri geri çekilmiş sayılır.
+        await updateDoc(doc(db, 'proposals', proposalId), { status: 'withdrawn', updatedAt: Date.now() });
+      } else {
+        const original = JSON.stringify(proposal.ops || []);
+        await updateDoc(doc(db, 'proposals', proposalId), {
+          status: 'approved', reviewedAt: Date.now(), reviewedBy: s.uid, reviewedByName: nameOf(s),
+          editedOnReview: original !== JSON.stringify(data), ops: data
+        });
+      }
     }
     return 'applied';
   }
   if (proposalId) {
-    // Kendi bekleyen önerisini düzenliyor.
+    // Kendi bekleyen önerisini düzenliyor (önerinin ilk sürüm bilgisi korunur).
     await updateDoc(doc(db, 'proposals', proposalId), { ops: data, title: meta.title, summary: meta.summary, updatedAt: Date.now() });
     return 'proposed';
   }
-  const p: Omit<Proposal, 'id'> = {
+  const p: Omit<ProposalDoc, 'id'> = {
     kind: meta.kind, title: meta.title, summary: meta.summary, ops: data, status: 'pending',
-    createdAt: Date.now(), createdBy: s.uid, createdByName: s.name
+    createdAt: Date.now(), createdBy: s.uid, createdByName: nameOf(s),
+    // Onaylayan, hedef belge bu andan sonra değiştiyse uyarılır (A20).
+    baseUpdatedAt: await baseVersions(data, opts.base)
   };
   const r = await addDoc(collection(db, 'proposals'), p);
   lastProposalId = r.id;
@@ -128,16 +230,24 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
 /** Son oluşturulan önerinin kimliği — editör, öneri üzerinde düzenlemeye devam edebilsin. */
 export let lastProposalId: string | null = null;
 
-/** Olduğu gibi yayınla. Onaylayanın alanı dışındaysa yayınlanmaz. */
-export async function approveProposal(p: Proposal): Promise<void> {
-  if (!canPublishOps(p.ops)) throw new Error('Bu öneri sizin yetki alanınızın dışında; Kahve Operasyon Direktörü onaylayabilir.');
-  await commitChange(p.ops, { kind: p.kind, title: p.title, summary: p.summary }, p.id);
+/**
+ * Olduğu gibi yayınla. Onaylayanın alanı dışındaysa yayınlanmaz. Hedef belge
+ * öneriden sonra değiştiyse StaleError atar; force ile yine de yayınlanır.
+ */
+export async function approveProposal(p: Proposal, force = false): Promise<void> {
+  if (!canPublishOps(p.ops)) throw new Error('Bu öneri senin yetki alanının dışında; Kahve Operasyon Direktörü onaylayabilir.');
+  await commitChange(p.ops, { kind: p.kind, title: p.title, summary: p.summary }, p.id, { force });
+}
+
+/** Önerinin hedef belgelerinden öneriden sonra değişenlerin başlıkları (boşsa güncel). */
+export async function proposalStale(p: ProposalDoc): Promise<string[]> {
+  return p.baseUpdatedAt ? staleTitles(p.ops, p.baseUpdatedAt) : [];
 }
 
 export async function rejectProposal(p: Proposal, note: string): Promise<void> {
   const s = staff();
   await updateDoc(doc(db, 'proposals', p.id), {
-    status: 'rejected', reviewedAt: Date.now(), reviewedBy: s.uid, reviewedByName: s.name, reviewNote: note.trim()
+    status: 'rejected', reviewedAt: Date.now(), reviewedBy: s.uid, reviewedByName: nameOf(s), reviewNote: note.trim()
   });
 }
 

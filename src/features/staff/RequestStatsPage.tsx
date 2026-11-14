@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { catOf, reasonLabel } from '../../api/requests';
 import { fmtDur, requestStats, waitSegments } from '../../lib/requestStats';
-import { useStaffData } from './staffData';
+import { dayStart, loadRequestsSince, useFetched, useStaffData } from './staffData';
 import { Page, PageTitle, Section, Stat, Empty, fmtDate } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
@@ -26,8 +26,17 @@ const Bar: React.FC<{ value: number; max: number; tone?: string }> = ({ value, m
 );
 
 export const RequestStatsPage: React.FC = () => {
-  const requests = useStaffData((x) => x.requests);
+  const live = useStaffData((x) => x.requests);
   const [days, setDays] = useState<number>(90);
+  // Seçilen aralığın talepleri tek seferlik okunur (panel yalnızca açık ve son
+  // güncellenen talepleri canlı dinliyor); açık talepler canlı listeden eklenir.
+  const from = dayStart(Date.now() - days * 86400000);
+  const ranged = useFetched(`requests:${from}`, () => loadRequestsSince(from));
+  const requests = useMemo(() => {
+    const m = new Map((ranged.data || []).map((r) => [r.id, r]));
+    live.forEach((r) => m.set(r.id, r));
+    return [...m.values()];
+  }, [ranged.data, live]);
   const s = useMemo(() => requestStats(requests, Date.now() - days * 86400000), [requests, days]);
   const byStore = s.group((r) => r.storeId, (k) => requests.find((r) => r.storeId === k)?.storeName || k);
   const byCat = s.group((r) => r.category, (k) => catOf(k as never).label);
@@ -45,7 +54,7 @@ export const RequestStatsPage: React.FC = () => {
         ))}
       </div>
 
-      {s.total === 0 ? <Empty icon="inbox" text="Bu aralıkta talep yok." /> : (
+      {ranged.loading && !ranged.data ? <Empty icon="inbox" text="Yükleniyor…" /> : s.total === 0 ? <Empty icon="inbox" text="Bu aralıkta talep yok." /> : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="Talep" value={s.total} hint={`${s.done} çözüldü · ${s.rejected} red · ${s.open} açık`} icon="inbox" />

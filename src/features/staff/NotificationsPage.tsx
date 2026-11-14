@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, limit, orderBy, query, setDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole } from '../../lib/roles';
+import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole, authorName } from '../../lib/roles';
 import { NOTIFY_DEFAULTS, NOTIFY_EVENTS, type NotifyEvent, type NotifyPerson } from '../../lib/notifications';
 import { useStaffSession } from './StaffLayout';
 import { Page, PageTitle, Section, Spinner, toast, fmtDateTime, Badge } from '../../ui/kit';
@@ -50,7 +50,7 @@ export const NotificationsPage: React.FC = () => {
     if (!people) return;
     setBusy(true);
     try {
-      await setDoc(doc(db, 'config', 'notifications'), { people, updatedAt: Date.now(), updatedBy: me.uid, updatedByName: me.name });
+      await setDoc(doc(db, 'config', 'notifications'), { people, updatedAt: Date.now(), updatedBy: me.uid, updatedByName: authorName(me.role, me.name) });
       setSaved(JSON.stringify(people));
       toast('Bildirim ayarları kaydedildi.');
     } catch {
