@@ -503,7 +503,9 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     // açık deneme ister. Örnek geçmiş, geliştirici hesabıyla yazılır.
     await addDoc('attempts', {
       baristaId: bid, baristaName: nameOf[bid], storeId: storeOf[bid],
-      moduleId: mid, moduleTitle: moduleTitle[mid] || mid,
+      // lessonId: null = modül sınavı. Panel ve kurul sayıları "lessonId == null"
+      // toplama sorgusuyla sayar; alan hiç yoksa sınav sayılmaz.
+      moduleId: mid, moduleTitle: moduleTitle[mid] || mid, lessonId: null,
       startedAt: at, submittedAt: at + 7 * 60000,
       total, correct: Math.round((score / 100) * total), score, passed,
       mistakes: mistakeItems(mid, wrong)
