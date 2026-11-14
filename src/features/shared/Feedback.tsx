@@ -8,6 +8,7 @@ import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { FeedbackKind } from '../../../shared/types';
+import { APP_VERSION, bundleName } from '../../lib/version';
 
 /**
  * "Bir sorun var / Önerim var" — uygulamanın her yerinden iki dokunuşla
@@ -21,10 +22,10 @@ export const FEEDBACK_KINDS: { id: FeedbackKind; label: string; hint: string; ic
 ];
 
 function context() {
-  const bundle = [...document.querySelectorAll('script[src]')].map((s) => (s as HTMLScriptElement).src).find((s) => /assets\/index-/.test(s));
   return {
     path: location.hash.replace(/^#/, '') || '/',
-    version: bundle ? bundle.split('/').pop()!.replace(/\.js$/, '') : 'dev',
+    // Okunur sürüm ("1.0.0 · 16.11 14:32") + paket adı; yalnızca geliştirici görür.
+    version: `${APP_VERSION} · ${bundleName()}`,
     device: `${/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? 'telefon' : 'bilgisayar'} · ${window.innerWidth}×${window.innerHeight}`
   };
 }

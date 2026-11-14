@@ -5,9 +5,14 @@ import { App } from './App';
 import './styles.css';
 import { watchForUpdates } from './lib/updateCheck';
 import { installBackButton } from './lib/backButton';
+import { installErrorLog } from './lib/errorLog';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 
 // Açık kalan sekmeler yeni sürümü kendiliğinden alsın.
 watchForUpdates();
+
+// Yakalanmamış hatalar "hatalar" koleksiyonuna düşer (yalnızca geliştirici okur).
+installErrorLog();
 
 // Android geri tuşu: alt sayfa → sınav onayı → önceki ekran → arka plana al.
 installBackButton();
@@ -22,7 +27,9 @@ if (!import.meta.env.DEV && !native && 'serviceWorker' in navigator && /^https?:
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </HashRouter>
   </React.StrictMode>
 );

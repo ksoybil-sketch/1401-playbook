@@ -189,6 +189,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Otomatik hata kaydı (src/lib/errorLog.ts): her oturum kendi adına
+    // yazar, yalnızca uygulama geliştiricisi okur. Değiştirilmez; geliştirici
+    // ele alınmış kayıtları temizleyebilir.
+    match /hatalar/{id} {
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500
+        && request.resource.data.stack is string && request.resource.data.stack.size() <= 2000
+        && request.resource.data.keys().hasOnly(['kind', 'message', 'stack', 'extra', 'path', 'version', 'bundle', 'device', 'by', 'byName', 'role', 'storeName', 'createdAt']);
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
     match /stores/{storeId} {
       allow read: if signedIn();
       allow write: if canManageBaristas();
