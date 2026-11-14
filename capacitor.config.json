@@ -3,7 +3,7 @@
   "appName": "1401 Campus",
   "webDir": "www",
   "server": {
-    "url": "https://playbook-1401.web.app",
+    "url": "https://1401-campus.web.app",
     "cleartext": false,
     "errorPath": "offline.html"
   },

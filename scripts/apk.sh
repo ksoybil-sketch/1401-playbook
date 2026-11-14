@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Android uygulamasını (APK) derler ve imzalar.
 #
-#   npm run apk                  dağıtılacak APK: canlı siteyi açar (playbook-1401.web.app)
+#   npm run apk                  dağıtılacak APK: canlı siteyi açar (1401-campus.web.app)
 #   SUNUCU=demo npm run apk      test APK'sı: demo sitesini açar (playbook-demo-1401.web.app)
 #
 # Çıktı: apk/1401-campus-<sürüm>.apk (demo için -demo eki). Sürüm
@@ -24,7 +24,7 @@ npm run build >/dev/null
 npx cap sync android >/dev/null
 
 VER=$(sed -nE 's/.*versionName "([^"]+)".*/\1/p' android/app/build.gradle)
-URL=https://playbook-1401.web.app
+URL=https://1401-campus.web.app
 OUT=apk/1401-campus-$VER.apk
 if [[ "$SUNUCU" == "demo" ]]; then
   URL=https://playbook-demo-1401.web.app

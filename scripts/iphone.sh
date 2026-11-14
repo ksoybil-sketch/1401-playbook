@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 1401 Campus'ü kabloyla bağlı iPhone'a kurar (ücretsiz Apple hesabı, kişisel ekip).
 #
-#   npm run iphone                 canlı sistem (playbook-1401.web.app)
+#   npm run iphone                 canlı sistem (1401-campus.web.app)
 #   SUNUCU=demo npm run iphone     demo (playbook-demo-1401.web.app)
 #
 # Ücretsiz hesapta imza 7 gün geçerlidir: uygulama açılmaz olunca telefonu
@@ -33,7 +33,7 @@ echo "iPhone: ${NAME//_/ } ($UDID)"
 # Hangi sunucu: canlı (varsayılan) ya da demo:  SUNUCU=demo npm run iphone
 # Yalnızca iPhone derlemesini etkiler (ios/App/App/capacitor.config.json);
 # Android ve ortak ayar (capacitor.config.json) canlıda kalır.
-URL=https://playbook-1401.web.app
+URL=https://1401-campus.web.app
 [[ "$SUNUCU" == "demo" ]] && URL=https://playbook-demo-1401.web.app
 sed -i '' -E "s#\"url\": \"https://[^\"]+\"#\"url\": \"$URL\"#" App/capacitor.config.json
 echo "Sunucu: $URL"

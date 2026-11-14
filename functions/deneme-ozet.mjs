@@ -7,7 +7,7 @@ process.env.FIRESTORE_EMULATOR_HOST ||= '127.0.0.1:8080';
 process.env.FUNCTIONS_EMULATOR = 'true';
 process.env.GCLOUD_PROJECT ||= 'demo-playbook';
 process.env.MAIL_FROM ||= '1401 Campus <bildirim@1401coffee.com>';
-process.env.APP_URL ||= 'https://playbook-1401.web.app';
+process.env.APP_URL ||= 'https://1401-campus.web.app';
 const { gunlukOzetGonder, haftalikRaporGonder } = await import('./ozet.js');
 await gunlukOzetGonder();
 await haftalikRaporGonder();

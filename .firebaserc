@@ -3,5 +3,24 @@
     "default": "playbook-1401",
     "canli": "playbook-1401",
     "demo": "playbook-demo-1401"
+  },
+  "targets": {
+    "playbook-1401": {
+      "hosting": {
+        "app": [
+          "playbook-1401"
+        ],
+        "campus": [
+          "1401-campus"
+        ]
+      }
+    },
+    "playbook-demo-1401": {
+      "hosting": {
+        "app": [
+          "playbook-demo-1401"
+        ]
+      }
+    }
   }
 }
