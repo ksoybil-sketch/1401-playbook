@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, limit, orderBy, query, setDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { STAFF_ROLES, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole } from '../../lib/roles';
 import { NOTIFY_DEFAULTS, NOTIFY_EVENTS, type NotifyEvent, type NotifyPerson } from '../../lib/notifications';
 import { useStaffSession } from './StaffLayout';
 import { Page, PageTitle, Section, Spinner, toast, fmtDateTime, Badge } from '../../ui/kit';
@@ -20,7 +20,7 @@ interface MailRow { id: string; event: string; subject: string; to: string; toNa
 
 export const NotificationsPage: React.FC = () => {
   const me = useStaffSession();
-  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', STAFF_ROLES)), 'notify-staff');
+  const { data: staff } = useQueryLive<StaffRow>(query(collection(db, 'users'), where('role', 'in', visibleStaffRoles(me.role))), 'notify-staff');
   const { data: mails } = useQueryLive<MailRow>(query(collection(db, 'mailLog'), orderBy('at', 'desc'), limit(30)), 'mail-log');
   const [people, setPeople] = useState<NotifyPerson[] | null>(null);
   const [saved, setSaved] = useState<string>('');
@@ -30,8 +30,10 @@ export const NotificationsPage: React.FC = () => {
   useEffect(() => {
     if (people || !staff.length) return;
     getDoc(doc(db, 'config', 'notifications')).then((s) => {
-      const stored = (s.data()?.people as NotifyPerson[] | undefined) || null;
-      const fromStaff: NotifyPerson[] = staff.filter((u) => u.active !== false && NOTIFY_DEFAULTS[u.role]).map((u) => ({
+      // Bu belgeyi bütün ekip okur; uygulama geliştiricisinin adı ve e-postası
+      // buraya hiç yazılmaz (bkz. roles.ts HIDDEN_ROLES).
+      const stored = ((s.data()?.people as NotifyPerson[] | undefined) || null)?.filter((p) => !isDevRole(p.role)) || null;
+      const fromStaff: NotifyPerson[] = staff.filter((u) => u.active !== false && !isDevRole(u.role) && NOTIFY_DEFAULTS[u.role]).map((u) => ({
         uid: u.id, name: u.name || u.email || '', email: u.email || '', role: u.role, active: true, events: NOTIFY_DEFAULTS[u.role]
       }));
       const merged = stored ? [...stored, ...fromStaff.filter((f) => !stored.some((p) => p.uid === f.uid))] : fromStaff;

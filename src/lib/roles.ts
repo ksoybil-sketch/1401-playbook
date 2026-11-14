@@ -56,6 +56,18 @@ export function can(role: StaffRole | undefined, cap: Capability): boolean {
 
 export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional', 'ops', 'admin', 'board'];
 
+/**
+ * Uygulama geliştiricisi (ve aynı yetkideki eski 'admin' rolü) kimseye görünmez:
+ * adı, e-postası ve rolü ekip listesinde, Yetkiler ve Bildirimler ekranında
+ * yalnızca geliştiriciye çıkar. Direktör dahil kimse onu göremez, ekleyemez,
+ * değiştiremez. Aynı sınır firestore.rules → users'da da var.
+ */
+export const HIDDEN_ROLES: StaffRole[] = ['developer', 'admin'];
+export const isDevRole = (r: StaffRole | string | undefined): boolean => !!r && (HIDDEN_ROLES as string[]).includes(r);
+/** Bu kişinin listelerde görebileceği ekip rolleri (sorgu filtresi; kurallar bunu şart koşar). */
+export const visibleStaffRoles = (me: StaffRole | undefined): StaffRole[] =>
+  isDevRole(me) ? STAFF_ROLES : STAFF_ROLES.filter((r) => !isDevRole(r));
+
 /** Yönetim Kurulu: salt okunur, ayrı ekran. */
 export const isBoard = (r: StaffRole | undefined) => r === 'board';
 /** Kurul sorularını yanıtlayabilenler. */
@@ -73,7 +85,8 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
 
 /** Ekibe kimin hangi rolle kişi ekleyebileceği. */
 export function assignableRoles(me: StaffRole): StaffRole[] {
-  if (me === 'developer' || me === 'admin') return ['director', 'opsmanager', 'regional', 'ops', 'board', 'developer'];
+  // Uygulama geliştiricisi tektir; ekibe geliştirici eklenmez.
+  if (me === 'developer' || me === 'admin') return ['director', 'opsmanager', 'regional', 'ops', 'board'];
   // Cenk Bey uygulamanın yürütücüsü: Yönetim Kurulu dahil ekibi o kurar.
   if (me === 'director') return ['opsmanager', 'regional', 'ops', 'board'];
   return [];

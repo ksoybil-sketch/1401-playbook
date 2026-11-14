@@ -68,7 +68,9 @@ export const NewProductPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Uzun form: yarıda kalan reçete geri okuna/geri tuşuna/menüye dokununca gidiyordu.
-  useUnsavedGuard(!busy && !!(name.trim() || photo || stepsText.trim() || tip.trim() || bBody.trim() || taskNote.trim() || quizTouched));
+  // Bülten metni boş formda bile kendiliğinden dolduğu için sayılmaz; yalnızca elle
+  // değiştirildiyse (bTouched) kayıp sayılır. Yoksa boş formdan çıkılamıyordu.
+  useUnsavedGuard(!busy && !!(name.trim() || photo || stepsText.trim() || tip.trim() || bTouched || taskNote.trim() || quizTouched));
 
   const mod = recipeModules.find((m) => m.id === moduleId);
   const steps = stepsText.split('\n').map((s) => s.replace(/^\s*(\d+[.)]|-)\s*/, '').trim()).filter(Boolean);
