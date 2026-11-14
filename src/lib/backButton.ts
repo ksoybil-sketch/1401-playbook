@@ -25,16 +25,17 @@ const stack: { h: { current: Handler } }[] = [];
 export const IS_NATIVE_APP = Capacitor.isNativePlatform();
 export const IS_ANDROID_APP = IS_NATIVE_APP && Capacitor.getPlatform() === 'android';
 
-/** react-router'ın geçmiş kaydındaki sıra numarası. */
-const historyIdx = (): number => {
-  const idx = (window.history.state as { idx?: number } | null)?.idx;
-  return typeof idx === 'number' ? idx : 0;
-};
-/** Bu sıranın gerisine geri tuşuyla gidilmez (çıkıştan önceki ekranlar). */
-let floor = -1;
+/**
+ * Çıkışta o anki geçmiş kaydı "taban" diye işaretlenir; geri tuşu bu
+ * kayıttan geriye (önceki kişinin ekranlarına) gitmez. Sıra numarasına
+ * (history.state.idx) dayanmıyor: adres react-router dışından
+ * değiştiğinde o numara boş kalıyordu.
+ */
+const FLOOR = 'campusFloor';
+const onFloor = () => !!(window.history.state as Record<string, unknown> | null)?.[FLOOR];
 
 const currentPath = () => (location.hash.replace(/^#/, '').split('?')[0] || '/');
-const isRoot = () => currentPath() === '/' || historyIdx() <= floor;
+const isRoot = () => currentPath() === '/' || onFloor();
 
 export function useBackHandler(active: boolean, handler: Handler) {
   const ref = useRef(handler);
@@ -53,10 +54,10 @@ export function useBackHandler(active: boolean, handler: Handler) {
 /** Çıkışta çağrılır: adres köke döner, önceki ekranlara geri tuşuyla dönülmez. */
 export function resetBackHistory() {
   try {
-    if (currentPath() !== '/') window.history.replaceState(window.history.state, '', '#/');
-    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+    const state = { ...((window.history.state as Record<string, unknown> | null) || {}), [FLOOR]: true };
+    window.history.replaceState(state, '', '#/');
+    window.dispatchEvent(new PopStateEvent('popstate', { state }));
   } catch { /* yok say */ }
-  floor = historyIdx();
 }
 
 let installed = false;

@@ -82,7 +82,9 @@ export const BoardLayout: React.FC = () => {
         </div>
       </aside>
 
-      <header className="md:hidden sticky top-0 z-40 bg-espresso/85 backdrop-blur-xl border-b border-line pt-[env(safe-area-inset-top)] print:hidden">
+      {/* Telefonda üst bar sayfayla kayar (yer kaplamasın); yalnızca durum çubuğu şeridi örtülü. */}
+      <div aria-hidden className="md:hidden fixed top-0 inset-x-0 z-50 h-[env(safe-area-inset-top)] bg-espresso print:hidden" />
+      <header className="md:hidden relative z-40 bg-espresso border-b border-line pt-[env(safe-area-inset-top)] print:hidden">
         <div className="h-14 flex items-center gap-3 px-4">
           <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90 logo-mark" />
           <div className="flex-1 leading-tight min-w-0">

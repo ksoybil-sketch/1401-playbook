@@ -40,13 +40,17 @@
   <small id="note"></small>
 </main>
 <script>
+  // Uygulamanın adresi: scripts/apk.sh derlerken buraya yazar
+  // (capacitor server.url). Bu sayfa telefonun içinden https://localhost
+  // altında açıldığı için location.origin kullanılamaz.
+  var APP_URL = '__APP_URL__';
+  if (APP_URL.indexOf('__') === 0) APP_URL = location.origin + '/';
   var tried = false;
   function retry() {
     if (tried) return;
     tried = true;
     document.getElementById('note').textContent = 'Bağlanıyor…';
-    // Uygulamanın adresi bu sayfayla aynı köken (capacitor server.url).
-    location.replace(location.origin + '/');
+    location.replace(APP_URL);
   }
   document.getElementById('retry').addEventListener('click', retry);
   window.addEventListener('online', function () { setTimeout(retry, 600); });

@@ -31,7 +31,15 @@ if [[ "$SUNUCU" == "demo" ]]; then
   OUT=apk/1401-campus-$VER-demo.apk
 fi
 # Yalnızca bu derlemenin kopyası değişir (cap sync her seferinde yeniden yazar).
-sed -i '' -E "s#\"url\": \"https://[^\"]+\"#\"url\": \"$URL\"#" android/app/src/main/assets/capacitor.config.json
+CFG=android/app/src/main/assets/capacitor.config.json
+sed -i '' -E "s#\"url\": \"https://[^\"]+\"#\"url\": \"$URL\"#" $CFG
+# Test APK'sında WebView hata ayıklaması açık: emülatörde otomatik deneme
+# (Playwright, chrome://inspect) için. Dağıtılan APK'da kapalı kalır.
+if [[ "$SUNUCU" == "demo" ]]; then
+  node -e "const f=process.argv[1],c=JSON.parse(require('fs').readFileSync(f));c.android={...c.android,webContentsDebuggingEnabled:true};require('fs').writeFileSync(f,JSON.stringify(c,null,2))" $CFG
+fi
+# "İnternet yok" sayfasının "Yeniden dene"si bu adrese gider.
+sed -i '' "s#__APP_URL__#$URL/#" android/app/src/main/assets/public/offline.html
 echo "Sunucu: $URL"
 
 (cd android && ./gradlew assembleRelease -q --console=plain)

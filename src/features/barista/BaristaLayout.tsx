@@ -71,7 +71,11 @@ export const BaristaLayout: React.FC = () => {
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
-      <header className="sticky top-0 z-40 bg-espresso/85 backdrop-blur-xl border-b border-line pt-[env(safe-area-inset-top)]">
+      {/* Üst bar sabit değil, sayfayla birlikte kayar: telefonda ekranın
+          önemli bir kısmını kaplıyordu. Sabit olan alttaki menü. Çentik/durum
+          çubuğu altına içerik kaymasın diye yalnızca o şerit örtülür. */}
+      <div aria-hidden className="fixed top-0 inset-x-0 z-50 h-[env(safe-area-inset-top)] bg-espresso" />
+      <header className="relative z-40 bg-espresso border-b border-line pt-[env(safe-area-inset-top)]">
         <div className="h-14 flex items-center gap-3 px-4 max-w-[560px] mx-auto">
           <Avatar name={s.name} size={32} />
           <div className="flex-1 min-w-0 leading-tight">

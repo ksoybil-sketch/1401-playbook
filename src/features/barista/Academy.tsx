@@ -192,6 +192,7 @@ export const LessonPage: React.FC = () => {
   const siblings = lessons.filter((l) => l.moduleId === lesson.moduleId && l.published);
   const idx = siblings.findIndex((l) => l.id === lesson.id);
   const next = siblings[idx + 1];
+  const prev = idx > 0 ? siblings[idx - 1] : undefined;
   const done = !!progress.lessons?.[lesson.id];
 
   const complete = async () => {
@@ -226,9 +227,21 @@ export const LessonPage: React.FC = () => {
       <LessonBlocks blocks={lesson.blocks || []} />
 
       <div className="fixed bottom-0 inset-x-0 z-30 bg-bean/95 backdrop-blur-xl border-t border-line pb-[env(safe-area-inset-bottom)]">
-        <div className="max-w-[560px] mx-auto px-4 py-3">
-          <button onClick={complete} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
-            {done ? (next ? 'Sonraki ders' : 'Modüle dön') : next ? 'Tamamladım, sonraki ders' : 'Tamamladım'}
+        <div className="max-w-[560px] mx-auto px-4 py-3 flex gap-2">
+          {/* Önceki derse dönüş: eskiden yalnızca modül listesinden
+              yapılabiliyordu. Geçmişe yeni kayıt eklemez (replace), geri
+              tuşu yine modüle döner. */}
+          {prev && (
+            <button
+              onClick={() => navigate(`/ders/${prev.id}`, { replace: true })}
+              className={`${t.btn} ${t.btnSecondary} ${t.btnLg} shrink-0`}
+              aria-label={`Önceki ders: ${prev.title}`}
+            >
+              <Icon name="chevronLeft" size={16} /> Önceki
+            </button>
+          )}
+          <button onClick={complete} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1 min-w-0`}>
+            <span className="truncate">{done ? (next ? 'Sonraki ders' : 'Modüle dön') : next ? 'Tamamladım, sonraki ders' : 'Tamamladım'}</span>
             <Icon name="chevronRight" size={16} />
           </button>
         </div>
