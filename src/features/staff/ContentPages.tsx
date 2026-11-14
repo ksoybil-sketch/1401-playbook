@@ -1,9 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { collection, query, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
-import { useQueryLive } from '../../hooks/useFirestore';
+import { useDocLive, useQueryLive } from '../../hooks/useFirestore';
+import { commitChange, canPublishNow, lastProposalId, newId, resultText } from '../../api/changes';
+import { useStaffSession } from './StaffLayout';
+import { can } from '../../lib/roles';
+import { getAiKey, setAiKey } from '../../lib/aiKey';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
@@ -13,16 +17,18 @@ import { TONE as CUP_TONE, TONE_LABELS as CUP_TONES } from '../academy/CupDiagra
 import { parseAmount } from '../../../shared/recipeAmount';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { loadCurriculumFile, planCurriculum, publishCurriculum, type PublishPlan, type PublishProgress } from '../../api/publishCurriculum';
-import type { CupLayer, Lesson, LessonBlock, Module, Question, Track } from '../../../shared/types';
+import type { CupLayer, Lesson, LessonBlock, Module, Proposal, Question, Track } from '../../../shared/types';
+import { useUnsavedGuard } from '../../lib/unsaved';
 
 const TRACK_ICONS: IconName[] = ['coffee', 'book', 'users', 'store', 'shield', 'package', 'cap', 'award', 'clipboard', 'flag'];
 
-/** Listedeki iki öğenin sırasını değiştirir. */
-async function swapOrder(col: string, a: { id: string; order: number }, b: { id: string; order: number }) {
-  const batch = writeBatch(db);
-  batch.update(doc(db, col, a.id), { order: b.order });
-  batch.update(doc(db, col, b.id), { order: a.order });
-  await batch.commit();
+/** Listedeki iki öğenin sırasını değiştirir (yetkisi yoksa öneri olarak). */
+async function swapOrder(col: 'tracks' | 'modules' | 'lessons', a: { id: string; order: number; title: string }, b: { id: string; order: number; title: string }) {
+  const r = await commitChange([
+    { op: 'update', col, id: a.id, data: { order: b.order } },
+    { op: 'update', col, id: b.id, data: { order: a.order } }
+  ], { kind: 'order', title: `${a.title} ↔ ${b.title}`, summary: 'Sıralama değişikliği' });
+  if (r === 'proposed') toast(resultText(r));
 }
 
 const PublishBadge: React.FC<{ on: boolean }> = ({ on }) => <Badge tone={on ? 'positive' : 'neutral'}>{on ? 'Yayında' : 'Taslak'}</Badge>;
@@ -33,20 +39,33 @@ const PublishBadge: React.FC<{ on: boolean }> = ({ on }) => <Badge tone={on ? 'p
 
 export const ContentPage: React.FC = () => {
   const navigate = useNavigate();
+  const me = useStaffSession();
   const { tracks, modules, lessons } = useContent();
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null);
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   return (
     <Page wide>
       <PageTitle title="Akademi" subtitle="Eğitim yolları, modüller, dersler ve soru bankası."
         action={
           <div className="flex gap-2 flex-wrap justify-end">
-            <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
-              <Icon name="refresh" size={15} /> Müfredatı güncelle
-            </button>
+            {/* Toplu müfredat yüklemesi yüzlerce belgeyi birden değiştirir;
+                öneri olarak taşınamayacak kadar büyük, yalnızca müdür yapar. */}
+            {can(me.role, 'publishCurriculum') && (
+              <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setSyncOpen(true)}>
+                <Icon name="refresh" size={15} /> Müfredatı güncelle
+              </button>
+            )}
+            {/* Anahtarı uygulamayı geliştiren kişi yönetir; Kahve Operasyonu
+                yalnızca sonucunu (dosyadan Türkçe ders) kullanır. */}
+            {can(me.role, 'manageAi') && (
+              <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setAiOpen(true)}>
+                <Icon name="flash" size={15} /> Yapay zekâ
+              </button>
+            )}
             {/* Tek ders eklemek için modülün içine girmek gerekiyordu; en çok
                 kullanılan yol burası olduğu için düğme de burada duruyor. */}
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setImporting(true)}>
@@ -57,10 +76,15 @@ export const ContentPage: React.FC = () => {
         } />
 
       <CurriculumSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
+      <AiKeySheet open={aiOpen} onClose={() => setAiOpen(false)} by={me.name} />
       <ImportLessonSheet
         open={importing}
         onClose={() => setImporting(false)}
-        onCreated={(id) => { setImporting(false); navigate(`/icerik/ders/${id}`); }}
+        onCreated={(id, pid, { count, moduleId }) => {
+          setImporting(false);
+          // Birden çok ders eklendiyse modülde hepsi görünsün; tek dersse doğrudan editörüne git.
+          navigate(pid ? `/icerik/ders/${id}?oneri=${pid}` : count > 1 ? `/icerik/modul/${moduleId}` : `/icerik/ders/${id}`);
+        }}
       />
 
       {tracks.length === 0 && <Empty icon="layers" text="Henüz eğitim yolu yok." />}
@@ -86,7 +110,7 @@ export const ContentPage: React.FC = () => {
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium truncate">{m.title}</div>
                       <div className="text-[12px] text-fg-3">
-                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {m.questionCount ?? 0} soru · %{m.passScore} geçme
+                        {lessons.filter((l) => l.moduleId === m.id).length} ders · {m.questionCount ?? 0} soru · geçme notu {m.passScore}
                         {m.prerequisiteId ? ' · Kilitli' : ''}
                       </div>
                     </div>
@@ -227,20 +251,22 @@ const CurriculumSyncSheet: React.FC<{ open: boolean; onClose: () => void }> = ({
   );
 };
 
-const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () => void; nextOrder: number }> = ({ value, onClose, nextOrder }) => {
+export const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () => void; nextOrder: number; proposalId?: string | null }> = ({ value, onClose, nextOrder, proposalId }) => {
   const [f, setF] = useState<Partial<Track>>({});
   useEffect(() => setF(value ? { icon: 'book', published: false, ...value } : {}), [value]);
   const save = async () => {
     if (!f.title?.trim()) return;
     const data = { title: f.title.trim(), description: f.description?.trim() || '', icon: f.icon || 'book', published: !!f.published };
-    if (f.id) await updateDoc(doc(db, 'tracks', f.id), data);
-    else await addDoc(collection(db, 'tracks'), { ...data, order: nextOrder });
-    toast('Kaydedildi', 'positive');
+    const r = await commitChange(
+      [f.id ? { op: 'update', col: 'tracks', id: f.id, data } : { op: 'set', col: 'tracks', id: newId('tracks'), data: { ...data, order: f.order ?? nextOrder } }],
+      { kind: 'track', title: data.title, summary: f.id ? 'Eğitim yolu düzenlendi' : 'Yeni eğitim yolu' }, proposalId);
+    toast(resultText(r), 'positive');
     onClose();
   };
   const remove = async () => {
     if (!f.id || !confirm('Eğitim yolu silinsin mi? İçindeki modüller silinmez ama baristalara görünmez olur.')) return;
-    await deleteDoc(doc(db, 'tracks', f.id));
+    const r = await commitChange([{ op: 'delete', col: 'tracks', id: f.id }], { kind: 'track', title: f.title || 'Eğitim yolu', summary: 'Silme' }, proposalId);
+    toast(resultText(r, 'Silindi'));
     onClose();
   };
   return (
@@ -260,7 +286,7 @@ const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () => void; 
   );
 };
 
-const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () => void }> = ({ value, onClose }) => {
+export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () => void; proposalId?: string | null }> = ({ value, onClose, proposalId }) => {
   const { modules, tracks } = useContent();
   const [f, setF] = useState<Partial<Module>>({});
   useEffect(() => setF(value ? { passScore: 80, examSize: 10, published: false, prerequisiteId: null, ...value } : {}), [value]);
@@ -273,12 +299,12 @@ const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () => void
       examSize: Math.min(50, Math.max(1, Number(f.examSize) || 10)),
       prerequisiteId: f.prerequisiteId || null, published: !!f.published
     };
-    if (f.id) await updateDoc(doc(db, 'modules', f.id), data);
-    else {
-      const inTrack = modules.filter((m) => m.trackId === f.trackId);
-      await addDoc(collection(db, 'modules'), { ...data, order: inTrack.length ? Math.max(...inTrack.map((m) => m.order)) + 1 : 1, questionCount: 0 });
-    }
-    toast('Kaydedildi', 'positive');
+    const inTrack = modules.filter((m) => m.trackId === f.trackId);
+    const r = await commitChange(
+      [f.id ? { op: 'update', col: 'modules', id: f.id, data }
+        : { op: 'set', col: 'modules', id: newId('modules'), data: { ...data, order: f.order ?? (inTrack.length ? Math.max(...inTrack.map((m) => m.order)) + 1 : 1), questionCount: 0 } }],
+      { kind: 'module', title: data.title, summary: f.id ? 'Modül ayarları değişti' : 'Yeni modül' }, proposalId);
+    toast(resultText(r), 'positive');
     onClose();
   };
   return (
@@ -292,7 +318,7 @@ const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () => void
         </select>
       </label>
       <div className="grid grid-cols-2 gap-3">
-        <label className={t.field}><span className={t.label}>Geçme notu (%)</span><input type="number" className={t.input} value={f.passScore ?? 80} onChange={(e) => setF({ ...f, passScore: Number(e.target.value) })} /></label>
+        <label className={t.field}><span className={t.label}>Geçme notu (100 üzerinden)</span><input type="number" className={t.input} value={f.passScore ?? 80} onChange={(e) => setF({ ...f, passScore: Number(e.target.value) })} /></label>
         <label className={t.field}><span className={t.label}>Sınavdaki soru sayısı</span><input type="number" className={t.input} value={f.examSize ?? 10} onChange={(e) => setF({ ...f, examSize: Number(e.target.value) })} /></label>
       </div>
       <label className={t.field}><span className={t.label}>Önce geçilmesi gereken modül</span>
@@ -316,7 +342,8 @@ export const ModuleEditorPage: React.FC = () => {
   const { modules, lessons, tracks } = useContent();
   const mod = modules.find((m) => m.id === moduleId);
   const { data: questions } = useQueryLive<Question>(moduleId ? query(collection(db, 'questions'), where('moduleId', '==', moduleId)) : null, `q-${moduleId}`);
-  const [tab, setTab] = useState<'lessons' | 'questions'>('lessons');
+  const [moduleParams] = useSearchParams();
+  const [tab, setTab] = useState<'lessons' | 'questions'>(moduleParams.get('sekme') === 'sorular' ? 'questions' : 'lessons');
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [editQ, setEditQ] = useState<Partial<Question> | null>(null);
   const [importing, setImporting] = useState(false);
@@ -325,16 +352,17 @@ export const ModuleEditorPage: React.FC = () => {
   const ls = lessons.filter((l) => l.moduleId === mod.id);
 
   const addLesson = async () => {
-    const r = await addDoc(collection(db, 'lessons'), {
+    const id = newId('lessons');
+    const r = await commitChange([{ op: 'set', col: 'lessons', id, data: {
       moduleId: mod.id, title: 'Yeni ders', order: ls.length ? Math.max(...ls.map((l) => l.order)) + 1 : 1,
       durationMin: 3, blocks: [{ type: 'text', text: '' }], published: false
-    });
-    navigate(`/icerik/ders/${r.id}`);
+    } }], { kind: 'lesson', title: 'Yeni ders', summary: `Yeni ders · ${mod.title}` });
+    navigate(r === 'applied' ? `/icerik/ders/${id}` : `/icerik/ders/${id}?oneri=${lastProposalId}`);
   };
 
   return (
     <Page wide>
-      <PageTitle title={mod.title} subtitle={`${tracks.find((x) => x.id === mod.trackId)?.title || ''} · %${mod.passScore} geçme · sınavda ${mod.examSize} soru`} back="/icerik"
+      <PageTitle title={mod.title} subtitle={`${tracks.find((x) => x.id === mod.trackId)?.title || ''} · geçme notu ${mod.passScore} · sınavda ${mod.examSize} soru`} back="/icerik"
         action={<button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditModule(mod)}><Icon name="sliders" size={15} /> Ayarlar</button>} />
 
       <div className="flex items-center gap-2">
@@ -400,13 +428,13 @@ export const ModuleEditorPage: React.FC = () => {
         open={importing}
         onClose={() => setImporting(false)}
         fixedModuleId={mod.id}
-        onCreated={(id) => { setImporting(false); navigate(`/icerik/ders/${id}`); }}
+        onCreated={(id, proposalId, { count }) => { setImporting(false); if (proposalId) navigate(`/icerik/ders/${id}?oneri=${proposalId}`); else if (count === 1) navigate(`/icerik/ders/${id}`); }}
       />
     </Page>
   );
 };
 
-const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose: () => void }> = ({ value, onClose }) => {
+export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose: () => void; proposalId?: string | null }> = ({ value, onClose, proposalId }) => {
   const [f, setF] = useState<Partial<Question>>({});
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { setF(value || {}); setError(null); }, [value]);
@@ -421,14 +449,22 @@ const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose: () => 
     const answerText = opts[f.answer ?? 0]?.trim();
     const answer = options.indexOf(answerText);
     if (answer < 0) return setError('Doğru cevap boş bir seçenek olamaz.');
-    const data = { moduleId: f.moduleId!, type: f.type || 'single', prompt: f.prompt.trim(), options, answer, explanation: f.explanation?.trim() || '', imageUrl: f.imageUrl || '' };
-    if (f.id) await updateDoc(doc(db, 'questions', f.id), data);
-    else await addDoc(collection(db, 'questions'), data);
-    toast('Soru kaydedildi', 'positive');
+    // edited: müfredat güncellemesi bu düzeltmeyi ezmez. kaynak 'panel': panelde
+    // eklenen yeni soru güncellemede silinmez.
+    const data = { moduleId: f.moduleId!, type: f.type || 'single', prompt: f.prompt.trim(), options, answer, explanation: f.explanation?.trim() || '', imageUrl: f.imageUrl || '', ...(f.kind ? { kind: f.kind } : {}),
+      ...(f.lessonId ? { lessonId: f.lessonId } : {}), ...(f.id ? { edited: true } : { kaynak: 'panel' }) };
+    const r = await commitChange(
+      [f.id ? { op: 'update', col: 'questions', id: f.id, data } : { op: 'set', col: 'questions', id: newId('questions'), data }],
+      { kind: 'question', title: data.prompt.slice(0, 90), summary: f.id ? 'Soru düzenlendi' : 'Yeni soru' }, proposalId);
+    toast(resultText(r, 'Soru kaydedildi'), 'positive');
     onClose();
   };
   const remove = async () => {
-    if (f.id && confirm('Soru silinsin mi?')) { await deleteDoc(doc(db, 'questions', f.id)); onClose(); }
+    if (!f.id || !confirm('Soru silinsin mi?')) return;
+    // moduleId: silmenin yetki alanı denetimi için (silmede belgeye yazılmaz).
+    const r = await commitChange([{ op: 'delete', col: 'questions', id: f.id, data: { moduleId: f.moduleId } }], { kind: 'question', title: (f.prompt || '').slice(0, 90), summary: 'Soru silme' }, proposalId);
+    toast(resultText(r, 'Silindi'));
+    onClose();
   };
 
   return (
@@ -491,16 +527,34 @@ function emptyBlock(type: LessonBlock['type']): LessonBlock {
 export const LessonEditorPage: React.FC = () => {
   const { lessonId } = useParams();
   const navigate = useNavigate();
+  const me = useStaffSession();
+  const [params, setParams] = useSearchParams();
+  const proposalId = params.get('oneri');
+  const { data: proposal, loading: pLoading } = useDocLive<Proposal>(proposalId ? `proposals/${proposalId}` : null);
   const { lessons, modules } = useContent();
-  const lesson = lessons.find((l) => l.id === lessonId);
+  const published = lessons.find((l) => l.id === lessonId);
+  // Öneriden açıldıysa ders, önerideki hâliyle düzenlenir (yeni dersse
+  // yayında hiç yoktur).
+  const lesson = useMemo<Lesson | undefined>(() => {
+    const op = proposal?.ops.find((o) => o.col === 'lessons' && o.id === lessonId && o.op !== 'delete');
+    if (op) return { ...(published || {}), ...(op.data || {}), id: lessonId! } as Lesson;
+    return published;
+  }, [proposal, published, lessonId]);
   const [draft, setDraft] = useState<Lesson | null>(null);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Kaydedilmemiş düzenleme geri okuna/geri tuşuna/menüye dokununca uyarısız gidiyordu.
+  useUnsavedGuard(dirty && !saving);
 
   useEffect(() => { if (lesson && !dirty) setDraft(lesson); }, [lesson, dirty]);
+  if (proposalId && pLoading) return <Page wide><Spinner /></Page>;
   if (!lesson || !draft) return <Page wide><PageTitle title="Ders bulunamadı" back="/icerik" /></Page>;
   const mod = modules.find((m) => m.id === lesson.moduleId);
+  const publisher = canPublishNow({ op: 'set', col: 'lessons', id: lesson.id, data: { moduleId: lesson.moduleId } });
+  // Bekleyen öneri üzerinde: müdür onaylayarak, öneri sahibi güncelleyerek çalışır.
+  const livePid = proposal && proposal.status === 'pending' && (publisher || proposal.createdBy === me.uid) ? proposal.id : null;
+  const saveLabel = publisher ? (livePid ? 'Onayla ve yayınla' : 'Kaydet') : livePid ? 'Öneriyi güncelle' : 'Onaya gönder';
 
   const patch = (p: Partial<Lesson>) => { setDraft({ ...draft, ...p }); setDirty(true); };
   const setBlock = (i: number, b: LessonBlock) => patch({ blocks: draft.blocks.map((x, j) => (j === i ? b : x)) });
@@ -513,15 +567,28 @@ export const LessonEditorPage: React.FC = () => {
   const save = async () => {
     setSaving(true);
     const { id, ...rest } = draft;
-    await updateDoc(doc(db, 'lessons', id), { ...rest, title: rest.title.trim() || 'Adsız ders', durationMin: Number(rest.durationMin) || 1 });
-    setSaving(false);
-    setDirty(false);
-    toast('Ders kaydedildi', 'positive');
+    const data = { ...rest, title: rest.title.trim() || 'Adsız ders', durationMin: Number(rest.durationMin) || 1 };
+    try {
+      // Öneri dersle birlikte soru da taşıyorsa onları koru, yalnızca dersi değiştir.
+      const mine = { op: 'set' as const, col: 'lessons' as const, id, data };
+      const others = livePid && proposal ? proposal.ops.filter((o) => !(o.col === 'lessons' && o.id === id)) : [];
+      const r = await commitChange([mine, ...others],
+        { kind: 'lesson', title: data.title, summary: `${published ? 'Ders düzenlendi' : 'Yeni ders'} · ${mod?.title || ''}` }, livePid);
+      setDirty(false);
+      toast(resultText(r, 'Ders kaydedildi'), 'positive');
+      if (r === 'proposed' && !livePid && lastProposalId) setParams({ oneri: lastProposalId }, { replace: true });
+      if (r === 'applied' && proposalId) navigate(`/icerik/ders/${id}`, { replace: true });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Kaydedilemedi', 'negative');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async () => {
-    if (!confirm('Ders silinsin mi?')) return;
-    await deleteDoc(doc(db, 'lessons', draft.id));
+    if (!confirm(publisher ? 'Ders silinsin mi?' : 'Dersin silinmesi onaya gönderilsin mi?')) return;
+    const r = await commitChange([{ op: 'delete', col: 'lessons', id: draft.id }], { kind: 'lesson', title: draft.title, summary: 'Ders silme' });
+    toast(resultText(r, 'Ders silindi'));
     navigate(`/icerik/modul/${lesson.moduleId}`);
   };
 
@@ -531,9 +598,24 @@ export const LessonEditorPage: React.FC = () => {
         action={
           <div className="flex gap-2">
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setPreview(!preview)}><Icon name={preview ? 'edit' : 'phone'} size={15} /> {preview ? 'Düzenle' : 'Önizle'}</button>
-            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={!dirty || saving}>{saving ? <Spinner size={14} /> : dirty ? 'Kaydet' : 'Kaydedildi'}</button>
+            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={(!dirty && !(publisher && livePid)) || saving}>{saving ? <Spinner size={14} /> : dirty || (publisher && livePid) ? saveLabel : 'Kaydedildi'}</button>
           </div>
         } />
+
+      {proposal && (
+        <div className={`flex gap-3 p-4 rounded-xl border text-[13px] ${proposal.status === 'pending' ? 'bg-caution-bg border-caution-line' : 'bg-panel border-line'}`}>
+          <Icon name="clipboard" size={18} className="text-caution shrink-0" />
+          <span className="leading-relaxed">
+            {proposal.status === 'pending'
+              ? publisher
+                ? <><strong>{proposal.createdByName}</strong> bu dersi öneriyor. İstediğin yeri düzeltip “Onayla ve yayınla” de; baristalar yalnızca yayınlanan hâlini görür.</>
+                : <>Bu ders onay bekliyor. Kahve Operasyon Direktörü yayınlayana kadar baristalar eski hâlini görür.</>
+              : proposal.status === 'approved' ? <>Bu öneri {proposal.reviewedByName} tarafından yayınlandı.</>
+              : proposal.status === 'rejected' ? <>Bu öneri reddedildi{proposal.reviewNote ? `: “${proposal.reviewNote}”` : '.'} Düzenleyip yeniden gönderebilirsin.</>
+              : <>Bu öneri geri çekildi.</>}
+          </span>
+        </div>
+      )}
 
       {preview ? (
         <div className="max-w-[420px] w-full mx-auto rounded-[28px] border border-line-2 bg-espresso p-5 flex flex-col gap-5">
@@ -549,7 +631,7 @@ export const LessonEditorPage: React.FC = () => {
                   <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3 flex-1">{BLOCK_TYPES.find((x) => x.type === b.type)?.label}</span>
                   <button className={t.iconBtn} disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrowUp" size={13} /></button>
                   <button className={t.iconBtn} disabled={i === draft.blocks.length - 1} onClick={() => move(i, 1)}><Icon name="arrowDown" size={13} /></button>
-                  <button className={t.iconBtn} onClick={() => patch({ blocks: draft.blocks.filter((_, j) => j !== i) })}><Icon name="trash" size={13} /></button>
+                  <button className={t.iconBtn} aria-label="Bloğu sil" onClick={() => confirm('Bu blok silinsin mi?') && patch({ blocks: draft.blocks.filter((_, j) => j !== i) })}><Icon name="trash" size={13} /></button>
                 </div>
                 <BlockEditor block={b} onChange={(nb) => setBlock(i, nb)} />
               </div>
@@ -580,7 +662,7 @@ export const LessonEditorPage: React.FC = () => {
  * gömülür. Video için bu mümkün değil — yalnızca dış bağlantı (YouTube vb.)
  * eklenebilir.
  */
-const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => void }> = ({ block: b, onChange }) => {
+export const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => void }> = ({ block: b, onChange }) => {
   switch (b.type) {
     case 'heading':
       return <input className={t.input} value={b.text} onChange={(e) => onChange({ ...b, text: e.target.value })} placeholder="Bölüm başlığı" />;
@@ -740,4 +822,50 @@ const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlock) => 
         </div>
       );
   }
+};
+
+/* ------------------------------------------------------------------ */
+/* Yapay zekâ anahtarı (dosyadan ders üretimi)                         */
+/* ------------------------------------------------------------------ */
+
+const AiKeySheet: React.FC<{ open: boolean; onClose: () => void; by: string }> = ({ open, onClose, by }) => {
+  const [has, setHas] = useState<boolean | null>(null);
+  const [key, setKey] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setKey(''); setErr(null);
+    getAiKey().then((k) => setHas(!!k)).catch(() => setHas(false));
+  }, [open]);
+  const save = async (value: string) => {
+    if (value && !value.trim().startsWith('sk-ant-')) { setErr('Anthropic anahtarı "sk-ant-" ile başlar.'); return; }
+    await setAiKey(value, by);
+    toast(value ? 'Anahtar kaydedildi' : 'Anahtar kaldırıldı', 'positive');
+    onClose();
+  };
+  return (
+    <Sheet open={open} title="Yapay zekâ ile ders üretimi" onClose={onClose}
+      footer={<>
+        {has && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} onClick={() => save('')}>Anahtarı kaldır</button>}
+        <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={!key.trim()} onClick={() => save(key)}>Kaydet</button>
+      </>}>
+      <p className="text-[13px] text-fg-2 leading-relaxed">
+        "Dosyadan ders" bir PDF ya da görseli Claude'a gönderip Türkçe ders ve farklı türde sınav soruları hazırlar
+        (taranmış sayfalar ve İngilizce kaynaklar dahil). Bunun için bir Anthropic API anahtarı gerekir.
+      </p>
+      <div className="flex gap-3 p-3.5 rounded-xl bg-caution-bg border border-caution-line text-[12.5px] leading-relaxed">
+        <Icon name="alert" size={16} className="text-caution mt-0.5" />
+        <span>
+          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Kahve Operasyonu ve geliştiricinin
+          tarayıcısına iner (baristalar göremez). Console'da yalnızca bu iş için ayrı bir anahtar açıp <strong>aylık harcama sınırı</strong> koy.
+        </span>
+      </div>
+      <div className="text-[13px]">Durum: {has === null ? '…' : has ? <span className="text-positive">Anahtar tanımlı</span> : <span className="text-fg-3">Tanımlı değil — dosyalar OCR ve kurallarla okunuyor</span>}</div>
+      <label className={t.field}>
+        <span className={t.label}>{has ? 'Yeni anahtar' : 'Anahtar'}</span>
+        <input className={t.input} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" />
+      </label>
+      <ErrorText>{err}</ErrorText>
+    </Sheet>
+  );
 };

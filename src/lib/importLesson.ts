@@ -1,5 +1,8 @@
-import type { LessonBlock } from '../../shared/types';
+import type { LessonBlock, QuestionKind, QuestionType } from '../../shared/types';
 import type { SheetRow } from './sheet';
+import type { LessonDraft } from './pdfLesson';
+
+export type { LessonDraft };
 
 /**
  * Tablo satırlarını ve düz metni ders bloklarına çevirir.
@@ -10,11 +13,26 @@ import type { SheetRow } from './sheet';
  * tahmin yürüttüğü her yerde uyarı bırakır; sessizce yanlış ders üretmez.
  */
 
+/** Dosyadan çıkarılan soru — modülün soru bankasına eklenecek taslak. */
+export interface DraftQuestion {
+  type: QuestionType;
+  prompt: string;
+  options: string[];
+  answer: number;
+  explanation: string;
+  kind: QuestionKind;
+  /** Hangi taslak dersten çıktı (ImportResult.lessons içindeki sıra). */
+  lesson?: number;
+}
+
 export interface ImportResult {
-  title: string;
-  durationMin: number;
-  blocks: LessonBlock[];
+  /** Dosyadan çıkan dersler; uzun PDF'ler bölümlerinden birkaç derse bölünür. */
+  lessons: LessonDraft[];
   warnings: string[];
+  /** Soru bankasına önerilen sorular (kullanıcı seçer). */
+  questions?: DraftQuestion[];
+  /** Nasıl üretildi: yapay zekâ mı, kural tabanlı mı. */
+  source?: 'ai' | 'rules';
 }
 
 const norm = (s: string) =>
@@ -146,64 +164,10 @@ export function rowsToLesson(rows: SheetRow[], fallbackTitle: string): ImportRes
   }
   if (!blocks.length) warnings.push('Dosyadan hiçbir içerik çıkarılamadı.');
 
-  return { title, durationMin, blocks, warnings };
+  return { lessons: [{ title, durationMin, blocks }], warnings };
 }
 
-/* ------------------------------------------------------------------ */
-/* Düz metin (PDF)                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * PDF'den çıkan metni kaba bloklara böler: kısa ve sonu noktasız satırlar
- * başlık, "1." / "-" ile başlayanlar adım, kalanı paragraf sayılır.
- * Kesin değil — bu yüzden sonuç her zaman uyarıyla gelir.
- */
-export function textToLesson(text: string, fallbackTitle: string): ImportResult {
-  const warnings = [
-    'PDF metinden çıkarıldı: başlık ve adım ayrımı tahminidir. Yayınlamadan önce blokları gözden geçir.'
-  ];
-  const blocks: LessonBlock[] = [];
-  const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => l.length > 1);
-
-  let title = '';
-  let steps: string[] = [];
-  let para: string[] = [];
-
-  const flushSteps = () => { if (steps.length) { blocks.push({ type: 'steps', items: steps }); steps = []; } };
-  const flushPara = () => {
-    if (para.length) { blocks.push({ type: 'text', text: para.join(' ') }); para = []; }
-  };
-
-  for (const line of lines) {
-    const stepMatch = line.match(/^(?:\d{1,2}[.)]\s*|[-•*]\s+)(.*)$/);
-    if (stepMatch && stepMatch[1].length > 2) {
-      flushPara();
-      steps.push(stepMatch[1].trim());
-      continue;
-    }
-    const isHeading = line.length <= 60 && !/[.!?:,;]$/.test(line) && line.split(' ').length <= 8;
-    if (isHeading) {
-      flushSteps();
-      flushPara();
-      if (!title) { title = line; continue; }
-      blocks.push({ type: 'heading', text: line });
-      continue;
-    }
-    flushSteps();
-    para.push(line);
-  }
-  flushSteps();
-  flushPara();
-
-  if (!title) {
-    title = fallbackTitle;
-    warnings.push('Ders adı bulunamadı; dosya adı kullanıldı.');
-  }
-  if (!blocks.length) {
-    warnings.push('PDF\'den metin çıkmadı. Taranmış (fotoğraf) bir PDF ise metin içermiyordur; içeriği Excel şablonuyla girmek gerekir.');
-  }
-  return { title, durationMin: 2, blocks, warnings };
-}
+/* PDF'ten ders: bkz. src/lib/pdfLesson.ts */
 
 /* ------------------------------------------------------------------ */
 
@@ -224,3 +188,86 @@ export const TEMPLATE_CSV = [
   // Şıklar "|" ile ayrılır: ";" zaten sütun ayırıcısı olduğu için şık ayracı olamaz.
   'Soru;Cold brew kaç saat demlenir?;6 saat|12 saat|24 saat;2'
 ].join('\n');
+
+/* ------------------------------------------------------------------ */
+/* Kural tabanlı soru üretimi (yapay zekâ anahtarı yoksa)              */
+/* ------------------------------------------------------------------ */
+
+const UNIT = /(\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(°C|°|dakika|dk\b|saniye|sn\b|saat|ml|litre|gr\b|gram|g\b|oz\b|%|cm|derece|bar\b)/i;
+
+function variants(token: string): string[] {
+  const m = token.match(/^(\d+(?:[.,]\d+)?)(?:\s*[-–]\s*(\d+(?:[.,]\d+)?))?\s*(.*)$/);
+  if (!m) return [];
+  const a = parseFloat(m[1].replace(',', '.'));
+  const b = m[2] ? parseFloat(m[2].replace(',', '.')) : null;
+  const fmt = (x: number) => (Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10).replace('.', ','));
+  const out = new Set<string>();
+  for (const k of [0.5, 2, 1.5, 0.75, 3]) {
+    const v = (b === null ? `${fmt(a * k)} ${m[3]}` : `${fmt(a * k)} - ${fmt(b * k)} ${m[3]}`).trim();
+    if (v.replace(/\s/g, '') !== token.replace(/\s/g, '') && !/^0\b/.test(v)) out.add(v);
+  }
+  return [...out].slice(0, 3);
+}
+
+/**
+ * Metinden basit sorular: sayı/ölçü içeren cümlelerde boşluk doldurma,
+ * adım listelerinden sıra soruları. Anlam çıkarmaz — yapay zekâ anahtarı
+ * tanımlıysa onun ürettiği sorular tercih edilir.
+ */
+export function blocksToQuestions(blocks: LessonBlock[], title: string): DraftQuestion[] {
+  const out: DraftQuestion[] = [];
+  const sentences = blocks.flatMap((b) =>
+    b.type === 'text' || b.type === 'tip' || b.type === 'warning' ? b.text.split(/(?<=[.!?])\s+/)
+      : b.type === 'steps' ? b.items : []);
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (s.length < 20 || s.length > 220) continue;
+    const m = s.match(UNIT);
+    if (!m) continue;
+    const token = m[0].trim();
+    const wrong = variants(token);
+    if (wrong.length < 3) continue;
+    out.push({
+      type: 'single', prompt: `${title}: boşluğa ne gelir? “${s.replace(m[0], '_____')}”`,
+      options: [token, ...wrong], answer: 0, explanation: `Doğrusu: “${s}”`, kind: 'teknik'
+    });
+    if (out.length >= 8) break;
+  }
+  const steps = blocks.find((b) => b.type === 'steps');
+  if (steps && steps.type === 'steps' && steps.items.length >= 3) {
+    const [x, y] = [steps.items[0], steps.items[steps.items.length - 1]];
+    out.push({
+      type: 'truefalse', prompt: `${title}: “${y.slice(0, 70)}” adımı, “${x.slice(0, 70)}” adımından önce gelir.`,
+      options: ['Doğru', 'Yanlış'], answer: 1, explanation: `Sıra: ${steps.items.join(' → ')}`, kind: 'adim'
+    });
+  }
+  for (const b of blocks) {
+    if (b.type === 'check') out.push({ type: 'single', prompt: b.prompt, options: b.options, answer: b.answer, explanation: b.explanation || '', kind: 'durum' });
+  }
+
+  // "**Kavram:** açıklama" maddelerinden eşleştirme soruları. Aynı dersteki
+  // diğer açıklamalar çeldirici olur — hepsi aynı konudan, tahmin zor.
+  const pairs: { key: string; value: string }[] = [];
+  for (const b of blocks) {
+    if (!('text' in b)) continue;
+    for (const line of b.text.split('\n')) {
+      const m = line.replace(/^-\s*/, '').match(/^\*\*([^*]{2,40}):\*\*\s+(.{15,170})$/);
+      if (m && !/^(cümle|örnek|not)$/i.test(m[1].trim())) pairs.push({ key: m[1].trim(), value: m[2].replace(/\s+\S+[:]\s.*$/, '').trim() });
+    }
+  }
+  const short = (s: string) => (s.length > 110 ? s.slice(0, 108).replace(/[\s,;]+\S*$/, '') + '…' : s);
+  const uniq = pairs.filter((p, i) => pairs.findIndex((q) => q.key === p.key) === i);
+  if (uniq.length >= 4) {
+    // Deterministik seçim: her 2. çiftten soru, çeldiriciler sıradaki üç çift.
+    uniq.forEach((p, i) => {
+      if (out.length >= 14 || i % 2) return;
+      const wrong = [1, 2, 3].map((k) => uniq[(i + k * 2 + 1) % uniq.length]).filter((q) => q.key !== p.key).map((q) => short(q.value));
+      if (new Set(wrong).size < 3) return;
+      out.push({
+        type: 'single', prompt: `${title}: “${p.key}” için doğru olan hangisi?`,
+        options: [short(p.value), ...wrong], answer: 0, explanation: `${p.key}: ${p.value}`, kind: 'kavram'
+      });
+    });
+  }
+  return out;
+}

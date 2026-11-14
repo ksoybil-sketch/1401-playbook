@@ -57,11 +57,268 @@
   --color-accent-line: rgba(140, 155, 174, 0.26);
 }
 
+/*
+ * Kahve Operasyonu temaları (bkz. src/features/staff/theme.ts).
+ * @theme değişkenleri :root'ta tanımlı; <html data-theme> onları ezer,
+ * tüm yardımcı sınıflar (bg-espresso, text-crema…) kendiliğinden uyar.
+ */
+:root[data-theme="latte"] {
+  --color-espresso: #F5EEE4;
+  --color-bean: #EDE3D5;
+  --color-roast: #E4D6C4;
+  --color-panel: rgba(70, 45, 20, 0.045);
+  --color-panel-2: rgba(70, 45, 20, 0.075);
+  --color-panel-3: rgba(70, 45, 20, 0.11);
+  --color-line: rgba(70, 45, 20, 0.12);
+  --color-line-2: rgba(70, 45, 20, 0.2);
+  --color-crema: #2B211A;
+  --color-crema-dim: #3D3027;
+  --color-fg-2: #64564B;
+  --color-fg-3: #8A7A6D;
+  --color-fg-4: #B3A493;
+  --color-positive: #3F7A51;
+  --color-positive-bg: rgba(63, 122, 81, 0.11);
+  --color-positive-line: rgba(63, 122, 81, 0.3);
+  --color-caution: #95622D;
+  --color-caution-bg: rgba(149, 98, 45, 0.11);
+  --color-caution-line: rgba(149, 98, 45, 0.3);
+  --color-negative: #A5433A;
+  --color-negative-bg: rgba(165, 67, 58, 0.1);
+  --color-negative-line: rgba(165, 67, 58, 0.3);
+  --color-accent: #4F6380;
+  --color-accent-bg: rgba(79, 99, 128, 0.1);
+  --color-accent-line: rgba(79, 99, 128, 0.28);
+  color-scheme: light;
+}
+:root[data-theme="cekirdek"] {
+  --color-espresso: #0D1410;
+  --color-bean: #121B15;
+  --color-roast: #18231C;
+  --color-panel: rgba(200, 255, 215, 0.04);
+  --color-panel-2: rgba(200, 255, 215, 0.07);
+  --color-panel-3: rgba(200, 255, 215, 0.1);
+  --color-line: rgba(200, 255, 215, 0.09);
+  --color-line-2: rgba(200, 255, 215, 0.15);
+  --color-crema: #E9F0E8;
+  --color-crema-dim: #D6E2D5;
+  --color-fg-2: #9AAA9D;
+  --color-fg-3: #66766A;
+  --color-fg-4: #45524A;
+  --color-positive: #7DB38B;
+  --color-positive-bg: rgba(125, 179, 139, 0.13);
+  --color-positive-line: rgba(125, 179, 139, 0.28);
+  --color-accent: #8FB0A0;
+  --color-accent-bg: rgba(143, 176, 160, 0.12);
+  --color-accent-line: rgba(143, 176, 160, 0.26);
+}
+
+/* --- Barista temaları (eğitimle açılır, bkz. src/lib/baristaThemes.ts) --- */
+/* Hibiskus: kırmızı ve mürdüm */
+:root[data-theme="hibiskus"] {
+  --color-espresso: #170C12;
+  --color-bean: #1E1018;
+  --color-roast: #26141E;
+  --color-panel: rgba(255, 200, 225, 0.045);
+  --color-panel-2: rgba(255, 200, 225, 0.075);
+  --color-panel-3: rgba(255, 200, 225, 0.11);
+  --color-line: rgba(255, 200, 225, 0.09);
+  --color-line-2: rgba(255, 200, 225, 0.15);
+  --color-crema: #F7E8EE;
+  --color-crema-dim: #EBD6DF;
+  --color-fg-2: #C29FAE;
+  --color-fg-3: #8A6676;
+  --color-fg-4: #5C4350;
+  --color-positive: #8FBF9A;
+  --color-positive-bg: rgba(143, 191, 154, 0.13);
+  --color-positive-line: rgba(143, 191, 154, 0.28);
+  --color-accent: #D07A9B;
+  --color-accent-bg: rgba(208, 122, 155, 0.13);
+  --color-accent-line: rgba(208, 122, 155, 0.28);
+  --color-negative: #E0707A;
+  --color-negative-bg: rgba(224, 112, 122, 0.13);
+  --color-negative-line: rgba(224, 112, 122, 0.28);
+}
+/* Matcha: taze yeşil */
+:root[data-theme="matcha"] {
+  --color-espresso: #0E140C;
+  --color-bean: #141C11;
+  --color-roast: #1B2617;
+  --color-panel: rgba(210, 255, 190, 0.045);
+  --color-panel-2: rgba(210, 255, 190, 0.075);
+  --color-panel-3: rgba(210, 255, 190, 0.11);
+  --color-line: rgba(210, 255, 190, 0.09);
+  --color-line-2: rgba(210, 255, 190, 0.15);
+  --color-crema: #EEF4E6;
+  --color-crema-dim: #DCE7D2;
+  --color-fg-2: #A3B394;
+  --color-fg-3: #6E7D61;
+  --color-fg-4: #4A5641;
+  --color-positive: #9CCB7A;
+  --color-positive-bg: rgba(156, 203, 122, 0.13);
+  --color-positive-line: rgba(156, 203, 122, 0.28);
+  --color-accent: #A8C66C;
+  --color-accent-bg: rgba(168, 198, 108, 0.13);
+  --color-accent-line: rgba(168, 198, 108, 0.28);
+}
+/* Köz: Türk kahvesi — koyu kavrulmuş kahve, gül altını, şeftali (köklü kahvecilerin paketlerinden esin) */
+:root[data-theme="kor"] {
+  --color-espresso: #1A0D07;
+  --color-bean: #22120A;
+  --color-roast: #2D180D;
+  --color-panel: rgba(254, 198, 121, 0.05);
+  --color-panel-2: rgba(254, 198, 121, 0.085);
+  --color-panel-3: rgba(254, 198, 121, 0.12);
+  --color-line: rgba(217, 164, 124, 0.16);
+  --color-line-2: rgba(217, 164, 124, 0.26);
+  --color-crema: #F7E8D4;
+  --color-crema-dim: #EAD6BD;
+  --color-fg-2: #D2B293;
+  --color-fg-3: #9C7A5F;
+  --color-fg-4: #6A4F3C;
+  --color-positive: #A9C08A;
+  --color-positive-bg: rgba(169, 192, 138, 0.13);
+  --color-positive-line: rgba(169, 192, 138, 0.28);
+  --color-caution: #FEC679;
+  --color-caution-bg: rgba(254, 198, 121, 0.13);
+  --color-caution-line: rgba(254, 198, 121, 0.3);
+  --color-accent: #D9A47C;
+  --color-accent-bg: rgba(217, 164, 124, 0.14);
+  --color-accent-line: rgba(217, 164, 124, 0.3);
+}
+/* Gece Mavisi: sakin lacivert */
+:root[data-theme="gece"] {
+  --color-espresso: #0B0F18;
+  --color-bean: #101622;
+  --color-roast: #161E2D;
+  --color-panel: rgba(190, 210, 255, 0.045);
+  --color-panel-2: rgba(190, 210, 255, 0.075);
+  --color-panel-3: rgba(190, 210, 255, 0.11);
+  --color-line: rgba(190, 210, 255, 0.09);
+  --color-line-2: rgba(190, 210, 255, 0.15);
+  --color-crema: #E8EEF8;
+  --color-crema-dim: #D5DDEB;
+  --color-fg-2: #9FAEC6;
+  --color-fg-3: #66738A;
+  --color-fg-4: #434D5E;
+  --color-positive: #7DB39A;
+  --color-positive-bg: rgba(125, 179, 154, 0.13);
+  --color-positive-line: rgba(125, 179, 154, 0.28);
+  --color-accent: #7FA3E0;
+  --color-accent-bg: rgba(127, 163, 224, 0.13);
+  --color-accent-line: rgba(127, 163, 224, 0.28);
+}
+/* Altın: Pro baristalara özel — şampanya altını, cam (liquid glass) yüzeyler */
+:root[data-theme="altin"] {
+  --color-espresso: #080705;
+  --color-bean: #0E0C08;
+  --color-roast: #16120B;
+  --color-panel: rgba(255, 236, 190, 0.06);
+  --color-panel-2: rgba(255, 236, 190, 0.1);
+  --color-panel-3: rgba(255, 236, 190, 0.15);
+  --color-line: rgba(240, 210, 140, 0.18);
+  --color-line-2: rgba(240, 210, 140, 0.3);
+  --color-crema: #FBF4E2;
+  --color-crema-dim: #EFE3C6;
+  --color-fg-2: #D6C49A;
+  --color-fg-3: #9C8B63;
+  --color-fg-4: #66593D;
+  --color-positive: #B9D59A;
+  --color-positive-bg: rgba(185, 213, 154, 0.13);
+  --color-positive-line: rgba(185, 213, 154, 0.3);
+  --color-caution: #F0CF7A;
+  --color-caution-bg: rgba(240, 207, 122, 0.14);
+  --color-caution-line: rgba(240, 207, 122, 0.32);
+  --color-accent: #E9C46A;
+  --color-accent-bg: rgba(233, 196, 106, 0.15);
+  --color-accent-line: rgba(233, 196, 106, 0.34);
+}
+/* Arka plan: camın arkasında yumuşak altın ışıklar. */
+:root[data-theme="altin"] body {
+  background:
+    radial-gradient(60vw 45vh at 85% -5%, rgba(233, 196, 106, 0.22), transparent 70%),
+    radial-gradient(55vw 40vh at -10% 35%, rgba(196, 140, 60, 0.16), transparent 70%),
+    radial-gradient(70vw 50vh at 60% 110%, rgba(233, 196, 106, 0.12), transparent 70%),
+    #080705;
+  background-attachment: fixed;
+}
+/* Cam yüzeyler: yarı saydam, bulanık arka plan, üst kenarda ışık. */
+:root[data-theme="altin"] .bg-panel,
+:root[data-theme="altin"] .bg-panel-2,
+:root[data-theme="altin"] .tile,
+:root[data-theme="altin"] .hero {
+  background: linear-gradient(155deg, rgba(255, 240, 205, 0.13), rgba(255, 240, 205, 0.035) 55%, rgba(233, 196, 106, 0.07)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border-color: rgba(240, 210, 140, 0.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 220, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="altin"] .hero {
+  background: linear-gradient(150deg, rgba(240, 207, 122, 0.28), rgba(255, 240, 205, 0.06) 50%, rgba(196, 140, 60, 0.14)) !important;
+  border-color: rgba(240, 210, 140, 0.4) !important;
+}
+/* İkonlar: altın kabartma. */
+:root[data-theme="altin"] .tile > span:first-child {
+  color: #1A1408 !important;
+  background: linear-gradient(145deg, #FBE7A9, #E2B84A 45%, #A97A26) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 4px 14px rgba(226, 184, 74, 0.35);
+}
+/* Başarım madalyaları: kazanılanlar altın. */
+:root[data-theme="altin"] .medal.earned {
+  background: radial-gradient(circle at 30% 25%, #FFF1C4, #E9C46A 45%, #9C7022) !important;
+  color: #1A1408 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 3px 12px rgba(233, 196, 106, 0.35);
+}
+/* Kartlardaki renkli yazılar altına döner (tek renk, premium). */
+:root[data-theme="altin"] .tile [class*="text-[#"] { color: #E9C46A !important; }
+:root[data-theme="altin"] header,
+:root[data-theme="altin"] nav {
+  background: rgba(14, 12, 8, 0.55) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  backdrop-filter: blur(22px) saturate(1.6);
+  border-color: rgba(240, 210, 140, 0.18) !important;
+}
+:root[data-theme="altin"] nav a[class*="text-"]:not(.text-fg-3) svg {
+  filter: drop-shadow(0 0 6px rgba(233, 196, 106, 0.55));
+}
+/* Gün Işığı: sıcak, açık tema */
+:root[data-theme="gunisigi"] {
+  --color-espresso: #FFF8EC;
+  --color-bean: #FBEFD9;
+  --color-roast: #F5E4C6;
+  --color-panel: rgba(120, 70, 10, 0.045);
+  --color-panel-2: rgba(120, 70, 10, 0.075);
+  --color-panel-3: rgba(120, 70, 10, 0.11);
+  --color-line: rgba(120, 70, 10, 0.13);
+  --color-line-2: rgba(120, 70, 10, 0.21);
+  --color-crema: #2E2112;
+  --color-crema-dim: #47351F;
+  --color-fg-2: #6B5638;
+  --color-fg-3: #937B57;
+  --color-fg-4: #BBA47F;
+  --color-positive: #3F7A51;
+  --color-positive-bg: rgba(63, 122, 81, 0.11);
+  --color-positive-line: rgba(63, 122, 81, 0.3);
+  --color-caution: #A7631A;
+  --color-caution-bg: rgba(167, 99, 26, 0.11);
+  --color-caution-line: rgba(167, 99, 26, 0.3);
+  --color-negative: #A5433A;
+  --color-negative-bg: rgba(165, 67, 58, 0.1);
+  --color-negative-line: rgba(165, 67, 58, 0.3);
+  --color-accent: #C27A14;
+  --color-accent-bg: rgba(194, 122, 20, 0.11);
+  --color-accent-line: rgba(194, 122, 20, 0.3);
+  color-scheme: light;
+}
+:root[data-theme="gunisigi"] .logo-mark { filter: invert(1) sepia(0.5); }
+
+/* Logo beyaz çizilmiş; açık temada koyulaşsın. */
+:root[data-theme="latte"] .logo-mark { filter: invert(1) sepia(0.4); }
+
 @layer base {
-  html { background-color: #100E0D; }
+  html { background-color: var(--color-espresso); }
   body {
-    color: #F2EDE7;
-    background-color: #100E0D;
+    color: var(--color-crema);
+    background-color: var(--color-espresso);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
     font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
@@ -71,10 +328,27 @@
   }
   h1, h2, h3 { letter-spacing: -0.018em; }
   .tnum { font-variant-numeric: tabular-nums; }
-  * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.12) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line-2) transparent; }
   *::-webkit-scrollbar { width: 5px; height: 5px; }
-  *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+  *::-webkit-scrollbar-thumb { background: var(--color-line-2); border-radius: 999px; }
   button { cursor: pointer; }
+
+  /* Telefonda sayfa asla yana kaymasın. Taşan bir öğe sayfayı genişletince
+     iPhone'da açılır pencereler ekrana oturmuyor, taşan kısım dokunmaya
+     yanıt vermiyordu. Kök nedenler ayrıca düzeltildi; bu, emniyet kemeri. */
+  html, body { overflow-x: clip; }
+  /* Izgara hücreleri içeriklerinin en uzun satırına göre genişlemesin
+     (uzun soru metni ya da çubuk grafik sütunu ekran dışına taşırıyordu). */
+  .grid > * { min-width: 0; }
+}
+
+/* iPhone, 16 px'ten küçük yazılı giriş alanına dokununca sayfayı büyütüyor
+   ve geri küçültmüyor: ekran "oturmuyor", pencereler taşıyordu. Dokunmatik
+   ekranda bütün giriş alanları 16 px. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -86,4 +360,13 @@
   20%, 80% { transform: translateX(3px); }
   30%, 50%, 70% { transform: translateX(-6px); }
   40%, 60% { transform: translateX(6px); }
+}
+
+/* Yönetim Kurulu raporu: yazdırırken (PDF) temadan bağımsız, beyaz kâğıt. */
+@media print {
+  @page { margin: 14mm; }
+  html, body, #root, main { background: #fff !important; }
+  .print-report, .print-report * { color: #1c1714 !important; background: transparent !important; border-color: #d9d2ca !important; box-shadow: none !important; }
+  .print-report { max-width: none !important; padding: 0 !important; }
+  .print-report section, .print-report tr { break-inside: avoid; }
 }

@@ -1,7 +1,7 @@
 {
   "name": "1401-campus",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "1401 Coffee Campus — barista eğitimi, standartlar, sınav ve görev yönetimi",
   "type": "module",
   "scripts": {
@@ -10,23 +10,32 @@
     "curriculum": "node scripts/build-curriculum.mjs && node scripts/check-curriculum.mjs",
     "build": "npm run curriculum && tsc && vite build",
     "seed:demo": "node scripts/seed.mjs --demo",
-    "apk": "npx cap sync android && cd android && gradlew assembleRelease && cd .. && node -e \"require('fs').copyFileSync('android/app/build/outputs/apk/release/app-release.apk','apk/1401-campus.apk')\"",
+    "demo:kayit": "node scripts/demo-log.mjs",
+    "geri-bildirim": "node scripts/geri-bildirim.mjs",
+    "apk": "zsh scripts/apk.sh",
     "deploy:demo": "npm run curriculum && tsc && vite build --mode demo && firebase deploy --only hosting,firestore --project playbook-demo-1401 && npm run build",
     "preview": "vite preview",
     "emulators": "firebase emulators:start --project demo-playbook --import=./.emulator-data --export-on-exit",
     "seed:emu": "node scripts/seed.mjs --emulator",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "iphone": "zsh scripts/iphone.sh",
+    "android:simge": "uv run --quiet --with pillow python scripts/android-simge.py"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.2",
     "@capacitor/preferences": "^8.0.1",
     "firebase": "^12.16.0",
     "pdfjs-dist": "^6.5.438",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.5",
+    "tesseract.js": "^7.0.0",
+    "zod": "^4.6.7",
     "zustand": "^5.0.16"
   },
   "devDependencies": {

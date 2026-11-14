@@ -146,14 +146,14 @@ const Cup: React.FC<{ block: CupBlock; sizeIdx: number; uid: string }> = ({ bloc
 
       {/* Bardağın boş kısmı BOŞ görünmeli. Koyu dolgu verilince her içecekte
           sıvının üstünde sahte bir katman gibi okunuyordu. */}
-      <polygon points={bandPoints(box, CX, box.top, box.bot)} fill="rgba(255,255,255,0.10)"
-               stroke="rgba(255,255,255,0.16)" strokeWidth={1.4} />
+      <polygon points={bandPoints(box, CX, box.top, box.bot)} style={{ fill: 'var(--color-panel-3)', stroke: 'var(--color-line-2)' }}
+               strokeWidth={1.4} />
 
       {box.handle && (() => {
         const my = (box.top + box.bot) / 2;
         const hx = CX + hwAt(box, my);
         return <path d={`M ${hx - 1} ${my - 15} q 19 3 19 16 q 0 13 -19 16`} fill="none"
-                     stroke="rgba(255,255,255,0.12)" strokeWidth={3.2} strokeLinecap="round" />;
+                     style={{ stroke: 'var(--color-line-2)' }} strokeWidth={3.2} strokeLinecap="round" />;
       })()}
 
       {block.mode === 'karisim' ? (
@@ -183,10 +183,10 @@ const Cup: React.FC<{ block: CupBlock; sizeIdx: number; uid: string }> = ({ bloc
               fill={TONE[tops[0].tone]} fillOpacity={0.92} />
       )}
 
-      <line x1={CX - aTop} y1={box.top} x2={CX + aTop} y2={box.top} stroke="rgba(255,255,255,0.2)" strokeWidth={1.4} />
+      <line x1={CX - aTop} y1={box.top} x2={CX + aTop} y2={box.top} style={{ stroke: 'var(--color-line-2)' }} strokeWidth={1.4} />
 
       {label && (
-        <text x={CX} y={BASE_Y + 16} fill="#9C948D" fontSize={11} fontWeight={600} textAnchor="middle">{label}</text>
+        <text x={CX} y={BASE_Y + 16} style={{ fill: 'var(--color-fg-2)' }} fontSize={11} fontWeight={600} textAnchor="middle">{label}</text>
       )}
     </svg>
   );
@@ -205,7 +205,7 @@ const Legend: React.FC<{ block: CupBlock }> = ({ block }) => {
   const rows = [...block.layers].sort((a, b) => b.order - a.order);
 
   return (
-    <div className="rounded-xl border border-line overflow-hidden bg-white/[0.02] divide-y divide-line">
+    <div className="rounded-xl border border-line overflow-hidden bg-panel divide-y divide-line">
       {two && (
         <div className="grid grid-cols-[auto_1fr_58px_58px] gap-2.5 items-center px-3 pt-2 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.05em] text-fg-3">
           <span /><span />
@@ -218,8 +218,16 @@ const Legend: React.FC<{ block: CupBlock }> = ({ block }) => {
           <span className="w-2.5 h-2.5 rounded-[3px] shrink-0 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]"
                 style={{ background: TONE[l.tone] }} />
           <span className="text-[13px] text-fg-2 min-w-0">{l.name}</span>
-          <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'small')}</span>
-          {two && <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'large')}</span>}
+          {two && l.fill !== 'ml' ? (
+            // Hacimsiz ölçü ("standart ölçü", "garniş") iki boyda aynı: iki
+            // dar sütuna sığmayıp taşıyordu; tek hücrede, gerekirse alt satıra.
+            <span className="col-span-2 text-[12.5px] font-semibold text-right leading-snug">{amountText(l, 'small')}</span>
+          ) : (
+            <>
+              <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'small')}</span>
+              {two && <span className="text-[13px] font-semibold text-right tnum whitespace-nowrap">{amountText(l, 'large')}</span>}
+            </>
+          )}
         </div>
       ))}
       {block.dose && (

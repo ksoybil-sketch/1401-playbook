@@ -1,0 +1,91 @@
+/**
+ * Videoların seslendirmesi. Her cümleyi ses dosyasına çevirir ve süresini
+ * ölçer:
+ *   public/rehber-ses/<kısa-özet>.mp3|wav
+ *   public/rehber-ses/sesler.json   { "cümle": { file, sec } }
+ * Videolar adım sürelerini bu dosyadan alır. Var olan dosya yeniden
+ * üretilmez (Gemini kotası için önemli).
+ *
+ * Her videonun kendi sesi var: capture/ses-profil.mjs (PROFILLER).
+ *
+ *   node capture/ses.mjs                     ikisi de, eksik olanlar üretilir
+ *   SADECE=kurul node capture/ses.mjs        yalnız kurul
+ *   SADECE=rehber SES=tr-TR-AhmetNeural …    seçili profilde ses/motor değiştirilir
+ *   GEMINI_MODEL=gemini-3.8-flash-lite-tts   Gemini'de ayrı kotalı model
+ *   MOTOR=say SES="Yelda (Enhanced)"         internetsiz yedek (robotik)
+ *   MOTOR=eleven SES=<voice_id>              ElevenLabs (anahtar .env.local'de; ücretsiz planda ayda ~10.000 kredi)
+ *   ELEVEN_MODEL=eleven_flash_v2_5           ElevenLabs'te yarı krediyle çalışan hızlı model
+ *   --hepsi                                  var olanları da yeniden üret
+ */
+import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { PROFILLER, spokenOf } from './ses-profil.mjs';
+import { geminiTTS } from './gemini-tts.mjs';
+import { elevenTTS, elevenCredits } from './eleven-tts.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const OUT = join(here, '..', 'public', 'rehber-ses');
+mkdirSync(OUT, { recursive: true });
+const UVX = join(process.env.HOME, '.local', 'bin', 'uvx');
+const ALL = process.argv.includes('--hepsi');
+const ONLY = process.env.SADECE;
+
+
+const jsonPath = join(OUT, 'sesler.json');
+const out = existsSync(jsonPath) ? JSON.parse(readFileSync(jsonPath, 'utf8')) : {};
+
+
+for (const [ad, p] of Object.entries(PROFILLER)) {
+  if (ONLY && ONLY !== ad) continue;
+  // Ortam değişkenleri yalnızca seçili profile uygulanır (SADECE ile).
+  const env = (k) => (ONLY === ad ? process.env[k] : undefined);
+  const ENGINE = env('MOTOR') || p.motor;
+  const VOICE = env('SES') || (ENGINE === p.motor ? p.ses : ENGINE === 'say' ? 'Yelda' : ENGINE === 'edge' ? 'tr-TR-EmelNeural' : 'Charon');
+  const RATE = env('HIZ') || env('USLUP') || (ENGINE === p.motor ? p.ayar : ENGINE === 'say' ? '172' : ENGINE === 'edge' ? '-4%' : PROFILLER.kurul.ayar);
+  const GMODEL = ENGINE === 'eleven' ? (env('ELEVEN_MODEL') || p.model || 'eleven_multilingual_v2') : (env('GEMINI_MODEL') || '');
+  const EXT = ENGINE === 'edge' || ENGINE === 'eleven' ? 'mp3' : 'wav';
+
+  const texts = [...new Set(p.cumleler())];
+  const jobs = [];
+  for (const text of texts) {
+    const h = createHash('sha1').update(`${ENGINE}|${VOICE}|${RATE}|${GMODEL ? GMODEL + '|' : ''}${text}`).digest('hex').slice(0, 12);
+    const abs = join(OUT, `${h}.${EXT}`);
+    if (ALL || !existsSync(abs)) jobs.push({ spoken: spokenOf(text), abs });
+    out[text] = { file: `rehber-ses/${h}.${EXT}`, abs };
+  }
+  for (const j of jobs) {
+    if (ENGINE === 'eleven') {
+      const [stability, similarity, style, speed] = String(RATE).split('/').map(Number);
+      await elevenTTS(j.spoken, j.abs, { voice: VOICE, model: GMODEL, ...(speed ? { stability, similarity, style, speed } : {}) });
+      console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
+    } else if (ENGINE === 'gemini') {
+      await geminiTTS(j.spoken, j.abs, { voice: VOICE, style: RATE, model: GMODEL || undefined });
+      console.log(`  ✓ ${j.spoken.slice(0, 60)}`);
+    } else if (ENGINE === 'edge') {
+      // Servis arada bir bağlantıyı düşürebiliyor: üç deneme.
+      for (let i = 0; ; i++) {
+        try { execFileSync(UVX, ['edge-tts', '--voice', VOICE, `--rate=${RATE}`, '--text', j.spoken, '--write-media', j.abs], { stdio: 'pipe' }); break; }
+        catch (e) { if (i === 2) throw e; }
+      }
+    } else {
+      execFileSync('say', ['-v', VOICE, '-r', RATE, '--file-format=WAVE', '--data-format=LEI16@24000', '-o', j.abs, j.spoken]);
+    }
+  }
+  let total = 0;
+  for (const text of texts) {
+    const info = execFileSync('afinfo', [out[text].abs]).toString();
+    const sec = Math.round(Number(info.match(/estimated duration: ([\d.]+)/)[1]) * 100) / 100;
+    out[text] = { file: out[text].file, sec };
+    total += sec;
+  }
+  console.log(`${ad}: ${texts.length} cümle (${jobs.length} yeni) · ${Math.round(total)} sn · ${ENGINE} · ${VOICE}`);
+  if (ENGINE === 'eleven') { const c = await elevenCredits(); console.log(`  ElevenLabs kredi: ${c.used}/${c.limit} kullanıldı`); }
+}
+
+// Senaryodan çıkmış cümleler listeden düşer.
+const keep = new Set(Object.values(PROFILLER).flatMap((p) => p.cumleler()));
+for (const k of Object.keys(out)) if (!keep.has(k)) delete out[k];
+writeFileSync(jsonPath, JSON.stringify(out, null, 1));

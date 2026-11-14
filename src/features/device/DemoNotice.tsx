@@ -45,6 +45,8 @@ export const DemoStaffNotice: React.FC = () => {
   if (!DEMO) return null;
   const hidden = import.meta.env.VITE_DEMO_EMAIL as string | undefined;
   const logins = parseLogins(import.meta.env.VITE_DEMO_LOGINS as string | undefined);
+  // Yönetim Kurulu: salt okunur ekran, ayrı grupta gösterilir.
+  const board = parseLogins(import.meta.env.VITE_DEMO_BOARD_LOGINS as string | undefined);
   return (
     <Box>
       <p className="text-[13px] leading-relaxed text-fg-2">
@@ -58,8 +60,15 @@ export const DemoStaffNotice: React.FC = () => {
           {hidden && <Row label={hidden} value="şifre ekipten" />}
         </div>
       )}
+      {board.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t border-caution-line pt-2.5">
+          <span className="text-[11px] font-medium tracking-[0.08em] uppercase text-fg-3">Yönetim Kurulu girişleri</span>
+          {board.map((l) => <Row key={l.email} label={l.email} value={l.password} />)}
+        </div>
+      )}
       <p className="text-[12px] text-fg-3 leading-relaxed">
-        Hepsi tam yetkilidir. Gerçek personel adı ya da şube verisi girme.
+        Her hesap kendi rolünün yetkisiyle girer; Yönetim Kurulu hesapları yalnızca görür ve soru sorar.
+        Gerçek personel adı ya da şube verisi girme.
       </p>
     </Box>
   );

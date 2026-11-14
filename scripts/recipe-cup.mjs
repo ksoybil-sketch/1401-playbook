@@ -57,7 +57,9 @@ export function parseSizes(fullName) {
 const KINDS = [
   { re: /öğüt|çekilmiş kahve/i,                                   kind: 'doz',      role: 'dose',  tone: 'doz' },
   { re: /çikolata sos|chocolate sauce|çikolata şurubu|drop çikolata/i, kind: 'sos',  role: 'layer', tone: 'cikolata' },
-  { re: /şurup|şurubu|\bsos\b|sauce|karamel|lotus|toffee/i,       kind: 'sos',      role: 'layer', tone: 'sos' },
+  // "Sosu" da sos ("Antep Fıstığı Sosu" dekor sayılmasın); yoğunlaştırılmış süt ve tahin
+  // de sos gibi koyu, dipte duran bir taban (süt ya da dekor sayılmasınlar).
+  { re: /şurup|şurubu|\bsosu?\b|sauce|karamel|lotus|toffee|condensed|yoğunlaştırılmış|tahin/i, kind: 'sos', role: 'layer', tone: 'sos' },
   { re: /espresso|ristretto|shot|portafiltre/i,                   kind: 'espresso', role: 'layer', tone: 'espresso' },
   { re: /filtre|demlen|batch|cold drip/i,                         kind: 'espresso', role: 'layer', tone: 'espresso' },
   { re: /buz/i,                                                   kind: 'buz',      role: 'layer', tone: 'buz' },
@@ -94,7 +96,9 @@ export function classify(name) {
 /* ------------------------------------------------------------------ */
 
 export function drinkKind(recipe, items) {
-  const tech = (recipe.tech || '').toLocaleLowerCase('tr');
+  // Yıldızlı alt not ("*Ube Icehot: … blenderda çırpılır") içeceğin kendisini
+  // değil bir bileşenini anlatır; tür ana tarif metninden okunur.
+  const tech = (recipe.tech || '').split(/\n\s*\*/)[0].toLocaleLowerCase('tr');
   const hasIce = items.some((i) => i.kind === 'buz');
   const cold = hasIce || /soğuk|iced|frappe/i.test(`${recipe.cat} ${recipe.name}`);
   if (/blender/.test(tech)) return { mode: 'karisim', cold: true, vessel: 'cold' };
@@ -116,9 +120,40 @@ export function drinkKind(recipe, items) {
  * Dönen dizi ARTAN sıradadır: index 0 = en altta. Çizim de alttan yukarı
  * ilerlediği için bu dizi olduğu gibi gezilir — ters çevrilmez.
  */
-export function stackOrder(layers, cold) {
+/**
+ * Tarifin kendisi sırayı açıkça söyleyen içecekler (alttan üste). Genel
+ * kural bunlarda yanlış sonuç verir: Americano'da önce su, espresso üstte;
+ * proteinli ve matchalı içeceklerde toz önce sıvıyla karıştırılıp katman olur.
+ * Her satır: [içecek adı, malzeme desenleri alttan üste]. Desene uymayan
+ * malzeme genel kurala göre sonra gelir.
+ */
+const SIRA = [
+  [/^caff[eè] americano|^americano/i, [/su/i, /espresso|shot/i]],
+  [/^protein latte/i, [/protein/i, /espresso|shot/i, /süt/i]],
+  [/iced protein shake/i, [/buz/i, /espresso|shot/i, /süt/i, /protein/i]],
+  [/iced spanish latte/i, [/buz/i, /^soğuk süt|^süt/i, /condensed|yoğunlaştırılmış/i, /espresso|shot/i]],
+  [/iced strawberry matcha/i, [/çilek/i, /buz/i, /süt/i, /su/i, /matcha/i]],
+  [/iced matcha latte/i, [/buz/i, /süt/i, /su/i, /matcha/i]],
+  [/^matcha latte/i, [/matcha/i, /su/i, /süt/i]],
+  [/^ube latte/i, [/espresso|shot/i, /vanilya/i, /su/i, /ube/i, /süt/i]],
+  [/iced pistachio/i, [/buz/i, /süt/i, /fıstık/i, /vanilya/i, /espresso|shot/i]]
+];
+
+/** Sırası tarifte açıkça yazılı içecek mi (SIRA listesinde). Denetim bunlarda genel kuralı aramaz. */
+export const orderFromRecipe = (recipe) => SIRA.some(([re]) => re.test(recipe.name || ''));
+
+export function stackOrder(layers, cold, recipe = {}) {
+  const sira = SIRA.find(([re]) => re.test(recipe.name || ''));
+  if (sira) {
+    const pos = (i) => { const k = sira[1].findIndex((re) => re.test(i.name)); return k < 0 ? 99 : k; };
+    return [...layers].sort((a, b) => pos(a) - pos(b));
+  }
+  // Buzlu içecekte sos/şurup espressoyla karıştırılıp en üste dökülüyorsa
+  // ("Karamel sosunu espresso ile homojen hale getirin… bardağa döküp") dipte değil, espressonun altında üstte durur.
+  const tech = (recipe.tech || '').toLocaleLowerCase('tr');
+  const sosKahveyle = cold && /(sos|şurup)[^.]{0,60}(espresso|kahve)|(espresso|kahve)[^.]{0,60}(sos|şurup)/.test(tech);
   const rank = (i) => {
-    if (i.kind === 'sos') return 0;        // ağır, dipte kalır
+    if (i.kind === 'sos') return sosKahveyle ? 2.9 : 0;   // ağır, dipte kalır (ya da kahveyle üstte)
     if (i.kind === 'buz') return 1;        // bardağa ilk giren; hacim kaplamaz ama altta başlar
     if (i.kind === 'espresso') return cold ? 3 : 1;
     if (i.kind === 'kopuk') return 4;
@@ -153,7 +188,7 @@ export function cupBlock(recipe, recipeId) {
   const dose = items.find((i) => i.role === 'dose');
   const tops = items.filter((i) => i.role === 'top');
   const rawLayers = items.filter((i) => i.role === 'layer');
-  const ordered = stackOrder(rawLayers, dk.cold);
+  const ordered = stackOrder(rawLayers, dk.cold, recipe);
 
   const layer = (i, order) => ({
     name: i.name,
@@ -171,6 +206,7 @@ export function cupBlock(recipe, recipeId) {
   ];
 
   const block = { type: 'cup', mode: dk.mode, vessel: dk.vessel, sizes, layers };
+  if (orderFromRecipe(recipe)) block.sira = 'tarif';
   if (dose) block.dose = { name: dose.name, text: dose.amount.text };
   const foam = !dk.cold && foamNote(recipe);
   if (foam) block.foam = foam;

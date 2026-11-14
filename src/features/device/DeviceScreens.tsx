@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, USE_EMULATOR } from '../../api/firebase';
@@ -9,6 +10,7 @@ import { Icon } from '../../ui/Icon';
 import { Avatar, ErrorText, Spinner, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
+import { useBackHandler } from '../../lib/backButton';
 import { DemoStaffNotice, DemoPairNotice, DemoPinHint } from './DemoNotice';
 import type { Barista } from '../../../shared/types';
 
@@ -90,12 +92,34 @@ export const StoreHome: React.FC = () => {
     `baristas-${storeId}`
   );
   const ready = baristas.filter((b) => !b.pinPending).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  // Mağaza müdürü ve vardiya müdürleri üstte, ayrı bir satırda; baristalar
+  // altında yan yana. Önceden hepsi aynı ızgaradaydı ve müdür kalabalıkta
+  // kayboluyordu.
+  const rank = (b: Barista) => (b.role === 'lead' ? 0 : b.role === 'shift' ? 1 : 2);
+  const managers = ready.filter((b) => b.role !== 'barista').sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'tr'));
+  const crew = ready.filter((b) => b.role === 'barista');
 
   const [selected, setSelected] = useState<Barista | null>(null);
+  const [forgot, setForgot] = useState(false);
+  useEffect(() => { setForgot(false); }, [selected]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
   const [menu, setMenu] = useState(false);
+  const [unpairing, setUnpairing] = useState<{ who: Barista | null } | null>(null);
+  const [unpairBusy, setUnpairBusy] = useState(false);
+  const [unpairErr, setUnpairErr] = useState<string | null>(null);
+  const [unpairErrKey, setUnpairErrKey] = useState(0);
+
+  // Ortak telefon: yanlış isim seçilince geri tuşu seçimi kaldırsın (eskiden
+  // uygulama arka plana gidiyor, açılınca aynı kişinin PIN ekranı duruyordu).
+  // Bir dakika işlem görmeyen PIN ekranı da kendiliğinden kapanır.
+  useBackHandler(!!selected, () => { setSelected(null); setError(null); return true; });
+  useEffect(() => {
+    if (!selected || busy) return;
+    const id = setTimeout(() => { setSelected(null); setError(null); }, 60_000);
+    return () => clearTimeout(id);
+  }, [selected, busy, errKey]);
 
   const submit = async (pin: string) => {
     if (!selected) return;
@@ -121,6 +145,15 @@ export const StoreHome: React.FC = () => {
         <PinPad length={4} onComplete={submit} busy={busy} errorKey={errKey} />
         <div className="h-5">{busy && <Spinner />}</div>
         <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
+        {/* PIN'i unutan ne yapacağını bilmiyor, deneye deneye hesabı kilitliyordu. */}
+        {forgot ? (
+          <p className="w-full max-w-[340px] text-[13px] text-fg-2 leading-relaxed bg-panel border border-line rounded-xl px-4 py-3 text-center">
+            PIN'ini unuttuysan tahmin etmeye çalışma. Mağaza müdürüne söyle: Ekibim'den <b>PIN sıfırlama iste</b> der, Bölge Müdürü sana yeni davet kodu verir.
+            Kodla <b>Yeni misin?</b> bölümünden yeni PIN belirlersin; eski PIN'in iptal olur.
+          </p>
+        ) : (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={() => setForgot(true)}>PIN'imi unuttum</button>
+        )}
         <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => { setSelected(null); setError(null); }}>
           <Icon name="chevronLeft" size={16} /> Başka barista
         </button>
@@ -140,9 +173,18 @@ export const StoreHome: React.FC = () => {
           <button className={t.iconBtn} onClick={() => setMenu(true)} aria-label="Cihaz ayarları"><Icon name="sliders" size={16} /></button>
         </div>
 
+        {/* Ölçüye bakmak için PIN gerekmez. */}
+        <button onClick={() => navigate('/receteler?focus=1')}
+          className="rounded-2xl border border-[#D9A066]/30 bg-linear-to-br from-[#D9A066]/25 to-[#D9A066]/[0.06] p-4 flex items-center gap-3.5 text-left active:scale-[0.99] transition-transform">
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#D9A066] text-[#1A120C] shrink-0"><Icon name="coffee" size={20} strokeWidth={1.9} /></span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[16px] font-semibold">Reçeteler</span>
+          </span>
+          <Icon name="search" size={18} className="text-[#E8B47E]" />
+        </button>
+
         <div>
           <h1 className="text-[22px] font-bold">Kim çalışıyor?</h1>
-          <p className="text-[13px] text-fg-3 mt-1">Adına dokun ve PIN'ini gir.</p>
         </div>
 
         <DemoPinHint />
@@ -155,13 +197,37 @@ export const StoreHome: React.FC = () => {
             <p className={t.emptyText}>Bu mağazada henüz PIN'i olan barista yok. Yeni başladıysan davet kodunla giriş yap.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 min-[420px]:grid-cols-4 gap-x-3 gap-y-5">
-            {ready.map((b) => (
-              <button key={b.id} onClick={() => setSelected(b)} className="flex flex-col items-center gap-2 active:opacity-70">
-                <Avatar name={b.name} size={60} />
-                <span className="text-[12px] font-medium text-center leading-tight line-clamp-2">{b.name}</span>
-              </button>
-            ))}
+          <div className="flex flex-col gap-6">
+            {managers.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <span className={t.label}>Müdürler</span>
+                <div className={t.listGroup}>
+                  {managers.map((b) => (
+                    <button key={b.id} onClick={() => setSelected(b)} className={t.listRow}>
+                      <Avatar name={b.name} size={44} />
+                      <span className="flex-1 min-w-0 text-left">
+                        <span className="block text-[15px] font-semibold truncate">{b.name}</span>
+                        <span className="block text-[12px] text-fg-3">{BARISTA_ROLE_LABEL[b.role]}</span>
+                      </span>
+                      <Icon name="chevronRight" size={16} className={t.rowChevron} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {crew.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {managers.length > 0 && <span className={t.label}>Baristalar</span>}
+                <div className="grid grid-cols-3 min-[420px]:grid-cols-4 gap-x-3 gap-y-5">
+                  {crew.map((b) => (
+                    <button key={b.id} onClick={() => setSelected(b)} className="flex flex-col items-center gap-2 active:opacity-70">
+                      <Avatar name={b.name} size={60} />
+                      <span className="text-[12px] font-medium text-center leading-tight line-clamp-2">{b.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -169,28 +235,64 @@ export const StoreHome: React.FC = () => {
           <span className={t.iconChip('accent')}><Icon name="key" size={16} /></span>
           <span className="flex-1">
             <span className="block text-[14px] font-semibold">Yeni misin?</span>
-            <span className="block text-[12px] text-fg-3">Yöneticinin verdiği davet koduyla PIN'ini belirle</span>
+            <span className="block text-[12px] text-fg-3">Davet kodunla PIN belirle</span>
           </span>
           <Icon name="chevronRight" size={16} className={t.rowChevron} />
         </button>
       </div>
 
-      <Sheet open={menu} title="Cihaz" onClose={() => setMenu(false)}>
+      <Sheet open={menu} title="Cihaz" onClose={() => { setMenu(false); setUnpairing(null); }}>
         <p className="text-[13px] text-fg-2 leading-relaxed">Bu telefon <b>{storeName}</b> mağazasına bağlı.</p>
         <button className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`} onClick={() => { setMenu(false); navigate('/yonetici-girisi'); }}>
           <Icon name="shield" size={16} /> Kahve Operasyonu girişi
         </button>
-        <button
-          className={`${t.btn} ${t.btnDanger} ${t.btnLg}`}
-          onClick={async () => {
-            if (confirm('Telefonun mağaza bağlantısı kaldırılsın mı? Yeniden bağlamak için yeni bir eşleştirme kodu gerekir.')) {
-              setMenu(false);
-              await unpair();
-            }
-          }}
-        >
-          Mağaza bağlantısını kaldır
-        </button>
+        {/* Bağlantıyı kaldırmak mağaza müdürünün ya da vardiya müdürünün PIN'ini
+            ister: giriş ekranındaki bu menüye herkes ulaşabiliyor, yanlışlıkla
+            ya da şaka için basılınca telefon kimsenin giremediği hale geliyordu. */}
+        {!unpairing ? (
+          <button className={`${t.btn} ${t.btnDanger} ${t.btnLg}`} onClick={() => { setUnpairing({ who: null }); setUnpairErr(null); }}>
+            Mağaza bağlantısını kaldır
+          </button>
+        ) : !unpairing.who ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-[13px] text-fg-2 leading-relaxed">Bağlantıyı kaldırmak için mağaza müdürü ya da vardiya müdürü PIN'ini girmeli.</p>
+            {managers.length === 0 ? (
+              <p className="text-[13px] text-caution leading-relaxed">Bu mağazada PIN'i olan müdür yok. Bağlantıyı Kahve Operasyonu kaldırabilir.</p>
+            ) : (
+              <div className={t.listGroup}>
+                {managers.map((m) => (
+                  <button key={m.id} className={t.listRow} onClick={() => setUnpairing({ who: m })}>
+                    <Avatar name={m.name} size={28} />
+                    <span className="flex-1 text-left text-[14px] font-medium">{m.name}</span>
+                    <Icon name="chevronRight" size={16} className={t.rowChevron} />
+                  </button>
+                ))}
+              </div>
+            )}
+            <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => setUnpairing(null)}>Vazgeç</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-[14px] font-semibold">{unpairing.who.name} · PIN</div>
+            <PinPad length={4} busy={unpairBusy} errorKey={unpairErrKey} onComplete={async (pin) => {
+              const who = unpairing.who!;
+              setUnpairBusy(true); setUnpairErr(null);
+              try {
+                await backend.verifyPin(who, pin);
+                if (confirm('Telefonun mağaza bağlantısı kaldırılsın mı? Yeniden bağlamak için yeni bir eşleştirme kodu gerekir.')) {
+                  setMenu(false); setUnpairing(null);
+                  await unpair();
+                }
+              } catch (e) {
+                setUnpairErr(errorText(e)); setUnpairErrKey((k) => k + 1);
+              } finally {
+                setUnpairBusy(false);
+              }
+            }} />
+            <div className="w-full"><ErrorText>{unpairErr}</ErrorText></div>
+            <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => setUnpairing({ who: null })}>Geri</button>
+          </div>
+        )}
       </Sheet>
     </div>
   );
@@ -279,16 +381,20 @@ export const StaffLogin: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const reset = async () => {
     setError(null);
     setInfo(null);
     if (!email.includes('@')) return setError('Önce e-posta adresini yaz.');
+    setResetting(true);
     try {
       await staffResetPassword(email);
       setInfo(`${email.trim()} adresine şifre belirleme bağlantısı gönderildi. Gelen kutunu (ve spam klasörünü) kontrol et.`);
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -307,7 +413,7 @@ export const StaffLogin: React.FC = () => {
 
   return (
     <Shell>
-      <Brand sub="Kahve Operasyonu paneli" />
+      <Brand sub="Kahve Operasyonu ve Yönetim Kurulu" />
       <DemoStaffNotice />
       <form onSubmit={submit} className="w-full max-w-[360px] flex flex-col gap-4">
         <label className={t.field}>
@@ -323,7 +429,7 @@ export const StaffLogin: React.FC = () => {
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} disabled={busy}>
           {busy ? <Spinner size={16} /> : 'Giriş yap'}
         </button>
-        <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={reset}>
+        <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={reset} disabled={resetting}>
           Şifremi unuttum / ilk şifremi belirle
         </button>
         <button type="button" className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/kurulum')}>

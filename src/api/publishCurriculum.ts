@@ -52,6 +52,12 @@ async function readExisting(): Promise<Existing> {
   return out;
 }
 
+/**
+ * Panelde oluşturulmuş içerik (Yeni ürün akışı: kaynak = 'panel') kitapçık
+ * dosyasında yoktur; müfredat güncellemesi onu "eski" sayıp silmemeli.
+ */
+const isPanel = (d: Record<string, unknown> | undefined) => d?.kaynak === 'panel';
+
 const itemsOf = (file: CurriculumFile, col: Col): Array<{ id: string }> =>
   (col === 'tracks' ? file.tracks : col === 'modules' ? file.modules : col === 'lessons' ? file.lessons : file.questions) as Array<{ id: string }>;
 
@@ -67,7 +73,7 @@ export async function planCurriculum(file: CurriculumFile): Promise<PublishPlan>
     const incoming = new Set(items.map((i) => i.id));
     let add = 0;
     for (const i of items) (existing[col].has(i.id) ? 0 : add++);
-    const stale = [...existing[col].keys()].filter((id) => !incoming.has(id));
+    const stale = [...existing[col].keys()].filter((id) => !incoming.has(id) && !isPanel(existing[col].get(id)));
     counts[col] = { add, update: items.length - add, remove: stale.length };
     totalWrites += items.length + stale.length;
 
@@ -118,6 +124,12 @@ export async function publishCurriculum(
           // Panelden yapılan düzenlemeler ezilmesin.
           if (typeof prev.published === 'boolean') data.published = prev.published;
           if (col === 'questions' && typeof prev.imageUrl === 'string' && prev.imageUrl) data.imageUrl = prev.imageUrl;
+          // Soru havuzunda düzeltilen soru (edited) olduğu gibi kalır; iptal
+          // edilen sorunun iptali (disabled) korunur.
+          if (col === 'questions' && prev.edited) Object.assign(data, prev);
+          if (col === 'questions' && prev.disabled) {
+            for (const k of ['disabled', 'disabledReason', 'disabledByName', 'disabledAt']) data[k] = prev[k];
+          }
 
           // Elle düzeltilmiş bardak şeması korunur. Reçete dosyasındaki
           // gramaj yanlışsa Kahve Operasyonu panelden düzeltiyor; bu düzeltme
@@ -143,7 +155,7 @@ export async function publishCurriculum(
       onProgress?.({ done: written + removed, total, label: labels[col] });
     }
 
-    const stale = [...existing[col].keys()].filter((id) => !incoming.has(id));
+    const stale = [...existing[col].keys()].filter((id) => !incoming.has(id) && !isPanel(existing[col].get(id)));
     for (let i = 0; i < stale.length; i += BATCH_LIMIT) {
       const batch = writeBatch(db);
       for (const id of stale.slice(i, i + BATCH_LIMIT)) batch.delete(doc(db, col, id));

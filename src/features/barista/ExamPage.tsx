@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { AppError, backend, errorText } from '../../api/backend';
+import { ReportQuestionLink } from '../shared/Feedback';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AppError, errorText } from '../../api/backend';
+import {
+  activeAttemptIn, prepareExam, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
-import { useBaristaSession } from './useBaristaData';
+import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
+import { examSlots, nextModuleAfter } from './Academy';
+import { moduleState } from '../../lib/progress';
 import { Icon } from '../../ui/Icon';
+import { useBackHandler } from '../../lib/backButton';
 import { Page, ProgressBar, Ring, Spinner, ErrorText, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { AttemptReviewItem, ExamQuestion } from '../../../shared/types';
@@ -11,19 +17,82 @@ import type { AttemptReviewItem, ExamQuestion } from '../../../shared/types';
 type Phase =
   | { k: 'intro' }
   | { k: 'loading' }
-  | { k: 'run'; attemptId: string; passScore: number; questions: ExamQuestion[] }
+  | { k: 'run'; attemptId: string; passScore: number; questions: ExamQuestion[]; deadline: number }
   | { k: 'sending' }
-  | { k: 'result'; score: number; correct: number; total: number; passed: boolean; passScore: number; mistakes: AttemptReviewItem[] };
+  | { k: 'result' } & ExamResult;
+
+const fmtClock = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 export const ExamPage: React.FC = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
   const s = useBaristaSession();
   const mod = useContent((x) => x.modules.find((m) => m.id === moduleId));
+  // ?ders=<lessonId>: yeni ürünün mini sınavı (yalnızca o reçetenin soruları).
+  const [params] = useSearchParams();
+  const lesson = useContent((x) => x.lessons.find((l) => l.id === params.get('ders'))) || null;
+  // Sonuç ekranı için: sıradaki modül ve kalan haftalık hak.
+  const allModules = useContent((x) => x.modules);
+  const allLessons = useContent((x) => x.lessons);
+  const { progress } = useMyProgress();
+  const { items: myAttempts } = useMyAttempts(50);
+  const back = lesson ? `/recete/${lesson.id}` : `/modul/${moduleId}`;
   const [phase, setPhase] = useState<Phase>({ k: 'intro' });
   const [error, setError] = useState<string | null>(null);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(Date.now());
+  const [resumable, setResumable] = useState<{ deadline: number } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const submitting = useRef(false);
+
+  // Sınavın okumaları ekran açılınca başlar ("Başla"ya basılana kadar çoğu
+  // zaman biter). Aynı okumadan: bu modülde süresi dolmamış açık deneme var
+  // mı? Varsa "Başla" yerine "Devam et".
+  useEffect(() => {
+    if (!mod) return;
+    prepareExam(mod, s.baristaId, lesson?.id)
+      .then((d) => { const a = activeAttemptIn(d.open, mod.id, lesson?.id); setResumable(a?.deadline ? { deadline: a.deadline } : null); })
+      .catch(() => {});
+  }, [s.baristaId, mod, lesson]);
+
+  // Geri sayım
+  useEffect(() => {
+    if (phase.k !== 'run') return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [phase.k]);
+
+  const submit = useCallback(async (attemptId: string, timedOut = false, questionIds?: string[]) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    clearTimeout(saveTimer.current);
+    setPhase({ k: 'sending' });
+    try {
+      const res = await submitExam(attemptId, answers, { timedOut, questionIds, baristaId: s.baristaId });
+      setPhase({ k: 'result', ...res });
+    } catch (e) {
+      setError(errorText(e));
+      setPhase({ k: 'intro' });
+    } finally {
+      submitting.current = false;
+    }
+  }, [answers, s.baristaId]);
+
+  // Süre dolunca o ana kadarki cevaplarla otomatik teslim.
+  useEffect(() => {
+    if (phase.k === 'run' && now >= phase.deadline) submit(phase.attemptId, true, phase.questions.map((x) => x.id));
+  }, [now, phase, submit]);
+
+  // Android geri tuşu: sınav çözülürken çıkmadan önce onay iste.
+  const EXIT_CONFIRM = 'Sınavdan çıkarsan süre işlemeye devam eder. Süre içinde dönüp kaldığın yerden devam edebilirsin. Çıkılsın mı?';
+  useBackHandler(phase.k === 'run' || phase.k === 'sending' || phase.k === 'loading', () => {
+    if (phase.k === 'run' && confirm(EXIT_CONFIRM)) navigate(back, { replace: true });
+    return true;
+  });
 
   // Sınav sırasında yanlışlıkla geri tuşuna basılırsa uyar.
   useEffect(() => {
@@ -35,52 +104,55 @@ export const ExamPage: React.FC = () => {
 
   if (!mod) return <Page><p className="text-fg-3">Modül bulunamadı.</p></Page>;
 
+  const size = lesson ? lesson.quiz || 3 : mod.examSize;
+  const minutes = Math.ceil((size * SECONDS_PER_QUESTION) / 60);
+
   const start = async () => {
     setError(null);
     setPhase({ k: 'loading' });
     try {
-      const res = await backend.startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name });
-      setAnswers({});
-      setIdx(0);
-      setPhase({ k: 'run', ...res });
+      const res = await startExam(mod, { baristaId: s.baristaId, storeId: s.storeId, name: s.name }, lesson);
+      setAnswers(res.answers);
+      // Devam edilen denemede ilk boş soruya git.
+      const firstBlank = res.questions.findIndex((q) => res.answers[q.id] === undefined);
+      setIdx(firstBlank < 0 ? 0 : firstBlank);
+      setNow(Date.now());
+      setPhase({ k: 'run', attemptId: res.attemptId, passScore: res.passScore, questions: res.questions, deadline: res.deadline });
     } catch (e) {
       let msg = errorText(e);
       if (e instanceof AppError && e.code === 'weekly-limit') {
         const nextAt = (e.data as { nextAt: number } | undefined)?.nextAt;
-        msg = `Bu haftaki 3 sınav hakkını kullandın.${nextAt ? ` Yeni hakkın ${fmtDateTime(nextAt)} tarihinde açılacak.` : ''}`;
+        msg = `Bu sınav için haftalık ${EXAMS_PER_WEEK} deneme hakkını kullandın.${nextAt ? ` Yeni hakkın ${fmtDateTime(nextAt)} tarihinde açılacak.` : ''}`;
       }
       setError(msg);
       setPhase({ k: 'intro' });
     }
   };
 
-  const submit = async (attemptId: string) => {
-    setPhase({ k: 'sending' });
-    try {
-      const res = await backend.submitExam(attemptId, answers, { baristaId: s.baristaId, storeId: s.storeId });
-      setPhase({ k: 'result', ...res });
-    } catch (e) {
-      setError(errorText(e));
-      setPhase({ k: 'intro' });
-    }
+  const choose = (attemptId: string, qid: string, i: number) => {
+    const next = { ...answers, [qid]: i };
+    setAnswers(next);
+    // Her işaretleme denemeye yazılır; uygulama kapanırsa kaybolmaz.
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveAnswers(attemptId, next), 500);
   };
 
   if (phase.k === 'intro' || phase.k === 'loading') {
+    const left = resumable ? resumable.deadline - Date.now() : 0;
     return (
       <Page>
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/modul/${mod.id}`)} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
-          <span className="text-[13px] text-fg-3">Modül sınavı</span>
+          <button onClick={() => navigate(back, { replace: true })} className={t.iconBtn} aria-label="Kapat"><Icon name="close" size={16} /></button>
+          <span className="text-[13px] text-fg-3">{lesson ? 'Mini sınav' : 'Modül sınavı'}</span>
         </div>
         <div className="flex flex-col items-center text-center gap-4 pt-6">
           <span className={`${t.iconChip('accent')} w-14 h-14 rounded-2xl`}><Icon name="clipboard" size={26} /></span>
-          <h1 className="text-[22px] font-bold">{mod.title}</h1>
+          <h1 className="text-[22px] font-bold">{lesson ? lesson.title : mod.title}</h1>
           <div className={`${t.listGroup} w-full text-left`}>
             {[
-              ['Soru sayısı', `${mod.examSize}`],
-              ['Geçme notu', `%${mod.passScore}`],
-              ['Haftalık hak', '3 deneme'],
-              ['Süre', 'Sınırsız — acele etme']
+              ['Soru sayısı', `${size}`],
+              ['Süre', `${minutes} dakika`],
+              ['Geçme notu', `${lesson ? QUIZ_PASS : mod.passScore} puan`]
             ].map(([a, b]) => (
               <div key={a} className={`${t.listRowStatic} justify-between`}>
                 <span className="text-[14px] text-fg-2">{a}</span>
@@ -88,12 +160,14 @@ export const ExamPage: React.FC = () => {
               </div>
             ))}
           </div>
-          <p className="text-[13px] text-fg-3 leading-relaxed max-w-[340px]">
-            Sınavı başlattığında bir hakkın kullanılır. Sorular her denemede karışık gelir; daha önce yanlış yaptığın sorular tekrar sorulabilir.
-          </p>
+          {resumable && left > 0 ? (
+            <p className="text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5 leading-relaxed w-full text-left">
+              Yarım kalan sınavın var · kalan süre <b className="tnum">{fmtClock(left)}</b>
+            </p>
+          ) : null}
           <div className="w-full"><ErrorText>{error}</ErrorText></div>
           <button onClick={start} disabled={phase.k === 'loading'} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
-            {phase.k === 'loading' ? <Spinner size={16} /> : 'Başla'}
+            {phase.k === 'loading' ? <Spinner size={16} /> : resumable && left > 0 ? 'Kaldığım yerden devam et' : 'Başla'}
           </button>
         </div>
       </Page>
@@ -108,11 +182,14 @@ export const ExamPage: React.FC = () => {
     return (
       <Page>
         <div className="flex flex-col items-center text-center gap-3 pt-6">
-          <Ring value={phase.score} size={110} label={`%${phase.score}`} />
+          <Ring value={phase.score} size={110} label={`${phase.score}`} />
           <h1 className="text-[22px] font-bold mt-2">{phase.passed ? 'Tebrikler, geçtin!' : 'Bu sefer olmadı'}</h1>
           <p className="text-[13px] text-fg-3">
-            {phase.correct}/{phase.total} doğru · Geçme notu %{phase.passScore}
+            {phase.score} puan · {phase.correct}/{phase.total} doğru · Geçme notu {phase.passScore}
           </p>
+          {phase.timedOut && (
+            <p className="text-[12px] text-caution">Süre doldu; sınav o ana kadarki cevaplarınla puanlandı.</p>
+          )}
         </div>
 
         {phase.mistakes.length > 0 && (
@@ -122,9 +199,38 @@ export const ExamPage: React.FC = () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
-          <button onClick={() => navigate(`/modul/${mod.id}`, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Modüle dön</button>
-        </div>
+        {/* Şimdi ne yapmalı: geçene açılan modül, kalana kalan hak ve tekrar. */}
+        {(() => {
+          if (lesson) return (
+            <div className="flex flex-col gap-2">
+              <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Reçeteye dön</button>
+            </div>
+          );
+          const nextMod = phase.passed ? nextModuleAfter(mod, allModules) : undefined;
+          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: Date.now() } } }).locked ? nextMod : undefined;
+          const slots = examSlots(myAttempts, mod.id);
+          return (
+            <div className="flex flex-col gap-2">
+              {!phase.passed && (
+                <p className="text-[13px] text-fg-2 text-center leading-relaxed">
+                  {slots.left > 0
+                    ? `Bu hafta ${slots.left} hakkın kaldı. Dersleri gözden geçirip yeniden dene.`
+                    : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${slots.nextSlotAt ? ` · yenisi ${fmtDateTime(slots.nextSlotAt)} tarihinde açılır` : ''}.`}
+                </p>
+              )}
+              {nextOpen ? (
+                <>
+                  <button onClick={() => navigate(`/modul/${nextOpen.id}`, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>
+                    <span className="truncate">Sıradaki modül: {nextOpen.title}</span> <Icon name="chevronRight" size={16} />
+                  </button>
+                  <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`}>Modüle dön</button>
+                </>
+              ) : (
+                <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>{phase.passed ? 'Modüle dön' : 'Dersleri tekrar et'}</button>
+              )}
+            </div>
+          );
+        })()}
       </Page>
     );
   }
@@ -133,13 +239,15 @@ export const ExamPage: React.FC = () => {
   const q = phase.questions[idx];
   const picked = answers[q.id];
   const isLast = idx === phase.questions.length - 1;
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = phase.questions.filter((x) => answers[x.id] !== undefined).length;
+  const left = phase.deadline - now;
+  const total = phase.questions.length * SECONDS_PER_QUESTION * 1000;
 
   return (
     <Page>
       <div className="flex items-center gap-3">
         <button
-          onClick={() => confirm('Sınavdan çıkarsan bu deneme hakkından düşer. Çıkmak istiyor musun?') && navigate(`/modul/${mod.id}`)}
+          onClick={() => confirm(EXIT_CONFIRM) && navigate(back, { replace: true })}
           className={t.iconBtn}
           aria-label="Sınavdan çık"
         >
@@ -149,14 +257,19 @@ export const ExamPage: React.FC = () => {
         <span className="text-[12px] text-fg-3 tnum">{idx + 1}/{phase.questions.length}</span>
       </div>
 
-      <div className="flex flex-col gap-5 pt-2">
+      <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${left < 60000 ? 'bg-negative-bg border-negative-line text-negative' : left < total * 0.25 ? 'bg-caution-bg border-caution-line text-caution' : 'bg-panel border-line text-fg-2'}`}>
+        <span className="flex items-center gap-2 text-[12px] font-medium"><Icon name="clock" size={14} /> Kalan süre</span>
+        <span className="text-[15px] font-bold tnum">{fmtClock(left)}</span>
+      </div>
+
+      <div className="flex flex-col gap-5 pt-1">
         <h2 className="text-[19px] font-semibold leading-snug">{q.prompt}</h2>
         {q.imageUrl && <img src={q.imageUrl} alt="" className="w-full rounded-xl border border-line" />}
         <div className="flex flex-col gap-2.5">
           {q.options.map((o, i) => (
             <button
               key={i}
-              onClick={() => setAnswers((a) => ({ ...a, [q.id]: i }))}
+              onClick={() => choose(phase.attemptId, q.id, i)}
               className={`text-left px-4 py-3.5 rounded-xl border text-[15px] leading-snug transition-colors flex items-center gap-3 ${
                 picked === i ? 'border-crema bg-panel-3' : 'border-line bg-panel hover:bg-panel-2'
               }`}
@@ -181,7 +294,7 @@ export const ExamPage: React.FC = () => {
               onClick={() => {
                 const blank = phase.questions.length - answeredCount;
                 if (blank > 0 && !confirm(`${blank} soru boş. Yine de gönderilsin mi?`)) return;
-                submit(phase.attemptId);
+                submit(phase.attemptId, false, phase.questions.map((x) => x.id));
               }}
               className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1`}
             >
@@ -212,5 +325,7 @@ export const MistakeCard: React.FC<{ m: AttemptReviewItem }> = ({ m }) => (
       </div>
     </div>
     {m.explanation && <p className="text-[12px] text-fg-3 leading-relaxed border-t border-line pt-2.5">{m.explanation}</p>}
+    {/* Hatalı soru: doğrudan Soru havuzuna bildirim olarak düşer. */}
+    <ReportQuestionLink questionId={m.questionId} prompt={m.prompt} />
   </div>
 );

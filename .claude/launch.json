@@ -2,10 +2,24 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "playbook-dev",
+      "runtimeExecutable": "/Users/kutays/.local/node/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5173,
+      "autoPort": true
+    },
+    {
       "name": "playbook-emu",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:emu"],
-      "port": 5173
+      "runtimeExecutable": "/Users/kutays/.local/node/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev:emu"
+      ],
+      "port": 5174,
+      "autoPort": true
     }
   ]
 }

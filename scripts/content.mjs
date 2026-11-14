@@ -11,10 +11,14 @@
  * İçerik editöründen yönetilir.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { QUESTION_BANKS } from './source/aos-questions.ts';
 import { cupBlock, isDrawable, buildSteps, setCupArt, recipeLessonId } from './recipe-cup.mjs';
+import { EXTRA_QUESTIONS } from './source/extra-questions.mjs';
+import { techniqueQuestions, serviceQuestion, serviceLabel, overlaps, ingredientToDrinkQuestion, stepOrderQuestion, lessonDerivedQuestions,
+  differenceQuestion, firstLayerQuestion, scaleQuestion, ingredientTF, amountToDrinkQuestion, specAllQuestions, nextStepQuestions, recipeNextStep, isNote, isGiveaway } from './question-gen.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** 2026 yeni sezon menüsü — 1401Coffee_2026_N.html'den çıkarıldı (extract-2026.mjs). */
@@ -93,7 +97,25 @@ const LESSON_PHOTOS = {
   'r-matcha-latte-8-oz-12-oz': 'matcha',
   'r-cranberry-hibiscus-16-oz': 'cranberry',
   'r-chilly-passion-acili-carkifelek-16-oz': 'chillypassion',
-  'r-kuzu-kulagi-mix-16-oz': 'kuzukulagi'
+  'r-kuzu-kulagi-mix-16-oz': 'kuzukulagi',
+  // 30 Eylül 2026 menü çekimi (Downloads/30 eylül menü görselleri). Yalnızca
+  // adı görünen ve müfredatta reçetesi olan içecekler; yiyecekler, DSC_/YVZ_
+  // adsız kareler, hazırlık sahnesi (Mathca_) ve reçetesi olmayan Bitki Çayı
+  // alınmadı. Fotoğrafı zaten olan dört içecekte mevcut dekupe kaldı.
+  // "Mathca Latte" karesi buzlu matcha (bardağa dökülüyor) → Iced Matcha.
+  'r-filtre-kahve-batch-brew-8-oz-12-oz': 'filtrekahve',
+  'r-ube-matcha-latte-16-oz': 'ubematcha',
+  'r-ube-limonata-16-oz': 'ubelimonata',
+  'r-black-latte-8-oz-12-oz': 'blacklatte',
+  'r-iced-matcha-latte-16-oz': 'icedmatcha',
+  'r-tahinli-latte-8-oz-12-oz': 'tahinli',
+  'r-mont-blanc-16-oz': 'montblanc',
+  'r-ube-latte-mor-patates-8-oz-12-oz': 'ubelatte',
+  'r-ristretto': 'ristretto',
+  'r-iced-latte-16-oz': 'icedlatte',
+  'r-italian-affogato': 'affogato',
+  'r-chocolate-clouds-16-oz': 'chocolateclouds',
+  'r-espresso-macchiato': 'espressomacchiato'
 };
 
 /** Soru: ilk seçenek doğru cevaptır (sınavda sunucu karıştırır). */
@@ -110,12 +132,26 @@ const LESSON_PHOTOS = {
  * herkese aynı kâğıt. Havuzu büyütmek kalıcı çözüm, bu formül de sınavın
  * havuzu tüketmesini engelliyor.
  */
+/**
+ * Elle yazılmış sorulara tür verir. Sınav, türler arasında dengeli seçildiği
+ * için (src/api/exam.ts) bu etiket sınavın tek tip sorudan oluşmasını önler:
+ * aynı modülde senaryo, yetki, zaman/sayı ve kural soruları karışık gelir.
+ */
+function classifyQuestion(prompt) {
+  const t = prompt.toLocaleLowerCase('tr');
+  if (/ne yaparsın|doğru yaklaşım|doğru davranış|hangi cümle|ne söylenir|nasıl davran|ilk adım nedir|durumunda|fark ettin|geldi\b|istiyor|şikayet etti/.test(t)) return 'durum';
+  if (/\bkim\b|kimler|kimde|yetki|kim belirler|kim verir|kim yapar|kime/.test(t)) return 'yetki';
+  if (/kaç|hangi gün|ne zaman|hangi sıklık|hangi saat|saat kaç|yüzde|süre|hangi yıl/.test(t)) return 'zaman';
+  if (/neden|ne anlama|ne demek|amacı|ilkesi|neyi anlatır|neyi ifade|etkisi nedir|sağladığı/.test(t)) return 'kavram';
+  return 'kural';
+}
+
 const MIN_EXAM = 5;
 export const examSizeFor = (hedef, banka) =>
   Math.max(Math.min(MIN_EXAM, banka), Math.min(hedef, Math.floor(banka / 3)));
 
-const Q = (prompt, correct, wrong, explanation) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation });
-const TF = (prompt, isTrue, explanation) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation });
+const Q = (prompt, correct, wrong, explanation, kind) => ({ type: 'single', prompt, options: [correct, ...wrong], answer: 0, explanation, ...(kind ? { kind } : {}) });
+const TF = (prompt, isTrue, explanation, kind) => ({ type: 'truefalse', prompt, options: ['Doğru', 'Yanlış'], answer: isTrue ? 0 : 1, explanation, ...(kind ? { kind } : {}) });
 
 /**
  * AOS soru bankasından gelen 73 sorunun hiçbirinde açıklama yoktu (AOS'un
@@ -319,9 +355,17 @@ const orientation = {
  * alfabetik değil: menü, Ristretto → Espresso → Macchiato gibi
  * öğrenme sırasını zaten doğru kuruyor.
  */
+const SICAK_KLASIK = ['Caffè Americano', 'Caffè Latte', 'Cappuccino', 'Flat White', 'Caffè Mocha', 'White Chocolate Mocha', 'Spanish Latte', 'Protein Latte'];
 const CATEGORY_MODULES = [
-  { id: 'italyan-klasikler', title: 'İtalyan Klasikler', cats: ['İtalyan Klasikler'], description: 'Her espresso bazlı içeceğin temeli: ristretto, espresso, macchiato, cortado.' },
-  { id: 'sicak-kahveler', title: 'Sıcak Kahveler', cats: ['Sıcak Kahveler'], description: 'Latte, cappuccino, mocha ve aromalı sıcak kahvelerin ölçü ve bardak standartları.' },
+  // Dört içecek: sınav 10 soru (15 soruda iki baristanın sınavı çok örtüşüyordu).
+  { id: 'italyan-klasikler', title: 'İtalyan Klasikler', cats: ['İtalyan Klasikler'], exam: 10, description: 'Her espresso bazlı içeceğin temeli: ristretto, espresso, macchiato, cortado.' },
+  // Sıcak Kahveler 19 içecekti; 15 soruluk bir sınav içeceklerin ancak bir kısmına
+  // dokunuyordu (şans faktörü). 14.11.2026: ikiye bölündü. Klasikler eski kimliği
+  // korur (geçilmiş sınavlar, rozetler ve görevler bozulmasın).
+  { id: 'sicak-kahveler', title: 'Sıcak Kahveler: Klasikler', cats: ['Sıcak Kahveler'], only: SICAK_KLASIK,
+    description: 'Americano, latte, cappuccino, flat white, mocha ve sütlü klasiklerin ölçü ve bardak standartları.' },
+  { id: 'aromali-latteler', title: 'Sıcak Kahveler: Aromalı Latteler', cats: ['Sıcak Kahveler'], except: SICAK_KLASIK,
+    description: 'Şurup ve soslu sıcak latteler: karamel, fındık, kestane, fıstık, lotus ve mevsim lezzetleri.' },
   { id: 'demleme-turk', title: 'Demleme ve Türk Kahveleri', cats: ['3. Nesil Demleme', 'Geleneksel Türk Kahveleri'], description: 'Batch brew, V60/Chemex, cold drip ve geleneksel Türk kahvelerimiz.' },
   { id: 'soguk-kahveler', title: 'Soğuk Kahveler, Frappe ve Matcha', cats: ['Soğuk Kahveler', 'Frappe & Matcha'], description: 'Buzlu kahveler, frappe ve matcha içeceklerinin porsiyonlama standartları.' },
   { id: 'sicak-icecekler', title: 'Sıcak İçecekler ve Kids Menu', cats: ['Sıcak İçecekler', 'Kids Menu'], description: 'Sıcak çikolata, chai, sahlep, matcha ve çocuk menüsü.' },
@@ -375,6 +419,26 @@ function recipeLesson(r, order) {
  */
 function recipeQuestions(lessons, allRecipes) {
   const out = [];
+  // "Reçetede olmayan" malzemeyi en benzer içeceklerden seç: Caramel Macchiato'da
+  // olmayan şey fındık şurubu (Toffee Nut'ta var) olmalı, "sade dondurma" değil.
+  // Bariz yabancı malzeme düşünmeden bulunuyordu (14.11.2026).
+  const lowr = (x) => x.toLocaleLowerCase('tr').trim();
+  // Her içecekte bulunan temel malzemeler (ayırt ettirmez).
+  const TEMEL_AD = new Set(['sıcak (ısıtılmış) süt', 'soğuk süt', 'sıcak süt', 'süt', 'öğütülmüş kahve', 'espresso shot', 'buz', 'su', 'soğuk su', 'sıcak su']);
+  const TEMEL = { test: (n) => TEMEL_AD.has(lowr(n)) };
+  const kardesYabanci = (recipe) => {
+    const mine = new Set(recipe.ing.map((x) => lowr(x.name)));
+    const sibs = lessons.map((x) => x._recipe).filter((x) => x !== recipe)
+      .map((x) => ({ x, n: x.ing.filter((y) => mine.has(lowr(y.name))).length })).sort((a, b) => b.n - a.n);
+    const out2 = [];
+    for (const { x } of sibs) for (const y of x.ing) {
+      if (!mine.has(lowr(y.name)) && !TEMEL.test(y.name) && !out2.some((z) => lowr(z) === lowr(y.name))) out2.push(y.name);
+    }
+    return out2;
+  };
+  const cupCount = new Map();
+  lessons.forEach((l) => l._cup && cupCount.set(l._cup, (cupCount.get(l._cup) || 0) + 1));
+  const majorityCup = [...cupCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
   const amountsByIngredient = new Map();
   allRecipes.forEach((r) => r.ing.forEach((i) => {
     const k = i.name.toLocaleLowerCase('tr').trim();
@@ -404,19 +468,57 @@ function recipeQuestions(lessons, allRecipes) {
     const ranked = [...measurable].sort((a, b) => {
       const base = (x) => /espresso|süt|su$|buz|kahve/i.test(x.name) ? 1 : 0;
       return base(a) - base(b);
-    }).slice(0, 4);
+    });
+    // Ölçü soruları boyu açıkça söyler. İki boylu reçetede "40 / 60 ml"
+    // (8 oz / 12 oz) ile tek ölçü "40 ml" aynı şıklarda olunca soru
+    // belirsizleşiyordu: "40 ml" 8 oz için doğru cevaptı (Cenk Bey'in
+    // bildirdiği hata). Kural: çift ölçü sorusunda bütün şıklar çift
+    // ölçüdür; tek ölçüde bütün şıklar tek ölçüdür; iki boyda aynı olan
+    // ölçü bunu söyler; büyük boy için ayrıca tek ölçülü soru sorulur.
+    const pair = (a) => a.match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*(.*)$/);
+    const sizes = l._cup && l._cup.includes('/') ? l._cup.split('/').map((x) => x.trim()) : null;
+    const pairVariants = (a) => {
+      const m = pair(a);
+      if (!m) return [];
+      const x = parseFloat(m[1].replace(',', '.')), y = parseFloat(m[2].replace(',', '.')), unit = m[3];
+      const st = (n) => (n >= 100 ? 30 : n >= 20 ? 10 : n >= 5 ? 5 : 1);
+      return [[x - st(x), y - st(y)], [x + st(x), y + st(y)], [x, y + 2 * st(y)], [x + st(x), y]]
+        .filter(([u, v]) => u > 0 && v > 0 && u < v).map(([u, v]) => `${Math.round(u)} / ${Math.round(v)} ${unit}`.trim());
+    };
     for (const ing of ranked) {
-      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])].filter((a) => a !== ing.amt.trim() && /\d/.test(a));
-      const wrong = [...new Set([...pool, ...numericVariants(ing.amt)])].filter((a) => a.replace(/\s/g, '') !== ing.amt.replace(/\s/g, '')).slice(0, 3);
+      const amt = ing.amt.trim();
+      const isPair = !!pair(amt);
+      const same = (a) => a.replace(/\s/g, '') === amt.replace(/\s/g, '');
+      // Yanlış şık doğru cevapla aynı sayıyı taşımasın ("40 ml" ile "40 ml (İsteğe Bağlı)" gibi).
+      const numsOf = (a) => (a.match(/\d+(?:[.,]\d+)?/g) || []).join('|');
+      const sameNum = (a) => numsOf(a) === numsOf(amt);
+      const pool = [...(amountsByIngredient.get(ing.name.toLocaleLowerCase('tr').trim()) || [])]
+        .filter((a) => !same(a) && !sameNum(a) && /\d/.test(a) && !!pair(a) === isPair);
+      const wrong = [...new Set([...pool, ...(isPair ? pairVariants(amt) : numericVariants(amt))])].filter((a) => !same(a) && !sameNum(a)).slice(0, 3);
       if (wrong.length < 3) continue;
+      const ingName = ing.name.toLocaleLowerCase('tr');
+      const tag = isPair && sizes ? ` (${sizes.join(' / ')})` : sizes ? ` (${sizes.join(' ve ')} için aynı)` : l._cup ? ` (${l._cup})` : '';
       out.push(Q(
-        `${name} reçetesinde ${ing.name.toLocaleLowerCase('tr')} ölçüsü nedir?`,
-        ing.amt.trim(), wrong,
+        `${name} reçetesinde ${ingName} ölçüsü nedir?${tag}`,
+        amt, wrong,
         `Ölçü, 1401'in imzasıdır: aynı içecek her şubede, her baristada aynı tatta çıkmalı — fazlası da azı da misafirin tanıdığı lezzeti bozar. ${name}: ${recipeLine(r)}.`
       ));
+      // Büyük boy için tek ölçülü soru: hangi boyun sorulduğu açık.
+      const m = pair(amt);
+      if (m && sizes && sizes[1]) {
+        const big = `${m[2]} ${m[3]}`.trim(), small = `${m[1]} ${m[3]}`.trim();
+        const w = [...new Set([small, ...numericVariants(big)])].filter((a) => a.replace(/\s/g, '') !== big.replace(/\s/g, '')).slice(0, 3);
+        if (w.length === 3) out.push(Q(
+          `${sizes[1]} ${name} için ${ingName} ne kadar?`,
+          big, w,
+          `${name}: ${ing.name} ${amt} (${sizes.join(' / ')}). ${sizes[1]} için ${big}.`
+        ));
+      }
     }
-    if (l._cup) {
-      const wrong = allCups.filter((c) => c !== l._cup).slice(0, 3);
+    // Porsiyon sorusu yalnızca modülde ayırt edici ise: lattelerin hepsi
+    // 8 oz / 12 oz iken her biri için ayrı soru, aynı cevabı tekrar ettirir.
+    if (l._cup && l._cup !== majorityCup) {
+      const wrong = allCups.filter((c) => c !== l._cup && !overlaps(c, l._cup)).slice(0, 3);
       if (wrong.length === 3) out.push(Q(
         `${name} hangi porsiyonda servis edilir?`,
         l._cup, wrong,
@@ -425,12 +527,13 @@ function recipeQuestions(lessons, allRecipes) {
     }
 
     /* --- Reçetede olmayan malzeme ------------------------------------ */
-    const mine = new Set(r.ing.map((i) => i.name.toLocaleLowerCase('tr').trim()));
-    const yabanci = [...amountsByIngredient.keys()]
-      .filter((k) => !mine.has(k) && k.length > 3 && !/^su$|buz/.test(k));
-    if (r.ing.length >= 3 && yabanci.length) {
-      const disari = yabanci[(name.length * 7) % yabanci.length];
-      const icimdekiler = r.ing.slice(0, 3).map((i) => i.name);
+    const yabanci = kardesYabanci(r).slice(0, 2);
+    // İçindekiler şıkları: önce içeceğin kendine özgü malzemeleri, sonra temel olanlar.
+    const ozgun = r.ing.filter((i) => !TEMEL.test(i.name)).map((i) => i.name);
+    const icimdekiler = [...ozgun, ...r.ing.filter((i) => TEMEL.test(i.name)).map((i) => i.name)].slice(0, 3);
+    // Sade içeceklerde (yalnız kahve + süt/su) "hangisi yok" sorusu bariz olur: sorulmaz.
+    if (ozgun.length >= 1 && yabanci.length && icimdekiler.length === 3) {
+      const disari = yabanci[name.length % yabanci.length];
       out.push(Q(
         `${name} reçetesinde aşağıdakilerden hangisi YOKTUR?`,
         disari.replace(/^./, (c) => c.toLocaleUpperCase('tr')),
@@ -440,13 +543,15 @@ function recipeQuestions(lessons, allRecipes) {
     }
 
     /* --- Hazırlanışın ilk adımı -------------------------------------- */
-    const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
+    // Not / kural satırları ("Önemli Kural: …", "ASLA …") adım sayılmaz: şık olunca anlam karmaşası yaratıyor.
+    const steps = ((l.blocks.find((b) => b.type === 'steps') || {}).items || []).filter((x) => !isNote(x));
     if (steps.length >= 3) {
+      // Şıklar kısaltılmaz: "…" ile biten şık okunamıyor ve doğru cevabı belirsizleştiriyor.
       const kisalt = (s) => (s.length > 72 ? s.slice(0, 70).replace(/[\s,;.]+$/, '') + '…' : s);
       out.push(Q(
         `${name} hazırlanırken ilk adım nedir?`,
-        kisalt(steps[0]),
-        [kisalt(steps[steps.length - 1]), kisalt(steps[1]), 'Bardağı servise hazırlayıp misafire sunmak'].slice(0, 3),
+        steps[0],
+        [steps[steps.length - 1], steps[1], 'Bardağı servise hazırlayıp misafire sunmak'].slice(0, 3),
         `Sıra tadın kendisidir: adımların yeri değişince oran, sıcaklık ve dokusu değişir. ${name} sırası: ${steps.map(kisalt).join(' → ')}`
       ));
     }
@@ -457,7 +562,9 @@ function recipeQuestions(lessons, allRecipes) {
       const espresso = cup.layers.find((x) => x.tone === 'espresso');
       const sut = cup.layers.find((x) => x.tone === 'sut');
       if (espresso && sut) {
-        const buzlu = cup.vessel === 'cold';
+        // Cevap şemadaki gerçek sıradan (tarifte açıkça yazılı sıra dahil, bkz. recipe-cup.mjs SIRA):
+        // buzlu içeceklerin çoğunda espresso üstte, ama ör. Iced Protein Shake'te sütün altında.
+        const buzlu = espresso.order > sut.order;
         const dogru = buzlu ? 'En üste, sütün üzerine dökülür' : 'En alta, sütten önce konur';
         const yanlis = [
           buzlu ? 'En alta, sütten önce konur' : 'En üste, sütün üzerine dökülür',
@@ -468,12 +575,57 @@ function recipeQuestions(lessons, allRecipes) {
           `${name} hazırlanırken espresso bardağın neresine gelir?`,
           dogru, yanlis,
           buzlu
-            ? `Buzlu içeceklerde espresso en son ve en üste dökülür; misafir bardağı karıştırana kadar katman görünür kalır. ${name}: önce buz ve süt, en üste espresso.`
-            : `Sıcak içeceklerde espresso bardağın dibindedir, süt onun üzerine dökülür — latte art da bu sayede oluşur. ${name}: önce espresso, üzerine süt.`
+            ? `${name}: espresso en son ve en üste dökülür; misafir bardağı karıştırana kadar katman görünür kalır.`
+            : cup.vessel === 'cold'
+              ? `${name}: tarife göre espresso önce bardağa girer, süt onun üzerine dökülür.`
+              : `Sıcak içeceklerde espresso bardağın dibindedir, süt onun üzerine dökülür — latte art da bu sayede oluşur. ${name}: önce espresso, üzerine süt.`
         ));
       }
     }
   }
+
+  /* --- Ölçü dışı türler (bkz. scripts/question-gen.mjs) ------------- */
+  const SERVIS = ['Sıcak, 8 oz / 12 oz', 'Buzlu, 16 oz', 'Blenderda karıştırılarak, 16 oz',
+    'Sıcak, küçük fincanda', 'Sıcak, 12 oz', 'Buzlu, 12 oz', 'Sıcak, 8 oz', 'Buzlu, 12 oz / 16 oz'];
+  const moduleRecipes = lessons.map((l) => l._recipe);
+  const nameOf = (r) => lessons.find((l) => l._recipe === r)?._title || r.name;
+  // Servis biçimi de yalnızca modülün çoğunluğundan farklıysa sorulur.
+  const svCount = new Map();
+  lessons.forEach((l) => { const lb = serviceLabel(l.blocks.find((b) => b.type === 'cup'), l._cup); if (lb) svCount.set(lb, (svCount.get(lb) || 0) + 1); });
+  const majoritySv = [...svCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const allIngredients = [...new Set(allRecipes.flatMap((r) => r.ing.map((i) => i.name)))];
+  lessons.forEach((l, i) => {
+    const steps = (l.blocks.find((b) => b.type === 'steps') || {}).items || [];
+    const cup = l.blocks.find((b) => b.type === 'cup');
+    out.push(...techniqueQuestions(l._title, steps));
+    if (serviceLabel(cup, l._cup) !== majoritySv) { const sv = serviceQuestion(l._title, cup, l._cup, SERVIS); if (sv) out.push(sv); }
+    const ig = ingredientToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf); if (ig) out.push(ig);
+    const so = stepOrderQuestion(l._title, steps, i % 2 === 1); if (so) out.push(so);
+    // Yeni türler: en çok malzeme paylaşan "kardeş" içecekle fark, katman
+    // sırası, büyük boya ölçek, malzeme doğru/yanlış, ölçüden içecek.
+    const mine = new Set(l._recipe.ing.map((x) => x.name.toLocaleLowerCase('tr')));
+    // En yakın iki "kardeş" içecekle fark (Latte ↔ Mocha, Latte ↔ Flat White…).
+    moduleRecipes.filter((r) => r !== l._recipe)
+      .map((r) => ({ r, n: r.ing.filter((x) => mine.has(x.name.toLocaleLowerCase('tr'))).length }))
+      .sort((a, b) => b.n - a.n).slice(0, 2)
+      .forEach((sib) => { if (sib.n >= 2) { const d = differenceQuestion(l._recipe, sib.r, nameOf); if (d) out.push(d); } });
+    const fl = firstLayerQuestion(l._title, cup); if (fl) out.push(fl);
+    for (const nth of [0, 1]) { const sc = scaleQuestion(l._title, cup, nth); if (sc) out.push(sc); }
+    // Malzeme doğru/yanlış: "olmayan" malzeme yalnızca en benzer içeceklerden seçilir
+    // (bariz yabancı malzeme sorusu düşünmeden bilinir); benzer içecekte farklı malzeme yoksa sorulmaz.
+    const foreign = kardesYabanci(l._recipe);
+    for (const flip of [false, true]) {
+      if (flip && !foreign.length) continue;
+      const tf = ingredientTF(l._recipe, l._title, foreign[i % Math.max(foreign.length, 1)] || null, flip); if (tf) out.push(tf);
+    }
+    for (const nth of [0, 1]) { const am = amountToDrinkQuestion(l._recipe, l._title, moduleRecipes, nameOf, nth); if (am) out.push(am); }
+    out.push(...recipeNextStep(l._title, steps));
+  });
+
+  // Tür etiketi verilmemiş eski şablonlar
+  const kindOf = (p) => /ölçüsü nedir|için .* ne kadar\?/.test(p) ? 'olcu' : /porsiyonda/.test(p) ? 'porsiyon' : /YOKTUR/.test(p) ? 'malzeme'
+    : /ilk adım/.test(p) ? 'adim' : /espresso bardağın/.test(p) ? 'katman' : 'genel';
+  out.forEach((q) => { if (!q.kind) q.kind = kindOf(q.prompt); });
   return out;
 }
 
@@ -481,10 +633,11 @@ const drinks = {
   id: 'icecek-standartlari', title: 'İçecek Standartları', icon: 'coffee',
   description: '2026 menüsündeki her içeceğin ölçüsü, porsiyonu ve hazırlanışı. Misafire giden her bardak aynı olmalı.',
   modules: CATEGORY_MODULES.map((cm) => {
-    const recipes = RECIPES.filter((r) => cm.cats.includes(r.cat));
+    const inList = (list, r) => list.some((n) => r.name.startsWith(n));
+    const recipes = RECIPES.filter((r) => cm.cats.includes(r.cat) && (!cm.only || inList(cm.only, r)) && (!cm.except || !inList(cm.except, r)));
     const lessons = recipes.map((r, i) => recipeLesson(r, i + 1));
     return {
-      id: cm.id, title: cm.title, description: cm.description, passScore: 80, examSize: 15,
+      id: cm.id, title: cm.title, description: cm.description, passScore: 80, examSize: cm.exam || 15,
       lessons,
       questions: recipeQuestions(lessons, RECIPES)
     };
@@ -1076,7 +1229,7 @@ export const CURRICULUM = [orientation, drinks, guest, operations];
  * eylemi aynı çıktıyı kullanır — tek doğruluk kaynağı.
  */
 export function flattenCurriculum(curriculum = CURRICULUM) {
-  const tracks = [], modules = [], lessons = [], questions = [];
+  const tracks = [], modules = [], lessons = [], questions = [], giveaways = [];
   curriculum.forEach((tr, ti) => {
     tracks.push({ id: tr.id, title: tr.title, description: tr.description, icon: tr.icon, order: ti + 1, published: true });
     tr.modules.forEach((m, mi) => {
@@ -1088,11 +1241,48 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       m.lessons.forEach((l, li) => lessons.push({
         id: l.id, moduleId: m.id, title: l.title, order: li + 1, durationMin: l.durationMin, blocks: l.blocks, published: true
       }));
-      m.questions.forEach((q, qi) => {
-        if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
-        questions.push({ id: `${m.id}-q${String(qi + 1).padStart(3, '0')}`, moduleId: m.id, imageUrl: '', ...q });
+      // Ders içeriğinden türeyen sorular (tablolar, vakalar). Aynı metin varsa eklenmez.
+      const seen = new Set(m.questions.map((q) => q.prompt.toLocaleLowerCase('tr').trim()));
+      for (const l of m.lessons) {
+        for (const q of [...lessonDerivedQuestions(l), ...specAllQuestions(l), ...nextStepQuestions(l), ...(l === m.lessons[0] ? EXTRA_QUESTIONS[m.id] || [] : [])]) {
+          const k = q.prompt.toLocaleLowerCase('tr').trim();
+          if (!seen.has(k) && q.options.length >= 2) { seen.add(k); m.questions.push(q); }
+        }
+      }
+      m.questions.forEach((q) => { if (!q.kind) q.kind = classifyQuestion(q.prompt); });
+      // Sınav boyu ve soru sayısı, türeyen sorular eklendikten SONRA hesaplanmalı.
+      const mm = modules[modules.length - 1];
+      mm.examSize = examSizeFor(m.examSize, m.questions.length);
+      mm.questionCount = m.questions.length;
+      // Kimlik sorunun içeriğinden: aynı soru her müfredat güncellemesinde
+      // aynı kimliği alır (araya soru eklenince kaymaz). Böylece Kahve
+      // Operasyon Direktörü'nün panelde düzelttiği ya da iptal ettiği soru,
+      // sonraki güncellemede başka bir sorunun yerine geçmez. Metni ve
+      // doğru cevabı aynı olan kopya sorular bir kez yazılır.
+      const ids = new Set();
+      // Aynı soru metni farklı cevaplarla birden çok kez çıkıyorsa (V60: "Kademe: ___'ye
+      // tamamlayın" → 230 ml mi 340 ml mi?) hangisinin sorulduğu belli olmaz: hepsi ayıklanır.
+      const cevaplar = new Map();
+      m.questions.forEach((q) => {
+        const k = q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+        cevaplar.set(k, new Set([...(cevaplar.get(k) || []), String(q.options[q.answer]).trim()]));
       });
+      m.questions.forEach((q, qi) => {
+        if (cevaplar.get(q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()).size > 1) { giveaways.push(q.prompt); return; }
+        if (q.answer < 0) throw new Error(`Cevap bulunamadı: ${m.id} #${qi} ${q.prompt}`);
+        // Cevabı içeceğin adında yazan soru ölçme yapmaz ("Tahinli Latte'de hangisi var? → Tahin").
+        if (isGiveaway(q)) { giveaways.push(q.prompt); return; }
+        const key = `${q.prompt.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()}|${String(q.options[q.answer]).trim()}`;
+        const id = `${m.id}-${createHash('sha1').update(key).digest('hex').slice(0, 10)}`;
+        if (ids.has(id)) return;
+        ids.add(id);
+        // Türkçe küçük harf "Icehot"u "ıcehot" yapıyor: marka adı düzeltilir.
+        const fix = (x) => (typeof x === 'string' ? x.replace(/ıcehot/g, 'Icehot').replace(/°c\b/g, '°C') : x);
+        questions.push({ id, moduleId: m.id, imageUrl: '', ...q, prompt: fix(q.prompt), options: q.options.map(fix), explanation: fix(q.explanation) });
+      });
+      mm.questionCount = ids.size;
     });
   });
+  if (giveaways.length) console.log(`  ${giveaways.length} soru ayıklandı: cevabı adında yazan ya da aynı metinle farklı cevaplı`);
   return { tracks, modules, lessons, questions };
 }

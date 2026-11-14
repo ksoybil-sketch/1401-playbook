@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>İnternet yok · 1401 Campus</title>
+<!--
+  Android uygulamasının (APK) yerel "internet yok" sayfası.
+  capacitor.config.json → server.errorPath. Uygulama canlı siteyi açar;
+  site açılamazsa bu sayfa telefonun içinden gösterilir. Bağlantı gelince
+  kendiliğinden yeniden dener.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #100E0D; color: #F2EDE7;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+    text-align: center; }
+  .chip { width: 64px; height: 64px; border-radius: 18px; background: #221E1B; display: flex;
+    align-items: center; justify-content: center; }
+  h1 { font-size: 21px; margin: 6px 0 0; }
+  p { margin: 0; max-width: 320px; font-size: 14.5px; line-height: 1.55; color: #B9AFA6; }
+  button { margin-top: 10px; min-width: 220px; min-height: 48px; border: 0; border-radius: 12px;
+    background: #D9B98C; color: #1A1513; font-size: 16px; font-weight: 600; }
+  button:active { opacity: .8; }
+  small { color: #8A8079; font-size: 12.5px; min-height: 1em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="chip" aria-hidden="true">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#D9B98C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5 12.3a10 10 0 0 1 14 0"/><path d="M8.5 15.8a5 5 0 0 1 7 0"/><path d="M12 19.5h.01"/><path d="M3 3l18 18"/>
+    </svg>
+  </div>
+  <h1>İnternet bağlantısı yok</h1>
+  <p>1401 Campus açılmak için internete bağlanmalı. Wi-Fi'ı ya da mobil veriyi kontrol edip yeniden dene.</p>
+  <button id="retry" type="button">Yeniden dene</button>
+  <small id="note"></small>
+</main>
+<script>
+  // Uygulamanın adresi: scripts/apk.sh derlerken buraya yazar
+  // (capacitor server.url). Bu sayfa telefonun içinden https://localhost
+  // altında açıldığı için location.origin kullanılamaz.
+  var APP_URL = '__APP_URL__';
+  if (APP_URL.indexOf('__') === 0) APP_URL = location.origin + '/';
+  var tried = false;
+  function retry() {
+    if (tried) return;
+    tried = true;
+    document.getElementById('note').textContent = 'Bağlanıyor…';
+    location.replace(APP_URL);
+  }
+  document.getElementById('retry').addEventListener('click', retry);
+  window.addEventListener('online', function () { setTimeout(retry, 600); });
+</script>
+</body>
+</html>

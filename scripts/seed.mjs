@@ -34,11 +34,17 @@ const DRY = args.has('--dry-run');
 
 /* Test hesapları — yalnızca yerel emülatör. */
 export const TEST = {
-  staff: { email: 'k.soybil@1401coffee.com', password: '192535', name: 'Kahve Operasyonu' },
-  /** Demoda tam yetkili (admin) diğer Kahve Operasyonu hesapları. */
+  /** Uygulama geliştiricisi — her şeyi görür, kurallardan muaf (bkz. src/lib/roles.ts). */
+  staff: { email: 'k.soybil@1401coffee.com', password: '192535', name: 'Kutay Soybil', role: 'developer' },
+  /** Yetki sıralamasına göre diğer Kahve Operasyonu hesapları. */
   staffExtra: [
-    { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğurcan Gürbüz' },
-    { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol' }
+    { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol', role: 'director' },
+    { email: 'semihdizdar@1401coffee.com', password: '351925', name: 'Semih Dizdar', role: 'opsmanager' },
+    { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğur Can Gürbüz', role: 'regional' },
+    // Yönetim Kurulu: salt okunur ekran (src/features/board).
+    { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı', role: 'board' },
+    { email: 'bulentozgurkilic@1401coffee.com', password: '351925', name: 'Bülent Özgür Kılıç', role: 'board' },
+    { email: 'alpbasar@1401coffee.com', password: '351925', name: 'R. Alp Başar', role: 'board' }
   ],
   stores: [
     { id: 'moda-cadde', name: 'Moda Cadde', city: 'İstanbul' },
@@ -49,7 +55,7 @@ export const TEST = {
   baristas: [
     { id: 'demo-ayse', name: 'Ayşe Demir', storeId: 'moda-cadde', role: 'lead', pin: '1925' },
     { id: 'demo-mehmet', name: 'Mehmet Kaya', storeId: 'moda-cadde', role: 'barista', pin: '1925' },
-    { id: 'demo-zeynep', name: 'Zeynep Arslan', storeId: 'moda-cadde', role: 'barista', pin: '1925' },
+    { id: 'demo-zeynep', name: 'Zeynep Arslan', storeId: 'moda-cadde', role: 'shift', pin: '1925' },
     { id: 'demo-yeni', name: 'Deniz Aydın', storeId: 'moda-cadde', role: 'barista', pin: null },
     { id: 'demo-can', name: 'Can Yıldız', storeId: 'cubuklu', role: 'lead', pin: '1925' },
     { id: 'demo-burak', name: 'Burak Çetin', storeId: 'cubuklu', role: 'barista', pin: '1925' },
@@ -108,7 +114,7 @@ function argVal(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-let writeAll, deleteStale, setDoc, addDoc, delDoc, ensureUser, signInAs;
+let writeAll, deleteStale, setDoc, addDoc, delDoc, ensureUser, signInAs, readQuestionFlags;
 
 if (EMULATOR) {
   // Emülatörde kimlik sorunu yok (FIRESTORE_EMULATOR_HOST env'i Admin SDK'yı
@@ -137,13 +143,18 @@ if (EMULATOR) {
   };
   deleteStale = async (col, keepIds) => {
     const snap = await db.collection(col).get();
-    const stale = snap.docs.filter((d) => !keepIds.has(d.id));
+    // Panelde oluşturulan içerik (Yeni ürün akışı) müfredatta yok; silinmez.
+    const stale = snap.docs.filter((d) => !keepIds.has(d.id) && d.get('kaynak') !== 'panel');
     for (let i = 0; i < stale.length; i += 400) {
       const batch = db.batch();
       stale.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
     if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
+  };
+  readQuestionFlags = async () => {
+    const snap = await db.collection('questions').get();
+    return new Map(snap.docs.filter((d) => d.get('edited') || d.get('disabled')).map((d) => [d.id, d.data()]));
   };
 } else {
   // Gerçek projede servis hesabı anahtarı aramak yerine, zaten var olan bir
@@ -288,11 +299,12 @@ if (EMULATOR) {
     let pageToken = '';
     do {
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${col}`
-        + `?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        + `?pageSize=300&mask.fieldPaths=kaynak${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
       if (!res.ok) throw new Error(`${col} listelenemedi: ${res.status} ${await res.text()}`);
       const body = await res.json();
-      (body.documents || []).forEach((d) => ids.push(d.name.split('/').pop()));
+      // Panelde oluşturulan içerik (Yeni ürün akışı) müfredatta yok; silinmez.
+      (body.documents || []).forEach((d) => { if (d.fields?.kaynak?.stringValue !== 'panel') ids.push(d.name.split('/').pop()); });
       pageToken = body.nextPageToken || '';
     } while (pageToken);
 
@@ -311,6 +323,24 @@ if (EMULATOR) {
     if (stale.length) console.log(`  ${col}: ${stale.length} eski kayıt silindi`);
   };
 
+  /** Soru havuzunda düzeltilen (edited) ya da iptal edilen (disabled) sorular. */
+  readQuestionFlags = async () => {
+    const out = new Map();
+    let pageToken = '';
+    do {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/questions?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      const body = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } }).then((x) => x.json());
+      for (const d of body.documents || []) {
+        const f = d.fields || {};
+        if (f.edited?.booleanValue || f.disabled?.booleanValue) {
+          out.set(d.name.split('/').pop(), Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.stringValue ?? v.booleanValue ?? (v.integerValue !== undefined ? Number(v.integerValue) : v.doubleValue ?? (v.arrayValue ? (v.arrayValue.values || []).map((x) => x.stringValue) : null))])));
+        }
+      }
+      pageToken = body.nextPageToken || '';
+    } while (pageToken);
+    return out;
+  };
+
   if (DEMO && adminUid) {
     // Müfredat yazmak "admin" rolü ister; rol belgesi her şeyden önce yazılır.
     // İlk çalıştırmada kurallar bunu yalnızca config/bootstrap yokken kabul
@@ -323,11 +353,23 @@ if (EMULATOR) {
   }
 }
 
+// Demo kaydını açar (src/demo/log.ts): firestore.rules demoLog'a yalnızca bu
+// belge varken yazdırır. Canlı projede hiç yazılmaz.
+if (DEMO || EMULATOR) await setDoc('config/demo', { enabled: true, at: Date.now() });
+
 console.log('Müfredat yükleniyor…');
 await writeAll('tracks', data.tracks);
 await writeAll('modules', data.modules);
 await writeAll('lessons', data.lessons);
-await writeAll('questions', data.questions);
+// Soru havuzunda düzeltilen soru ezilmez; iptal edilen sorunun iptali korunur.
+const flags = await readQuestionFlags();
+await writeAll('questions', data.questions
+  .filter((q) => !flags.get(q.id)?.edited)
+  .map((q) => {
+    const f = flags.get(q.id);
+    return f?.disabled ? { ...q, disabled: true, disabledReason: f.disabledReason || '', disabledByName: f.disabledByName || '', disabledAt: f.disabledAt || 0 } : q;
+  }));
+if (flags.size) console.log(`  questions: ${[...flags.values()].filter((f) => f.edited).length} düzeltilmiş soru korundu, ${[...flags.values()].filter((f) => f.disabled).length} iptal korundu`);
 
 // Menü/müfredat değiştiğinde eskisinden kalan belgeleri temizle.
 console.log('Eski içerik temizleniyor…');
@@ -341,6 +383,8 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
   if (DEMO) {
     console.log('Önceki demo sınavları siliniyor…');
     await deleteStale('attempts', new Set());
+    await deleteStale('requests', new Set());
+    await deleteStale('proposals', new Set());
   }
   console.log('Test hesapları…');
   const now = Date.now();
@@ -348,17 +392,21 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
 
   // --- Yöneticiler -----------------------------------------------------
   const staff = await ensureUser(TEST.staff.email, TEST.staff.password, TEST.staff.name);
+  // Önce 'admin' (ilk kurulum kuralı bunu bekler), ardından asıl rolü.
   await setDoc(`users/${staff.uid}`, { role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
+  await setDoc(`users/${staff.uid}`, { role: TEST.staff.role, name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
   // Kurallar config/bootstrap'ın üzerine yazılmasına izin vermez; demo
   // yeniden kurulduğunda belge zaten yerindedir, hata yutulur.
   await setDoc('config/bootstrap', { uid: staff.uid, at: now }).catch(() => {});
 
-  // Demoyu birden çok kişi aynı anda denesin diye her yöneticinin kendi
-  // hesabı var; hepsi tam yetkili (admin).
+  // Her yöneticinin kendi hesabı ve gerçek rolü var: Cenk Bey yayınlar ve
+  // onaylar, Uğur Bey'in içerik/bülten değişiklikleri onaya düşer.
+  const staffUid = {};
   for (const extra of TEST.staffExtra || []) {
     const acc = await ensureUser(extra.email, extra.password, extra.name);
-    await setDoc(`users/${acc.uid}`, { role: 'admin', name: extra.name, email: extra.email, active: true, createdAt: now });
-    console.log(`  yönetici: ${extra.email}`);
+    await setDoc(`users/${acc.uid}`, { role: extra.role, name: extra.name, email: extra.email, active: true, createdAt: now });
+    staffUid[extra.role] ||= { uid: acc.uid, name: extra.name };
+    console.log(`  yönetici: ${extra.email} (${extra.role})`);
   }
 
   // --- Baristalar: her birinin kendi Auth hesabı var -------------------
@@ -375,15 +423,18 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     'demo-nisa': { lessons: [...lessonIds('hos-geldin'), ...lessonIds('misafir-karsilama').slice(0, 3)], modules: { 'hos-geldin': 80 } }
   };
 
+  const baristaUid = {};
   for (const b of TEST.baristas) {
     const email = `b-${b.id}-1@${ACCOUNT_DOMAIN}`;
     const password = b.pin ? pinPassword(b.id, b.pin) : invitePassword(TEST.inviteCode);
     const account = await ensureUser(email, password, b.name);
+    baristaUid[b.id] = account.uid;
     await setDoc(`users/${account.uid}`, { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: now });
     await setDoc(`baristas/${b.id}`, {
       name: b.name, storeId: b.storeId, role: b.role, phone: '', active: true,
       uid: account.uid, authEmail: email, accountSeq: 1,
-      pinPending: !b.pin, startedAt: '2026-10-01', createdAt: now
+      pinPending: !b.pin, startedAt: '2026-10-01', createdAt: now,
+      ...(b.pin ? {} : { inviteExpiresAt: now + 30 * 86400000, codeIssuedByName: 'Uğur Can Gürbüz' })
     });
     const p = progressFor[b.id] || { lessons: [], modules: {} };
     await setDoc(`progress/${b.id}`, {
@@ -448,15 +499,15 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     const mod = data.modules.find((m) => m.id === mid);
     const total = mod ? mod.examSize : 10;
     const at = now - daysAgo * 86400000;
-    const who = TEST.baristas.find((b) => b.id === bid);
-    const asToken = await signInAs(`b-${bid}-1@${ACCOUNT_DOMAIN}`, pinPassword(bid, who.pin));
+    // Geçmiş (teslim edilmiş) denemeyi barista hesabı açamaz — kurallar
+    // açık deneme ister. Örnek geçmiş, geliştirici hesabıyla yazılır.
     await addDoc('attempts', {
       baristaId: bid, baristaName: nameOf[bid], storeId: storeOf[bid],
       moduleId: mid, moduleTitle: moduleTitle[mid] || mid,
       startedAt: at, submittedAt: at + 7 * 60000,
       total, correct: Math.round((score / 100) * total), score, passed,
       mistakes: mistakeItems(mid, wrong)
-    }, asToken);
+    });
   }
 
   // --- Görevler ----------------------------------------------------------
@@ -474,6 +525,57 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
       createdBy: staff.uid, createdByName: TEST.staff.name
     });
   }
+
+  // --- Mağaza talepleri ----------------------------------------------------
+  const regional = staffUid.regional || { uid: staff.uid, name: TEST.staff.name };
+  const director = staffUid.director || { uid: staff.uid, name: TEST.staff.name };
+  const H = 3600000;
+  const requests = [
+    ['req-1', 'moda-cadde', 'Moda Cadde', 'demo-ayse', 'ariza', 'urgent', 'Espresso makinesi', '2. grup su kaçırıyor', 'Sabah açılışta fark ettik, shot süresi 18 saniyeye düştü. Grubu kapattık, tek grupla çalışıyoruz.', 'in_progress', 30,
+      [['store', 'demo-ayse', 'Fotoğrafı da ekledim, conta gibi görünüyor.', null, 29], ['ops', 'regional', 'Yetkili servis yarın 10:00\'da geliyor. O zamana kadar 2. grubu kullanmayın.', 'in_progress', 26]]],
+    ['req-2', 'cubuklu', 'Çubuklu', 'demo-can', 'servis', 'normal', '', 'Değirmen bıçak değişimi (6 ay doldu)', 'Periyodik bakım zamanı geldi; öğütme tutarlılığı düştü.', 'approval', 50,
+      [['ops', 'regional', 'Servis teklifi alındı, Cenk Bey\'in onayına gönderdim.', 'approval', 20]]],
+    ['req-3', 'pendik', 'Pendik', 'demo-elif', 'malzeme', 'normal', '', 'Matcha ve ube tozu bitmek üzere', 'Hafta sonuna yetmeyecek; ekstra sevkiyat rica ediyoruz.', 'open', 3, []],
+    ['req-4', 'bagdat', 'Bağdat Caddesi', 'demo-emir', 'personel', 'normal', '', 'Yeni barista için davet kodu', 'Pazartesi başlayacak bir arkadaşımız var: Ece Yalçın.', 'done', 120,
+      [['ops', 'regional', 'Ece Yalçın eklendi, kodu WhatsApp\'tan ilettim.', 'done', 100]]]
+  ];
+  for (const [id, storeId, storeName, by, category, priority, equipment, title, detail, status, hoursAgo, notes] of requests) {
+    const who = TEST.baristas.find((b) => b.id === by);
+    const noteDocs = notes.map(([side, w, text, st, h]) => {
+      const p = side === 'store' ? { uid: baristaUid[w], name: TEST.baristas.find((b) => b.id === w).name } : (w === 'regional' ? regional : director);
+      return { at: now - h * H, by: p.uid, byName: p.name, side, text, ...(st ? { status: st } : {}) };
+    });
+    const last = noteDocs[noteDocs.length - 1];
+    await setDoc(`requests/${id}`, {
+      storeId, storeName, category, priority, title, detail, ...(equipment ? { equipment } : {}),
+      status, notes: noteDocs, createdAt: now - hoursAgo * H, createdBy: baristaUid[by], createdByName: who.name,
+      updatedAt: last ? last.at : now - hoursAgo * H, lastSide: last ? last.side : 'store',
+      closedAt: status === 'done' ? last.at : null
+    });
+  }
+
+  // --- Onay bekleyen öneri (Bölge Müdürü → Kahve Operasyon Direktörü) ---------
+  await setDoc('proposals/demo-oneri-1', {
+    kind: 'bulletin', title: 'Kasım terfileri', summary: 'Yeni bülten · Liderlik',
+    ops: [{ op: 'set', col: 'bulletins', id: 'demo-terfi-kasim', data: {
+      kind: 'liderlik', board: 'terfi', title: 'Kasım terfileri',
+      body: 'Emekleri için teşekkür ediyoruz. **Tebrikler!**', storeIds: null, rows: [],
+      people: [
+        { baristaId: 'demo-zeynep', name: 'Zeynep Arslan', storeName: 'Moda Cadde', note: 'Vardiya müdürlüğüne terfi etti' },
+        { baristaId: 'demo-emir', name: 'Emir Polat', storeName: 'Bağdat Caddesi', note: 'Ayın mağaza müdürü — %100 sınav ortalaması' }
+      ],
+      expiresAt: null, published: true, pinned: false,
+      createdAt: now - 2 * H, createdBy: regional.uid, createdByName: regional.name
+    } }],
+    status: 'pending', createdAt: now - 2 * H, createdBy: regional.uid, createdByName: regional.name
+  });
+
+  // Bölge müdürünün atadığı görev — Kahve Operasyon Direktörü "Atayan" süzgecinde görür.
+  await setDoc('assignments/demo-6', {
+    kind: 'module', targetId: 'demleme-turk', title: 'Demleme ve Türk Kahveleri', note: 'Yeni V60 standardı — hafta sonuna kadar.',
+    storeId: 'cubuklu', baristaId: null, dueAt: now + 4 * 86400000, createdAt: now - 86400000,
+    createdBy: regional.uid, createdByName: regional.name
+  });
 
   console.log(`
 Hazır.

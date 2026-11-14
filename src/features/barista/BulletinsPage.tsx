@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import type { Bulletin, BulletinKind } from '../../../shared/types';
 import { useBaristaSession, useMyBulletins, useMyProgress, markBulletinRead } from './useBaristaData';
 import { RichText } from '../academy/LessonBlocks';
+import { PeopleList } from '../staff/BulletinPages';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Empty, Badge, fmtDate } from '../../ui/kit';
+import { Page, PageTitle, Empty, Badge, fmtDate, Spinner } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
 /**
@@ -58,7 +59,8 @@ const Card: React.FC<{ b: Bulletin; read: boolean; onOpen: () => void }> = ({ b,
             />
           )}
           {b.body && <RichText text={b.body} />}
-          {b.rows && b.rows.length > 0 && (
+          {b.people && b.people.length > 0 && <PeopleList people={b.people} />}
+          {b.rows && b.rows.length > 0 && b.board !== 'terfi' && (
             <div className={t.listGroup}>
               {b.rows.map((r, i) => (
                 <div key={i} className={`${t.listRowStatic} justify-between`}>
@@ -88,9 +90,9 @@ export const BulletinsPage: React.FC = () => {
     <Page>
       <PageTitle
         title="Bülten"
-        subtitle={unread > 0 ? `${unread} okunmamış duyuru` : 'Kahve Operasyonu duyuruları'}
+        subtitle={unread > 0 ? `${unread} okunmamış duyuru` : undefined}
       />
-      {loading ? null : items.length === 0 ? (
+      {loading ? <div className="flex justify-center py-10"><Spinner /></div> : items.length === 0 ? (
         <Empty icon="bell" text="Şimdilik duyuru yok. Yeni bir şey olduğunda burada görünecek." />
       ) : (
         <div className="flex flex-col gap-2.5">

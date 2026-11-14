@@ -4,9 +4,11 @@
   "webDir": "www",
   "server": {
     "url": "https://playbook-1401.web.app",
-    "cleartext": false
+    "cleartext": false,
+    "errorPath": "offline.html"
   },
   "android": {
     "allowMixedContent": false
-  }
+  },
+  "backgroundColor": "#100E0D"
 }

@@ -1,0 +1,109 @@
+/**
+ * Yönetim kurulu videosu (~2 dk, yatay). İzleyen son kullanıcı değil, karar
+ * verecek kurul: neden yapıldı, neyi çözüyor, ne kazandırıyor, sırada ne var.
+ *
+ * Rakamlar uygulamanın kendisinden: src/generated/curriculum.json (4 yol,
+ * 13 modül, 96 ders, 1.290 soru), reçete listesi (67 içecek), başarımlar (18).
+ * Her sahne bir cümle seslendirir (capture/ses.mjs); süre sesten gelir.
+ */
+export type Gorsel =
+  | { tur: 'logo' }
+  | { tur: 'sorular'; maddeler: string[] }
+  | { tur: 'donusum'; once: string; sonra: string }
+  | { tur: 'telefon'; ekran: string; kaydir?: [number, number] }
+  | { tur: 'masaustu'; ekran: string; yakin?: number; merkez?: string }
+  | { tur: 'cihazlar' }
+  | { tur: 'kapanis'; hazir: string[]; adim: string[] }
+  | { tur: 'sistem'; adimlar: [string, string][] }
+  | { tur: 'vizyon'; satirlar: string[] };
+
+export interface Sahne {
+  ust?: string;            // küçük başlık ("Eğitim")
+  baslik?: string;         // büyük başlık
+  rakamlar?: [string, string][];
+  metin: string;           // altyazı + seslendirme
+  ses?: string;            // okunuşu farklıysa
+  gorsel: Gorsel;
+}
+
+export const KURUL: Sahne[] = [
+  {
+    metin: '1401 Campus: 1401’in eğitim kitapçığını, reçetelerini ve mağaza operasyonunu tek bir uygulamada toplayan yeni sistemimiz.',
+    ses: 'Bin dört yüz bir Kampüs. Bin dört yüz birin eğitim kitapçığını, reçetelerini ve mağaza operasyonunu tek bir uygulamada toplayan yeni sistemimiz.',
+    gorsel: { tur: 'logo' }
+  },
+  {
+    metin: 'Her şubede aynı kaliteyi sunmak birkaç sorunun cevabına bağlı. Yeni başlayan bir barista standardı nereden öğreniyor? Bir reçete değişince herkese ulaştı mı? Hangi şube eğitimde nerede? Bir arıza ne zaman bildirildi, ne zaman çözüldü?',
+    gorsel: { tur: 'sorular', maddeler: [
+      'Yeni başlayan barista standardı nereden öğreniyor?',
+      'Bir reçete değişince herkese ulaştı mı?',
+      'Hangi şube eğitimde nerede?',
+      'Bir arıza ne zaman bildirildi, ne zaman çözüldü?'
+    ] }
+  },
+  {
+    metin: 'Bu cevaplar bugüne kadar kitapçıkta ve kişilerin hafızasındaydı; ölçmek ve takip etmek zordu. 1401 Campus bunları ölçülebilir hâle getiriyor.',
+    ses: 'Bu cevaplar bugüne kadar kitapçıkta ve kişilerin hafızasındaydı; ölçmek ve takip etmek zordu. Bin dört yüz bir Kampüs bunları ölçülebilir hâle getiriyor.',
+    gorsel: { tur: 'donusum', once: 'Kitapçık ve hafıza', sonra: 'Ölçülebilir, takip edilebilir' }
+  },
+  {
+    ust: 'Eğitim', baslik: 'Kitapçığın tamamı\nuygulamada',
+    rakamlar: [['96', 'ders'], ['13', 'modül'], ['1.290', 'soru']],
+    metin: 'Kitapçığın tamamı 96 derse ve 13 modüle dönüştü. Her modül bir sınavla biter; 1.290 soruluk bankadan her denemede farklı sorular gelir.',
+    ses: 'Kitapçığın tamamı doksan altı derse ve on üç modüle dönüştü. Her modül bir sınavla biter; bin iki yüz doksan soruluk bankadan her denemede farklı sorular gelir.',
+    gorsel: { tur: 'telefon', ekran: 'akademi' }
+  },
+  {
+    ust: 'Servis', baslik: 'Reçete,\nsaniyeler içinde',
+    rakamlar: [['67', 'içecek']],
+    metin: 'Servis sırasında 67 içeceğin reçetesi, bardak şemasıyla, PIN bile gerekmeden saniyeler içinde açılır.',
+    ses: 'Servis sırasında altmış yedi içeceğin reçetesi, bardak şemasıyla, pin bile gerekmeden saniyeler içinde açılır.',
+    gorsel: { tur: 'telefon', ekran: 'recete', kaydir: [0, 260] }
+  },
+  {
+    ust: 'Motivasyon', baslik: 'Rozet ve başarım\nsistemi',
+    rakamlar: [['4', 'önlük rozeti'], ['18', 'başarım']],
+    metin: 'Eğitimi teşvik etmek için bir rozet ve başarım sistemi var. Barista ders ve sınavları tamamladıkça başarım kazanır, Rookie’den Pro’ya önlük rozetinde ilerler.',
+    ses: 'Eğitimi teşvik etmek için bir rozet ve başarım sistemi var. Barista ders ve sınavları tamamladıkça başarım kazanır, Ruki’den Pro’ya önlük rozetinde ilerler.',
+    gorsel: { tur: 'telefon', ekran: 'bugun' }
+  },
+  {
+    ust: 'Görünürlük', baslik: 'Bütün şubeler\ntek ekranda',
+    metin: 'Yönetim bütün şubeleri tek ekranda görür: kim hangi eğitimde, hangi sorular en çok yanlış yapılıyor, hangi görev gecikti.',
+    gorsel: { tur: 'masaustu', ekran: 'y-c-genel' }
+  },
+  {
+    ust: 'Operasyon', baslik: 'Talepler\nkayıt altında',
+    metin: 'Arıza, servis ve malzeme talepleri kayıt altında: kim bildirdi, ne zaman yanıtlandı, ne zaman çözüldü. Bir duyuruyu kimin okuduğu bile belli.',
+    gorsel: { tur: 'masaustu', ekran: 'y-u-talepler' }
+  },
+  {
+    ust: 'Kontrol', baslik: 'Standart\ntek elden',
+    metin: 'İçerikteki her değişiklik Kahve Operasyon Direktörünün onayıyla yayına girer. Standardı tek elden yönetiriz.',
+    gorsel: { tur: 'masaustu', ekran: 'y-c-ne-degisiyor', yakin: 1.4, merkez: '50% 30%' }
+  },
+  {
+    ust: 'Maliyet', baslik: 'Ek donanım yok.\nSunucu maliyeti yok.',
+    metin: 'Uygulama telefon, tablet ve bilgisayarda çalışır; ek donanım gerekmez. Ücretsiz bulut planında çalıştığı için bugünkü ölçekte sunucu maliyeti yoktur.',
+    gorsel: { tur: 'cihazlar' }
+  },
+  // Kapanış (Cenk Bey'in revizyonu, 13.11.2026): "öneri" yerine uygulamanın
+  // 1401 için profesyonel bir takip ve gelişim sistemi olduğu; markanın gücü ve vizyonu.
+  {
+    ust: 'Profesyonel bir sistem', baslik: 'Takip ve\ngelişim sistemi',
+    metin: '1401 Campus bir eğitim uygulamasından fazlası: her baristanın ilk gününden ustalığına kadar gelişimini, her şubenin standardını ve her talebin sonucunu izleyen profesyonel bir takip ve gelişim sistemi.',
+    ses: 'Bin dört yüz bir Kampüs, bir eğitim uygulamasından fazlası: her baristanın ilk gününden ustalığına kadar gelişimini, her şubenin standardını ve her talebin sonucunu izleyen profesyonel bir takip ve gelişim sistemi.',
+    gorsel: { tur: 'sistem', adimlar: [
+      ['Öğren', 'Kitapçık, reçeteler, dersler'],
+      ['Ölç', 'Sınavlar, rozetler, talep süreleri'],
+      ['Geliştir', 'Mağaza karnesi, gelişim takibi']
+    ] }
+  },
+  {
+    metin: 'Her şubede aynı lezzet, aynı misafir deneyimi, aynı standart. 1401 büyüdükçe yeni şubeler aynı bilgiyle ve ilk günden aynı kaliteyle açılır. 1401 Campus, markamızın gücünü ölçülebilir bir standarda ve geleceğe taşıyan bir vizyona dönüştürüyor.',
+    ses: 'Her şubede aynı lezzet, aynı misafir deneyimi, aynı standart. Bin dört yüz bir büyüdükçe yeni şubeler aynı bilgiyle ve ilk günden aynı kaliteyle açılır. Bin dört yüz bir Kampüs, markamızın gücünü ölçülebilir bir standarda ve geleceğe taşıyan bir vizyona dönüştürüyor.',
+    gorsel: { tur: 'vizyon', satirlar: ['Her şubede aynı lezzet', 'Aynı misafir deneyimi', 'Aynı standart'] }
+  }
+];
+
+export const kurulCumleleri = () => KURUL.map((s) => s.ses || s.metin);

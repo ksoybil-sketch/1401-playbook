@@ -1,42 +1,91 @@
+import { useKeepAwake } from '../../lib/keepAwake';
+import { ReportContentLink } from '../shared/Feedback';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useSession } from '../../store/session';
 import { useContent } from '../../store/content';
-import { useMyProgress } from './useBaristaData';
 import { buildIndex, searchLessons, RECIPE_TRACK_ID, type LessonHit } from '../../lib/search';
+import { LessonBlocks } from '../academy/LessonBlocks';
 import { Icon } from '../../ui/Icon';
-import { Page, Empty } from '../../ui/kit';
+import { Page, PageTitle, Empty } from '../../ui/kit';
+import { HUE } from '../../ui/palette';
 import * as t from '../../ui/tokens';
+import type { Lesson } from '../../../shared/types';
+import { useBackHandler } from '../../lib/backButton';
 
 /**
  * Reçeteler — servis sırasında kullanılan ekran.
  *
- * Akademi müfredatın yapısına göre düzenlidir (yol → modül → ders); bu
- * ekran ise tek bir işe hizmet eder: aradığın içeceği en hızlı biçimde
- * açmak. Arama ders adının yanında malzemeyi de kapsar.
+ * Reçete ders değildir: barista bir içeceği misafirin isteğini hatırlamak
+ * ya da ölçüye bakmak için açar. Bu yüzden reçete kendi sayfasında açılır
+ * (/recete/:id) — ders akışı, ilerleme çubuğu, "tamamladım" düğmesi yok,
+ * eğitim ilerlemesine de dokunmaz. Aynı içerik Akademi'de eğitim dersi
+ * olarak ayrıca durur; sınava hazırlanan barista oradan çalışır.
  */
 
-const LessonRow: React.FC<{ hit: LessonHit; done: boolean }> = ({ hit, done }) => (
-  <Link to={`/ders/${hit.lesson.id}`} className={t.listRow}>
-    <span className={t.iconChip(done ? 'positive' : 'neutral')}>
-      <Icon name={done ? 'check' : 'coffee'} size={16} />
-    </span>
-    <div className="flex-1 min-w-0">
-      <div className="text-[14px] font-medium truncate">{hit.lesson.title}</div>
-      <div className="text-[12px] text-fg-3 truncate">
-        {hit.matchedIngredient ? `İçinde: ${hit.matchedIngredient}` : hit.module.title}
+/** Dersin ilk görseli (menü fotoğrafı) — listede küçük resim olarak. */
+const photoOf = (l: Lesson) => {
+  const b = l.blocks?.find((x) => x.type === 'image');
+  return b && b.type === 'image' ? b.url : null;
+};
+
+const RecipeRow: React.FC<{ hit: LessonHit }> = ({ hit }) => {
+  const pic = photoOf(hit.lesson);
+  return (
+    <Link to={hit.isRecipe ? `/recete/${hit.lesson.id}` : `/ders/${hit.lesson.id}`} className={t.listRow}>
+      {pic ? (
+        <img src={pic} alt="" loading="lazy" className="w-11 h-11 rounded-xl object-cover shrink-0 bg-panel-3" />
+      ) : (
+        <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${hit.isRecipe ? HUE.amber.chip : 'bg-panel-3 text-fg-2'}`}>
+          <Icon name={hit.isRecipe ? 'coffee' : 'book'} size={18} />
+        </span>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="text-[15px] font-medium truncate">{hit.lesson.title}</div>
+        <div className="text-[12px] text-fg-3 truncate">
+          {hit.matchedIngredient ? `İçinde: ${hit.matchedIngredient}` : hit.module.title}
+        </div>
       </div>
-    </div>
-    <Icon name="chevronRight" size={16} className={t.rowChevron} />
-  </Link>
-);
+      <Icon name="chevronRight" size={16} className={t.rowChevron} />
+    </Link>
+  );
+};
+
+/** Reçeteler ekranının oturumluk hafızası (sekme kapanınca silinir). */
+const memo = {
+  get: (k: string) => { try { return sessionStorage.getItem('receteler.' + k); } catch { return null; } },
+  set: (k: string, v: string) => { try { sessionStorage.setItem('receteler.' + k, v); } catch { /* yok say */ } }
+};
+
+/**
+ * Bu telefonda son açılan reçeteler (en fazla 5). Yalnızca telefonda durur,
+ * sunucuya yazılmaz; mağaza telefonunda herkes için ortak.
+ */
+const RECENT_KEY = 'receteler.son';
+const RECENT_MAX = 5;
+const recent = {
+  get: (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } },
+  push: (id: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recent.get().filter((x) => x !== id)].slice(0, RECENT_MAX))); } catch { /* yok say */ } },
+  clear: () => { try { localStorage.removeItem(RECENT_KEY); } catch { /* yok say */ } }
+};
 
 export const RecipesPage: React.FC = () => {
   const { tracks, modules, lessons } = useContent();
-  const { progress } = useMyProgress();
   const [params, setParams] = useSearchParams();
-  const [q, setQ] = useState(params.get('q') || '');
-  const [cat, setCat] = useState<string>('hepsi');
+  // Arama, kategori ve kaydırma konumu reçeteye girip dönünce kaybolmasın:
+  // serviste art arda üç reçeteye bakmak için üç kez yazmak gerekiyordu.
+  const [q, setQ] = useState(params.get('q') || memo.get('q') || '');
+  const [cat, setCat] = useState<string>(memo.get('kat') || 'hepsi');
   const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { memo.set('q', q); memo.set('kat', cat); }, [q, cat]);
+  useEffect(() => {
+    const y = Number(memo.get('y') || 0);
+    if (y) requestAnimationFrame(() => window.scrollTo(0, y));
+    const save = () => memo.set('y', String(Math.round(window.scrollY)));
+    window.addEventListener('scroll', save, { passive: true });
+    return () => window.removeEventListener('scroll', save);
+  }, []);
+  const signedIn = useSession((x) => x.session.kind === 'barista');
 
   // Ana ekrandaki arama kutusuna dokunulduğunda buraya odaklanarak gelinir.
   useEffect(() => {
@@ -65,14 +114,19 @@ export const RecipesPage: React.FC = () => {
     return [...picked].sort((a, b) => a.module.order - b.module.order || a.lesson.order - b.lesson.order);
   }, [index, cat]);
 
-  const isDone = (id: string) => !!progress.lessons?.[id];
+  const [recentIds, setRecentIds] = useState<string[]>(() => recent.get());
+  const recentHits = useMemo(() => recentIds.map((id) => index.find((i) => i.isRecipe && i.lesson.id === id)).filter(Boolean) as LessonHit[], [recentIds, index]);
+
   const recipeHits = results.filter((r) => r.isRecipe);
   const otherHits = results.filter((r) => !r.isRecipe);
 
   return (
     <Page>
       <div className="flex flex-col gap-3">
-        <h1 className={t.screenTitle}>Reçeteler</h1>
+        <div className="flex items-center gap-3">
+          <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${HUE.amber.chip}`}><Icon name="coffee" size={19} /></span>
+          <h1 className={t.screenTitle}>Reçeteler</h1>
+        </div>
 
         <div className="relative">
           <Icon name="search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />
@@ -107,15 +161,17 @@ export const RecipesPage: React.FC = () => {
               <div className="flex flex-col gap-2">
                 <span className={t.sectionLabel}>Reçeteler · {recipeHits.length}</span>
                 <div className={t.listGroup}>
-                  {recipeHits.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+                  {recipeHits.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
                 </div>
               </div>
             )}
-            {otherHits.length > 0 && (
+            {/* Mağaza telefonunda (PIN'siz) dersler açılmaz; sonuçlar giriş
+                ekranına atıyordu. Dersler yalnızca giriş yapan baristaya. */}
+            {signedIn && otherHits.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className={t.sectionLabel}>Diğer dersler · {otherHits.length}</span>
+                <span className={t.sectionLabel}>Akademi dersleri · {otherHits.length}</span>
                 <div className={t.listGroup}>
-                  {otherHits.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+                  {otherHits.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
                 </div>
               </div>
             )}
@@ -123,6 +179,22 @@ export const RecipesPage: React.FC = () => {
         )
       ) : (
         <div className="flex flex-col gap-3">
+          {/* Serviste aynı birkaç içeceğe tekrar tekrar bakılıyor. */}
+          {recentHits.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className={t.sectionLabel}>Son baktıkların</span>
+                <button onClick={() => { recent.clear(); setRecentIds([]); }} className="text-[12px] text-fg-3 hover:text-crema px-2 py-1 -mr-2">Temizle</button>
+              </div>
+              <div className={t.scrollX}>
+                {recentHits.map((h) => (
+                  <Link key={h.lesson.id} to={`/recete/${h.lesson.id}`} className={`${t.chip} ${t.chipOff} gap-1.5 h-9 shrink-0`}>
+                    <Icon name="clock" size={12} className="text-fg-3" /> {h.lesson.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <div className={t.scrollX}>
             <button onClick={() => setCat('hepsi')} className={`${t.chip} ${cat === 'hepsi' ? t.chipOn : t.chipOff}`}>
               Hepsi
@@ -135,14 +207,123 @@ export const RecipesPage: React.FC = () => {
           </div>
 
           {browse.length === 0 ? (
-            <Empty icon="coffee" text="Bu kategoride yayında ders yok." />
+            <Empty icon="coffee" text="Bu kategoride yayında reçete yok." />
           ) : (
             <div className={t.listGroup}>
-              {browse.map((h) => <LessonRow key={h.lesson.id} hit={h} done={isDone(h.lesson.id)} />)}
+              {browse.map((h) => <RecipeRow key={h.lesson.id} hit={h} />)}
             </div>
           )}
         </div>
       )}
     </Page>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Tek reçete                                                          */
+/* ------------------------------------------------------------------ */
+
+export const RecipeDetailPage: React.FC = () => {
+  const { lessonId } = useParams();
+  const navigate = useNavigate();
+  const { modules, lessons } = useContent();
+  const recipe = lessons.find((l) => l.id === lessonId);
+  const [zoom, setZoom] = useState(false);
+  const signedInBarista = useSession((x) => x.session.kind === 'barista');
+  // Ölçüye bakarken ekran kararmasın.
+  useKeepAwake(!!recipe);
+  // "Son baktıkların" listesine eklenir (yalnızca reçeteler).
+  const isRecipe = !!recipe && modules.some((m) => m.id === recipe.moduleId && m.trackId === RECIPE_TRACK_ID);
+  useEffect(() => { if (isRecipe && lessonId) recent.push(lessonId); }, [isRecipe, lessonId]);
+  // Android geri tuşu önce büyütülmüş fotoğrafı kapatır.
+  useBackHandler(zoom, () => { setZoom(false); return true; });
+  if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;
+  const mod = modules.find((m) => m.id === recipe.moduleId);
+  // Serviste önce ölçüye bakılır: fotoğraf başlığın yanında küçük durur,
+  // dokununca büyür; bardak şeması ve ölçüler hemen görünür.
+  const pic = photoOf(recipe);
+  const blocks = (recipe.blocks || []).filter((b) => b.type !== 'image' || b.url !== pic);
+
+  return (
+    <Page>
+      <div className="flex items-center gap-3">
+        <button onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/receteler'))} className={t.iconBtn} aria-label="Geri">
+          <Icon name="chevronLeft" size={16} />
+        </button>
+        <span className={`text-[11px] font-semibold uppercase tracking-[0.06em] ${HUE.amber.text}`}>{mod?.title || 'Reçete'}</span>
+      </div>
+      <div className="flex items-center gap-4 -mt-1">
+        <h1 className="text-[26px] font-bold leading-tight flex-1">{recipe.title}</h1>
+        {pic && (
+          <button onClick={() => setZoom(true)} className="shrink-0" aria-label="Fotoğrafı büyüt">
+            <img src={pic} alt="" className="w-24 h-24 rounded-2xl object-cover border border-line bg-panel-3" />
+          </button>
+        )}
+      </div>
+
+      <LessonBlocks blocks={blocks} />
+
+      {zoom && pic && (
+        <button onClick={() => setZoom(false)} className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-5" aria-label="Kapat">
+          <img src={pic} alt={recipe.title} className="max-w-full max-h-full rounded-2xl" />
+        </button>
+      )}
+
+      <ReportContentLink lessonId={recipe.id} lessonTitle={recipe.title} />
+
+      {/* Yeni ürün: reçetenin kendi 3 soruluk mini sınavı. */}
+      {mod && signedInBarista && !!recipe.quiz && (
+        <Link to={`/sinav/${mod.id}?ders=${recipe.id}`} className={`${t.cardInteractive} p-3.5 flex items-center gap-3 mt-2 border-[#E07A6E]/40`}>
+          <span className={t.iconChip('caution')}><Icon name="clipboard" size={16} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-semibold">Mini sınava gir</div>
+            <div className="text-[12px] text-fg-3 truncate">{recipe.quiz} soru · bu reçeteyi ne kadar bildiğini gör</div>
+          </div>
+          <Icon name="chevronRight" size={16} className={t.rowChevron} />
+        </Link>
+      )}
+
+      {/* Reçete eğitim ilerlemesine sayılmaz; sınav Akademi'de. Mağaza
+          telefonunda PIN'siz bakılıyorsa Akademi yok — bağlantı gizli. */}
+      {mod && signedInBarista && (
+        <Link to={`/modul/${mod.id}`} className={`${t.cardInteractive} p-3.5 flex items-center gap-3 mt-2`}>
+          <span className={t.iconChip('neutral')}><Icon name="cap" size={16} /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-medium">Akademi'de çalış</div>
+            <div className="text-[12px] text-fg-3 truncate">{mod.title} dersleri ve sınavı</div>
+          </div>
+          <Icon name="chevronRight" size={16} className={t.rowChevron} />
+        </Link>
+      )}
+    </Page>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Mağaza telefonu: PIN'siz reçete                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Giriş ekranından PIN girmeden açılan reçete bölümü. Servis sırasında
+ * yalnızca bir ölçüye bakmak için kimse PIN girmekle vakit kaybetmesin.
+ * Bu ekranda ders, sınav, ilerleme ya da kişisel bilgi yok; mağaza
+ * oturumu (telefonun kendisi) zaten içerik okuyabiliyor.
+ */
+export const StoreRecipesLayout: React.FC = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-[100dvh] flex flex-col">
+      <div aria-hidden className="fixed top-0 inset-x-0 z-50 h-[env(safe-area-inset-top)] bg-espresso" />
+      <header className="relative z-40 bg-espresso border-b border-line pt-[env(safe-area-inset-top)]">
+        <div className="h-14 flex items-center gap-3 px-4 max-w-[560px] mx-auto">
+          <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90" />
+          <div className="flex-1 text-[14px] font-semibold">Reçeteler</div>
+          <button onClick={() => navigate('/')} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
+            <Icon name="user" size={14} /> Giriş
+          </button>
+        </div>
+      </header>
+      <main className="flex-1"><Outlet /></main>
+    </div>
   );
 };
