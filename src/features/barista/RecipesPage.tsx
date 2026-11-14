@@ -57,6 +57,18 @@ const memo = {
   set: (k: string, v: string) => { try { sessionStorage.setItem('receteler.' + k, v); } catch { /* yok say */ } }
 };
 
+/**
+ * Bu telefonda son açılan reçeteler (en fazla 5). Yalnızca telefonda durur,
+ * sunucuya yazılmaz; mağaza telefonunda herkes için ortak.
+ */
+const RECENT_KEY = 'receteler.son';
+const RECENT_MAX = 5;
+const recent = {
+  get: (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } },
+  push: (id: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recent.get().filter((x) => x !== id)].slice(0, RECENT_MAX))); } catch { /* yok say */ } },
+  clear: () => { try { localStorage.removeItem(RECENT_KEY); } catch { /* yok say */ } }
+};
+
 export const RecipesPage: React.FC = () => {
   const { tracks, modules, lessons } = useContent();
   const [params, setParams] = useSearchParams();
@@ -101,6 +113,9 @@ export const RecipesPage: React.FC = () => {
     // önce modül, sonra modül içindeki ders sırası.
     return [...picked].sort((a, b) => a.module.order - b.module.order || a.lesson.order - b.lesson.order);
   }, [index, cat]);
+
+  const [recentIds, setRecentIds] = useState<string[]>(() => recent.get());
+  const recentHits = useMemo(() => recentIds.map((id) => index.find((i) => i.isRecipe && i.lesson.id === id)).filter(Boolean) as LessonHit[], [recentIds, index]);
 
   const recipeHits = results.filter((r) => r.isRecipe);
   const otherHits = results.filter((r) => !r.isRecipe);
@@ -164,6 +179,22 @@ export const RecipesPage: React.FC = () => {
         )
       ) : (
         <div className="flex flex-col gap-3">
+          {/* Serviste aynı birkaç içeceğe tekrar tekrar bakılıyor. */}
+          {recentHits.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className={t.sectionLabel}>Son baktıkların</span>
+                <button onClick={() => { recent.clear(); setRecentIds([]); }} className="text-[12px] text-fg-3 hover:text-crema px-2 py-1 -mr-2">Temizle</button>
+              </div>
+              <div className={t.scrollX}>
+                {recentHits.map((h) => (
+                  <Link key={h.lesson.id} to={`/recete/${h.lesson.id}`} className={`${t.chip} ${t.chipOff} gap-1.5 h-9 shrink-0`}>
+                    <Icon name="clock" size={12} className="text-fg-3" /> {h.lesson.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <div className={t.scrollX}>
             <button onClick={() => setCat('hepsi')} className={`${t.chip} ${cat === 'hepsi' ? t.chipOn : t.chipOff}`}>
               Hepsi
@@ -201,6 +232,9 @@ export const RecipeDetailPage: React.FC = () => {
   const signedInBarista = useSession((x) => x.session.kind === 'barista');
   // Ölçüye bakarken ekran kararmasın.
   useKeepAwake(!!recipe);
+  // "Son baktıkların" listesine eklenir (yalnızca reçeteler).
+  const isRecipe = !!recipe && modules.some((m) => m.id === recipe.moduleId && m.trackId === RECIPE_TRACK_ID);
+  useEffect(() => { if (isRecipe && lessonId) recent.push(lessonId); }, [isRecipe, lessonId]);
   // Android geri tuşu önce büyütülmüş fotoğrafı kapatır.
   useBackHandler(zoom, () => { setZoom(false); return true; });
   if (!recipe) return <Page><PageTitle title="Reçete bulunamadı" back="/receteler" /></Page>;

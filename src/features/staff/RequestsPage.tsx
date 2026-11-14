@@ -44,16 +44,23 @@ export const RequestsPage: React.FC = () => {
   const [openId, setOpenId] = useState<string | null>(params.get('talep'));
 
   const filtered = requests.filter((r) => (!store || r.storeId === store) && (!cat || r.category === cat));
+  // Açıkların sırası: önce acil (varsayılan) ya da önce en uzun yanıt bekleyen.
+  const oldestFirst = params.get('sira') === 'bekleyen';
+  const setOrder = (v: boolean) => { const n = new URLSearchParams(params); if (v) n.set('sira', 'bekleyen'); else n.delete('sira'); setParams(n, { replace: true }); };
   const lists = useMemo(() => {
-    // Açıklar: acil olanlar ve mağazanın son yazdıkları üstte.
+    const waiting = (r: StoreRequest) => (r.lastSide === 'store' ? 0 : 1);
     const open = filtered.filter((r) => !isClosed(r.status) && r.status !== 'approval')
-      .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1) || b.updatedAt - a.updatedAt);
+      .sort(oldestFirst
+        // Mağazanın yanıt beklediği talepler, en eskiden yeniye; sonra diğerleri.
+        ? (a, b) => waiting(a) - waiting(b) || a.updatedAt - b.updatedAt
+        // Acil olanlar ve mağazanın son yazdıkları üstte.
+        : (a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1) || b.updatedAt - a.updatedAt);
     return {
       open,
       approval: filtered.filter((r) => r.status === 'approval'),
       closed: filtered.filter((r) => isClosed(r.status))
     };
-  }, [filtered]);
+  }, [filtered, oldestFirst]);
   const week0 = Date.now() - 7 * 86400000;
   const list = lists[tab].filter((r) =>
     focus === 'acil' ? r.priority === 'urgent'
@@ -108,6 +115,12 @@ export const RequestsPage: React.FC = () => {
           <option value="">Tüm türler</option>
           {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
+        {tab === 'open' && (
+          <select className={`${t.input} h-9 w-auto text-[14px]`} value={oldestFirst ? 'bekleyen' : 'acil'} onChange={(e) => setOrder(e.target.value === 'bekleyen')} aria-label="Sıralama">
+            <option value="acil">Sıra: önce acil</option>
+            <option value="bekleyen">Sıra: en uzun bekleyen</option>
+          </select>
+        )}
       </div>
 
       <Section>

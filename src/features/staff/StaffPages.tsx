@@ -15,9 +15,11 @@ import { Page, PageTitle, Section, Stat, Empty, Badge, Avatar, ProgressBar, Shee
 import * as t from '../../ui/tokens';
 import { AssignSheet } from '../shared/AssignSheet';
 import { AttemptRow } from '../barista/HomePages';
+import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { useStaffData } from './staffData';
+import { isClosed } from '../../api/requests';
 import { useStaffSession } from './StaffLayout';
-import type { Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
+import type { Attempt, Barista, BaristaRole, Progress, StaffRole } from '../../../shared/types';
 import { allowed, domainOf } from '../../lib/permissions';
 import { can, assignableRoles, STAFF_ROLES, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
@@ -122,6 +124,71 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
   );
 };
 
+/**
+ * Seni bekleyenler: yöneticinin o gün yapması gereken işler tek şeritte.
+ * Yalnızca rolün açabildiği ve sıfırdan büyük olanlar çıkar; hepsi sıfırsa
+ * şerit görünmez. Her kart ilgili ekrana, süzülmüş olarak gider.
+ */
+const WaitingStrip: React.FC = () => {
+  const me = useStaffSession();
+  const ok = (p: Parameters<typeof allowed>[1]) => allowed(me.role, p);
+  const { requests, proposals, baristas } = useStaffData();
+  const board = useBoardQuestions(ok('ekran.kurulSorulari') && ok('kurulYanit'));
+  const items: { key: string; n: number; text: string; hint?: string; icon: Parameters<typeof Icon>[0]['name']; tone: 'caution' | 'negative' | 'accent'; to?: string; onClick?: () => void }[] = [];
+
+  if (ok('ekran.talepler') && ok('talepYanit')) {
+    const waiting = requests.filter((r) => r.lastSide === 'store');
+    const urgent = waiting.filter((r) => r.priority === 'urgent' && !isClosed(r.status)).length;
+    items.push({ key: 'talep', n: waiting.length, text: `${waiting.length} talep yanıt bekliyor`, hint: urgent ? `${urgent} acil` : undefined, icon: 'wrench', tone: urgent ? 'negative' : 'caution', to: '/talepler' });
+  }
+  if (ok('ekran.talepler') && ok('servisOnay')) {
+    const n = requests.filter((r) => r.status === 'approval').length;
+    items.push({ key: 'onay', n, text: `${n} servis onayın bekleniyor`, icon: 'shield', tone: 'accent', to: '/talepler?durum=onay' });
+  }
+  if (ok('ekran.onaylar')) {
+    if (ok('oneriOnay')) {
+      const n = proposals.filter((p) => p.status === 'pending').length;
+      items.push({ key: 'oneri', n, text: `${n} öneri onay bekliyor`, icon: 'stamp', tone: 'accent', to: '/onaylar' });
+    } else {
+      const n = proposals.filter((p) => p.createdBy === me.uid && p.status === 'rejected' && (p.reviewedAt || 0) > Date.now() - 7 * 86400000).length;
+      items.push({ key: 'oneri', n, text: `${n} önerin geri gönderildi`, icon: 'stamp', tone: 'caution', to: '/onaylar' });
+    }
+  }
+  if (ok('ekran.kurulSorulari') && ok('kurulYanit')) {
+    const n = board.data.filter((q) => q.status === 'open' && askedTo(q, me.role)).length;
+    items.push({ key: 'kurul', n, text: `${n} kurul sorusu yanıt bekliyor`, icon: 'award', tone: 'accent', to: '/kurul-sorulari' });
+  }
+  if (ok('baristaYonetim')) {
+    const pending = baristas.filter((b) => b.active && b.pinPending);
+    const expired = pending.filter((b) => !!b.inviteExpiresAt && b.inviteExpiresAt < Date.now()).length;
+    items.push({ key: 'kod', n: pending.length, text: `${pending.length} barista davet kodunu kullanmadı`, hint: expired ? `${expired} kodun süresi doldu` : undefined, icon: 'key', tone: expired ? 'negative' : 'caution',
+      onClick: () => document.getElementById('kod-bekleyenler')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) });
+  }
+
+  const shown = items.filter((x) => x.n > 0);
+  if (!shown.length) return null;
+  const cls = `${t.cardInteractive} px-3.5 py-3 flex items-center gap-3 text-left`;
+  return (
+    <Section label="Seni bekleyenler">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {shown.map((x) => {
+          const body = (
+            <>
+              <span className={t.iconChip(x.tone)}><Icon name={x.icon} size={16} /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold leading-snug">{x.text}</span>
+                {x.hint && <span className="block text-[12px] text-fg-3">{x.hint}</span>}
+              </span>
+              <Icon name="chevronRight" size={16} className={t.rowChevron} />
+            </>
+          );
+          return x.to ? <Link key={x.key} to={x.to} className={cls}>{body}</Link> : <button key={x.key} type="button" onClick={x.onClick} className={cls}>{body}</button>;
+        })}
+      </div>
+    </Section>
+  );
+};
+
 export const OverviewPage: React.FC = () => {
   const { stores, modules, lessons } = useContent();
   // Kısayollar yalnızca rolün açabildiği ekranlara gider (kapalı ekrana giden
@@ -160,6 +227,8 @@ export const OverviewPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Genel bakış" subtitle="Tüm mağazaların eğitim durumu." />
+
+      <WaitingStrip />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Aktif barista" value={active.length} hint={`${stores.filter((s) => s.active).length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
@@ -456,6 +525,7 @@ export const PendingCodesSection: React.FC = () => {
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
   if (!waiting.length && !phones.length) return null;
   return (
+    <div id="kod-bekleyenler" className="scroll-mt-20 flex flex-col">
     <Section label={`Kod bekleyenler · ${waiting.length + phones.length}`}>
       <div className={t.listGroup}>
         {waiting.map((b) => {
@@ -486,6 +556,7 @@ export const PendingCodesSection: React.FC = () => {
         ))}
       </div>
     </Section>
+    </div>
   );
 };
 
@@ -636,8 +707,13 @@ function useStaffBadgeReport(b: Barista) {
   }), [tracks, modules, lessons, progress, attempts, assignments, b, badgeConfig]);
 }
 
-const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({ b, pct, showStore }) => {
+const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string; lastAt?: number | null }> = ({ b, pct, showStore, lastAt }) => {
   const report = useStaffBadgeReport(b);
+  // Son etkinlik: yalnızca listede (lastAt verildiyse), aktif ve PIN'i olan baristada.
+  const days = lastAt ? Math.floor((Date.now() - lastAt) / 86400000) : null;
+  const stale = lastAt === null || (days !== null && days >= STALE_DAYS);
+  const lastText = lastAt === undefined || !b.active || b.pinPending ? null
+    : lastAt === null ? 'Henüz etkinlik yok' : days === 0 ? 'Son etkinlik: bugün' : `Son etkinlik: ${days} gün önce`;
   return (
   <Link to={`/baristalar/${b.id}`} className={`${t.listRow} ${b.active ? '' : 'opacity-50'}`}>
     <Avatar name={b.name} size={36} dim={!b.active} />
@@ -650,6 +726,7 @@ const BaristaRow: React.FC<{ b: Barista; pct: number; showStore?: string }> = ({
       <div className="text-[12px] text-fg-3 truncate">
         {showStore ? `${showStore} · ` : ''}
         {!b.active ? 'Pasif' : b.pinPending ? 'Davet bekleniyor' : `İlerleme %${pct}`}
+        {lastText && <> · <span className={stale ? 'text-caution' : ''}>{lastText}</span></>}
       </div>
     </div>
     {b.active && !b.pinPending && <ProgressBar value={pct} className="w-20 hidden sm:block" />}
@@ -717,19 +794,56 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
 /* Baristalar                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Baristanın kendi yaptığı son iş: ders bitirme, sınav geçme, bülten okuma,
+ * sınava girme. progress.updatedAt kullanılmaz; hesap açılınca ve yeniden
+ * puanlamada da değişiyor.
+ */
+function lastActivity(p: Progress | undefined, attempts: { startedAt: number; submittedAt?: number }[]): number | null {
+  const xs: number[] = [];
+  if (p) {
+    Object.values(p.lessons || {}).forEach((v) => xs.push(v));
+    Object.values(p.modules || {}).forEach((v) => xs.push(v.passedAt));
+    Object.values(p.bulletins || {}).forEach((v) => xs.push(v));
+    Object.values(p.quizzes || {}).forEach((v) => xs.push(v.passedAt));
+  }
+  attempts.forEach((a) => xs.push(a.submittedAt || a.startedAt));
+  const max = Math.max(0, ...xs.filter((x) => typeof x === 'number'));
+  return max || null;
+}
+
+const STALE_DAYS = 14;
+
 export const BaristasPage: React.FC = () => {
   const me = useStaffSession();
   const { stores, modules, lessons, tracks } = useContent();
-  const { baristas, progress } = useStaffData();
-  const [storeFilter, setStoreFilter] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
-  const [params] = useSearchParams();
-  const [view, setView] = useState<'list' | 'matrix'>(params.get('gorunum') === 'tablo' ? 'matrix' : 'list');
+  const { baristas, progress, attempts } = useStaffData();
+  // Süzgeçler adreste: bir baristaya girip dönünce liste aynı kalsın.
+  const [params, setParams] = useSearchParams();
+  const setParam = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
+  const storeFilter = params.get('magaza') || '';
+  const setStoreFilter = (v: string) => setParam('magaza', v);
+  const showInactive = params.get('pasif') === '1';
+  const setShowInactive = (v: boolean) => setParam('pasif', v ? '1' : '');
+  const view: 'list' | 'matrix' = params.get('gorunum') === 'tablo' ? 'matrix' : 'list';
+  const setView = (v: 'list' | 'matrix') => setParam('gorunum', v === 'matrix' ? 'tablo' : '');
+  const q = params.get('q') || '';
+  const setQ = (v: string) => setParam('q', v);
+  const sort = (params.get('sira') || 'ad') as 'ad' | 'ilerleme' | 'etkinlik';
   const [addOpen, setAddOpen] = useState(false);
   const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
-  const [q, setQ] = useState('');
 
-  const list = baristas.filter((b) => (showInactive || b.active) && (!storeFilter || b.storeId === storeFilter) && b.name.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')));
+  const activity = useMemo(() => {
+    const byB = new Map<string, Attempt[]>();
+    attempts.forEach((a) => { const l = byB.get(a.baristaId) || []; l.push(a); byB.set(a.baristaId, l); });
+    return new Map(baristas.map((b) => [b.id, lastActivity(progress[b.id], byB.get(b.id) || [])]));
+  }, [baristas, progress, attempts]);
+  const pctOf = (b: Barista) => overallPercent(modules, lessons, progress[b.id] || EMPTY);
+  const list = baristas.filter((b) => (showInactive || b.active) && (!storeFilter || b.storeId === storeFilter) && b.name.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+    .sort(sort === 'ilerleme' ? (a, b) => pctOf(a) - pctOf(b) || a.name.localeCompare(b.name, 'tr')
+      // En uzun süredir hiçbir şey yapmayan üstte; hiç etkinliği olmayan en başta.
+      : sort === 'etkinlik' ? (a, b) => (activity.get(a.id) || 0) - (activity.get(b.id) || 0) || a.name.localeCompare(b.name, 'tr')
+        : (a, b) => a.name.localeCompare(b.name, 'tr'));
   const pubMods = tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published));
   const storeName = (id: string) => stores.find((s) => s.id === id)?.name || '—';
 
@@ -750,6 +864,13 @@ export const BaristasPage: React.FC = () => {
           <button className={`${t.segmentItem} ${view === 'list' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setView('list')}>Liste</button>
           <button className={`${t.segmentItem} ${view === 'matrix' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setView('matrix')}>Modül tablosu</button>
         </div>
+        {view === 'list' && (
+          <select className={`${t.input} h-9 w-auto text-[14px]`} value={sort} onChange={(e) => setParam('sira', e.target.value === 'ad' ? '' : e.target.value)} aria-label="Sıralama">
+            <option value="ad">Sırala: ada göre</option>
+            <option value="ilerleme">Sırala: ilerleme (en düşük üstte)</option>
+            <option value="etkinlik">Sırala: son etkinlik (en eski üstte)</option>
+          </select>
+        )}
         <label className="flex items-center gap-2 text-[13px] text-fg-2 px-1">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Pasifler
         </label>
@@ -757,7 +878,7 @@ export const BaristasPage: React.FC = () => {
 
       {list.length === 0 ? <Empty icon="users" text="Barista bulunamadı." /> : view === 'list' ? (
         <div className={t.listGroup}>
-          {list.map((b) => <BaristaRow key={b.id} b={b} pct={overallPercent(modules, lessons, progress[b.id] || EMPTY)} showStore={storeName(b.storeId)} />)}
+          {list.map((b) => <BaristaRow key={b.id} b={b} pct={pctOf(b)} showStore={storeName(b.storeId)} lastAt={activity.get(b.id) ?? null} />)}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line">
@@ -947,7 +1068,7 @@ export const BaristaDetailPage: React.FC = () => {
 
       <EditBaristaSheet open={editOpen} onClose={() => setEditOpen(false)} b={b} />
       <BadgeOverridesSheet open={badgeEdit} onClose={() => setBadgeEdit(false)} b={b} report={report} byName={s.name} />
-      <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} />
+      <AssignSheet open={assignOpen} onClose={() => setAssignOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} preset={{ baristaId: b.id, storeId: b.storeId }} progressOf={(id) => progress[id]} />
       <CodeSheet code={code} onClose={() => { setCode(null); if (!b.active) navigate('/baristalar'); }} />
     </Page>
   );
@@ -1025,17 +1146,35 @@ export const TasksPage: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const onlyOverdue = params.get('durum') === 'geciken';
 
-  const rows = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
+  // Açık ve tamamlanan ayrı: liste zamanla bitmiş görevlerle doluyor,
+  // gecikenler aşağıda kalıyordu.
+  const tab: 'open' | 'done' = params.get('sekme') === 'tamamlanan' ? 'done' : 'open';
+  const setTab = (x: 'open' | 'done') => setParams(x === 'done' ? { sekme: 'tamamlanan' } : {}, { replace: true });
+  const all = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
     const targets = baristas.filter((b) => b.active && b.storeId === a.storeId && (!a.baristaId || a.baristaId === b.id));
     const done = targets.filter((b) => assignmentDone(a, progress[b.id]));
-    return { a, targets, done };
-  }).filter(({ a, targets, done }) => !onlyOverdue || (done.length < targets.length && !!a.dueAt && a.dueAt < Date.now()));
+    const complete = targets.length > 0 && done.length === targets.length;
+    const doneAt = complete ? Math.max(...done.map((b) => assignmentDoneAt(a, progress[b.id]) || 0)) : 0;
+    return { a, targets, done, complete, doneAt };
+  });
+  const openAll = all.filter((r) => !r.complete);
+  const doneAll = all.filter((r) => r.complete);
+  // Açıklar son tarihe göre (gecikenler doğal olarak en üstte), tarihsizler sonda;
+  // tamamlananlar bitiş tarihine göre, en yeni üstte.
+  const rows = (tab === 'done'
+    ? [...doneAll].sort((x, y) => y.doneAt - x.doneAt)
+    : [...openAll].sort((x, y) => (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt)
+  ).filter(({ a, complete }) => tab === 'done' || !onlyOverdue || (!complete && !!a.dueAt && a.dueAt < Date.now()));
 
   return (
     <Page wide>
       <PageTitle title="Görevler" subtitle="Atanan dersler ve sınavlar; tamamlanma otomatik izlenir."
         action={allowed(s.role, 'gorevAtama') ? <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setOpen(true)}><Icon name="plus" size={15} /> Görev ata</button> : undefined} />
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className={t.segment}>
+          <button className={`${t.segmentItem} ${tab === 'open' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('open')}>Açık · {openAll.length}</button>
+          <button className={`${t.segmentItem} ${tab === 'done' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('done')}>Tamamlanan · {doneAll.length}</button>
+        </div>
         <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
           <option value="">Tüm mağazalar</option>
           {stores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -1044,14 +1183,15 @@ export const TasksPage: React.FC = () => {
           <option value="">Atayan: herkes</option>
           {creators.map(([uid, name]) => <option key={uid} value={uid}>{uid === s.uid ? `${name} (sen)` : name}</option>)}
         </select>
-        <button onClick={() => setParams(onlyOverdue ? {} : { durum: 'geciken' }, { replace: true })} className={`${t.chip} ${onlyOverdue ? t.chipOn : t.chipOff}`}>
-          Yalnızca gecikenler {onlyOverdue && <Icon name="close" size={12} />}
-        </button>
+        {tab === 'open' && (
+          <button onClick={() => setParams(onlyOverdue ? {} : { durum: 'geciken' }, { replace: true })} className={`${t.chip} ${onlyOverdue ? t.chipOn : t.chipOff}`}>
+            Yalnızca gecikenler {onlyOverdue && <Icon name="close" size={12} />}
+          </button>
+        )}
       </div>
-      {rows.length === 0 ? <Empty icon="flag" text={onlyOverdue ? 'Gecikmiş görev yok.' : 'Henüz görev atanmadı.'} /> : (
+      {rows.length === 0 ? <Empty icon="flag" text={tab === 'done' ? 'Tamamlanan görev yok.' : onlyOverdue ? 'Gecikmiş görev yok.' : all.length ? 'Açık görev yok, hepsi tamamlandı.' : 'Henüz görev atanmadı.'} /> : (
         <div className={t.listGroup}>
-          {rows.map(({ a, targets, done }) => {
-            const complete = targets.length > 0 && done.length === targets.length;
+          {rows.map(({ a, targets, done, complete, doneAt }) => {
             const overdue = !complete && a.dueAt && a.dueAt < Date.now();
             return (
               <div key={a.id} className={`${t.listRowStatic} flex-wrap`}>
@@ -1060,7 +1200,7 @@ export const TasksPage: React.FC = () => {
                   <div className="text-[14px] font-medium">{a.title}</div>
                   <div className="text-[12px] text-fg-3">
                     {stores.find((x) => x.id === a.storeId)?.name} · {a.baristaId ? baristas.find((b) => b.id === a.baristaId)?.name : 'Tüm mağaza'} · Atayan: {a.createdByName}
-                    {a.dueAt ? ` · ${overdue ? 'Gecikti' : relDays(a.dueAt)}` : ''}
+                    {complete ? ` · Tamamlandı ${fmtDate(doneAt)}` : a.dueAt ? ` · ${overdue ? 'Gecikti' : relDays(a.dueAt)}` : ''}
                   </div>
                   {targets.length > 1 && (
                     <div className="text-[11px] text-fg-3 mt-1">
@@ -1080,7 +1220,7 @@ export const TasksPage: React.FC = () => {
           })}
         </div>
       )}
-      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} />
+      <AssignSheet open={open} onClose={() => setOpen(false)} creator={{ uid: s.uid, name: s.name }} domain={domainOf(s.role)} baristas={baristas} progressOf={(id) => progress[id]} />
     </Page>
   );
 };

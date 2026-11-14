@@ -5,7 +5,9 @@ import { AppError, errorText } from '../../api/backend';
 import {
   activeAttemptIn, prepareExam, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
-import { useBaristaSession } from './useBaristaData';
+import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
+import { examSlots, nextModuleAfter } from './Academy';
+import { moduleState } from '../../lib/progress';
 import { Icon } from '../../ui/Icon';
 import { useBackHandler } from '../../lib/backButton';
 import { Page, ProgressBar, Ring, Spinner, ErrorText, fmtDateTime } from '../../ui/kit';
@@ -32,6 +34,11 @@ export const ExamPage: React.FC = () => {
   // ?ders=<lessonId>: yeni ürünün mini sınavı (yalnızca o reçetenin soruları).
   const [params] = useSearchParams();
   const lesson = useContent((x) => x.lessons.find((l) => l.id === params.get('ders'))) || null;
+  // Sonuç ekranı için: sıradaki modül ve kalan haftalık hak.
+  const allModules = useContent((x) => x.modules);
+  const allLessons = useContent((x) => x.lessons);
+  const { progress } = useMyProgress();
+  const { items: myAttempts } = useMyAttempts(50);
   const back = lesson ? `/recete/${lesson.id}` : `/modul/${moduleId}`;
   const [phase, setPhase] = useState<Phase>({ k: 'intro' });
   const [error, setError] = useState<string | null>(null);
@@ -192,9 +199,38 @@ export const ExamPage: React.FC = () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
-          <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>{lesson ? 'Reçeteye dön' : 'Modüle dön'}</button>
-        </div>
+        {/* Şimdi ne yapmalı: geçene açılan modül, kalana kalan hak ve tekrar. */}
+        {(() => {
+          if (lesson) return (
+            <div className="flex flex-col gap-2">
+              <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Reçeteye dön</button>
+            </div>
+          );
+          const nextMod = phase.passed ? nextModuleAfter(mod, allModules) : undefined;
+          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: Date.now() } } }).locked ? nextMod : undefined;
+          const slots = examSlots(myAttempts, mod.id);
+          return (
+            <div className="flex flex-col gap-2">
+              {!phase.passed && (
+                <p className="text-[13px] text-fg-2 text-center leading-relaxed">
+                  {slots.left > 0
+                    ? `Bu hafta ${slots.left} hakkın kaldı. Dersleri gözden geçirip yeniden dene.`
+                    : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${slots.nextSlotAt ? ` · yenisi ${fmtDateTime(slots.nextSlotAt)} tarihinde açılır` : ''}.`}
+                </p>
+              )}
+              {nextOpen ? (
+                <>
+                  <button onClick={() => navigate(`/modul/${nextOpen.id}`, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>
+                    <span className="truncate">Sıradaki modül: {nextOpen.title}</span> <Icon name="chevronRight" size={16} />
+                  </button>
+                  <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`}>Modüle dön</button>
+                </>
+              ) : (
+                <button onClick={() => navigate(back, { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>{phase.passed ? 'Modüle dön' : 'Dersleri tekrar et'}</button>
+              )}
+            </div>
+          );
+        })()}
       </Page>
     );
   }

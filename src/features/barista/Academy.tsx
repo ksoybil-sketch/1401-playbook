@@ -11,6 +11,7 @@ import { HUE, trackHue } from '../../ui/palette';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
 import { EXAMS_PER_WEEK } from '../../api/exam';
+import type { Attempt, Module } from '../../../shared/types';
 
 /* ------------------------------------------------------------------ */
 /* Eğitim yolları                                                      */
@@ -102,6 +103,28 @@ export const TrackPage: React.FC = () => {
 /* Modül: dersler + sınav                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Modül sınavının haftalık hakkı: yalnızca modül sınavları sayılır (reçete
+ * mini sınavları ayrı; bkz. exam.ts → startExam). Süresi dolmamış açık
+ * deneme varsa hak dolmuş olsa da "kaldığın yerden devam" her zaman açık.
+ * Modül sayfası, ders sonu ve sınav sonucu aynı hesabı kullanır.
+ */
+export function examSlots(attempts: Attempt[], moduleId: string) {
+  const now = Date.now();
+  const week = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt > now - 7 * 86400000);
+  const openAttempt = attempts.find((a) => a.moduleId === moduleId && !a.lessonId && !a.submittedAt && !!a.deadline && a.deadline > now);
+  const left = Math.max(0, EXAMS_PER_WEEK - week.length);
+  const nextSlotAt = left === 0 && week.length ? Math.min(...week.map((a) => a.startedAt)) + 7 * 86400000 : null;
+  return { left, nextSlotAt, openAttempt, canStart: left > 0 || !!openAttempt };
+}
+
+/** Bu modülün sınavı geçilince açılan, aynı yoldaki sıradaki modül. */
+export function nextModuleAfter(mod: Module, modules: Module[]): Module | undefined {
+  const same = modules.filter((m) => m.published && m.trackId === mod.trackId && m.id !== mod.id);
+  return same.find((m) => m.prerequisiteId === mod.id)
+    || same.filter((m) => m.order > mod.order).sort((a, b) => a.order - b.order)[0];
+}
+
 export const ModulePage: React.FC = () => {
   const { moduleId } = useParams();
   const { modules, lessons } = useContent();
@@ -109,17 +132,11 @@ export const ModulePage: React.FC = () => {
   const { items: attempts } = useMyAttempts(50);
   const mod = modules.find((m) => m.id === moduleId);
 
-  // Haftalık hak yalnızca modül sınavlarını sayar (reçete mini sınavları
-  // ayrı; bkz. exam.ts → startExam). Süresi dolmamış açık deneme varsa
-  // hak dolmuş olsa da "kaldığın yerden devam" her zaman açık.
-  const weekAttempts = useMemo(() => attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt > Date.now() - 7 * 86400000), [attempts, moduleId]);
-  const openAttempt = attempts.find((a) => a.moduleId === moduleId && !a.lessonId && !a.submittedAt && !!a.deadline && a.deadline > Date.now());
+  const { left, nextSlotAt, openAttempt } = useMemo(() => examSlots(attempts, moduleId || ''), [attempts, moduleId]);
   const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
   const st = moduleState(mod, lessons, progress);
-  const left = Math.max(0, EXAMS_PER_WEEK - weekAttempts.length);
-  const nextSlotAt = left === 0 && weekAttempts.length ? Math.min(...weekAttempts.map((a) => a.startedAt)) + 7 * 86400000 : null;
   const prereq = st.locked ? modules.find((m) => m.id === mod.prerequisiteId) : undefined;
   const canStart = !st.locked && (left > 0 || !!openAttempt);
 
@@ -202,6 +219,7 @@ export const LessonPage: React.FC = () => {
   const s = useBaristaSession();
   const { modules, lessons } = useContent();
   const { progress } = useMyProgress();
+  const { items: attempts } = useMyAttempts(50);
   const lesson = lessons.find((l) => l.id === lessonId);
 
   if (!lesson) return <Page><PageTitle title="Ders bulunamadı" back="/akademi" /></Page>;
@@ -211,6 +229,13 @@ export const LessonPage: React.FC = () => {
   const next = siblings[idx + 1];
   const prev = idx > 0 ? siblings[idx - 1] : undefined;
   const done = !!progress.lessons?.[lesson.id];
+  // Son ders: bu dersle bütün dersler bitiyor ve sınav açıksa (kilitli değil,
+  // geçilmemiş, hak var) doğrudan sınavın giriş ekranına geçilir. Sınav yine
+  // "Başla" ile başlar.
+  const st = mod ? moduleState(mod, lessons, progress) : null;
+  const allDoneAfter = !!st && st.lessons.every((l) => l.id === lesson.id || !!progress.lessons?.[l.id]);
+  const toExam = !next && !!mod && !!st && allDoneAfter && !st.locked && !st.passed && mod.examSize > 0
+    && examSlots(attempts, mod.id).canStart;
 
   const complete = async () => {
     if (!done) {
@@ -219,7 +244,7 @@ export const LessonPage: React.FC = () => {
         .catch(() => toast('İlerleme kaydedilemedi.', 'negative'));
       toast('Ders tamamlandı', 'positive');
     }
-    navigate(next ? `/ders/${next.id}` : `/modul/${lesson.moduleId}`, { replace: true });
+    navigate(next ? `/ders/${next.id}` : toExam ? `/sinav/${lesson.moduleId}` : `/modul/${lesson.moduleId}`, { replace: true });
   };
 
   return (
@@ -258,7 +283,7 @@ export const LessonPage: React.FC = () => {
             </button>
           )}
           <button onClick={complete} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} flex-1 min-w-0`}>
-            <span className="truncate">{done ? (next ? 'Sonraki ders' : 'Modüle dön') : next ? 'Tamamladım, sonraki ders' : 'Tamamladım'}</span>
+            <span className="truncate">{next ? (done ? 'Sonraki ders' : 'Tamamladım, sonraki ders') : toExam ? (done ? 'Sınava geç' : 'Tamamladım, sınava geç') : done ? 'Modüle dön' : 'Tamamladım'}</span>
             <Icon name="chevronRight" size={16} />
           </button>
         </div>

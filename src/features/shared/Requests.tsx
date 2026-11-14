@@ -16,6 +16,31 @@ const tone = (s: RequestStatus) => {
   return x === 'accent' ? 'neutral' : x;
 };
 
+/** "3 saat", "2 gün": bekleme süresi, en büyük birimle. */
+const span = (ms: number) => {
+  const m = Math.max(1, Math.floor(ms / 60000));
+  if (m < 60) return { n: m, unit: 'dakika', since: 'dakikadır' };
+  const h = Math.floor(m / 60);
+  if (h < 24) return { n: h, unit: 'saat', since: 'saattir' };
+  const d = Math.floor(h / 24);
+  return { n: d, unit: 'gün', since: 'gündür' };
+};
+
+/**
+ * Talep ne kadar süredir kimi bekliyor. Mağaza son yazdıysa operasyonun
+ * yanıtı bekleniyor: 24 saati geçince turuncu, 72 saati geçince kırmızı.
+ */
+export const WaitBadge: React.FC<{ r: StoreRequest }> = ({ r }) => {
+  const ago = Date.now() - r.updatedAt;
+  const x = span(ago);
+  if (r.lastSide === 'store') {
+    const tone = ago > 72 * 3600000 ? 'negative' : ago > 24 * 3600000 ? 'caution' : 'neutral';
+    return <Badge tone={tone}>{x.n} {x.since} yanıt bekliyor</Badge>;
+  }
+  if (isClosed(r.status)) return null;
+  return <Badge tone="neutral">Operasyon {x.n} {x.unit} önce yanıtladı</Badge>;
+};
+
 export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; unread?: boolean }> = ({ r, showStore, unread }) => {
   const c = catOf(r.category);
   return (
@@ -31,6 +56,7 @@ export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; un
           {!isClosed(r.status) && r.waitReason && <Badge tone="neutral">{reasonLabel(r.waitReason)}</Badge>}
           {r.status === 'rejected' && r.rejectReason && <Badge tone="neutral">{reasonLabel(r.rejectReason)}</Badge>}
           {unread && <Badge tone="caution">Yeni yanıt</Badge>}
+          <WaitBadge r={r} />
         </div>
         <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{r.title}</div>
         <div className="text-[12px] text-fg-3 mt-0.5">

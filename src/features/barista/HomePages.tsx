@@ -7,15 +7,18 @@ import { badgeReport, fromBarista } from '../../lib/badges';
 import { useBadgeConfig } from '../../store/badgeConfig';
 import { BARISTA_ROLE_LABEL, isManager } from '../../lib/roles';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent } from '../../store/content';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { assignmentDone, isOverdue, nextLesson, overallPercent, moduleState } from '../../lib/progress';
+import { assignmentDone, assignmentDoneAt, isOverdue, nextLesson, overallPercent, moduleState, EMPTY_PROGRESS } from '../../lib/progress';
 import { Icon, type IconName } from '../../ui/Icon';
 import { HUE, trackHue, type Hue } from '../../ui/palette';
 import { RECIPE_TRACK_ID } from '../../lib/search';
-import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, Spinner } from '../../ui/kit';
+import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, fmtDate, Spinner, Sheet, toast } from '../../ui/kit';
+import { createRequest, isClosed } from '../../api/requests';
+import { errorText } from '../../api/backend';
+import { useStoreRequests } from './RequestsPage';
 import * as t from '../../ui/tokens';
 import { useBaristaSession, useMyAssignments, useMyBadgeReport, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
@@ -361,6 +364,18 @@ export const TeamPage: React.FC = () => {
 
   const progressOf = (id: string) => progressList.find((p) => p.id === id);
   const sorted = [...baristas].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const [member, setMember] = useState<string | null>(null);
+  const memberB = baristas.find((b) => b.id === member) || null;
+
+  // Mağazanın görevleri: açıklar son tarihe göre (gecikenler üstte), bitenler sonda.
+  const taskRows = assignments.map((a) => {
+    const targets = baristas.filter((b) => !a.baristaId || a.baristaId === b.id);
+    const done = targets.filter((b) => assignmentDone(a, progressOf(b.id)));
+    return { a, targets, done, complete: targets.length > 0 && done.length === targets.length };
+  }).sort((x, y) => Number(x.complete) - Number(y.complete) || (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt);
+  const [showDoneTasks, setShowDoneTasks] = useState(false);
+  const openTaskRows = taskRows.filter((r) => !r.complete);
+  const doneTaskRows = taskRows.filter((r) => r.complete);
 
   return (
     <Page>
@@ -383,7 +398,7 @@ export const TeamPage: React.FC = () => {
               attempts: attempts.filter((a) => a.baristaId === b.id && a.submittedAt && !a.voided), assignments: mine, config: badgeConfig, ...fromBarista(b)
             });
             return (
-              <div key={b.id} className={t.listRowStatic}>
+              <button key={b.id} onClick={() => setMember(b.id)} className={`${t.listRow} text-left`}>
                 <Avatar name={b.name} size={36} dim={b.pinPending} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-medium truncate flex items-center gap-1.5">{b.name} <TitleChip report={report} /> <span className="text-[11px] text-fg-3 font-normal">{report.earned} başarım</span></div>
@@ -393,10 +408,52 @@ export const TeamPage: React.FC = () => {
                   <span className="text-[12px] font-semibold tnum">%{pct}</span>
                   {overdue > 0 ? <Badge tone="negative">{overdue} gecikmiş</Badge> : openTasks > 0 ? <Badge>{openTasks} görev</Badge> : null}
                 </div>
-              </div>
+                <Icon name="chevronRight" size={16} className={t.rowChevron} />
+              </button>
             );
           })}
         </div>
+      </Section>
+
+      {/* Atanan görevler: kim bitirdi, kim bekliyor. Müdür kendi atadığını silebilir. */}
+      <Section label={`Görevler · ${openTaskRows.length} açık`}>
+        {taskRows.length === 0 ? (
+          <Empty icon="flag" text="Mağazaya atanmış görev yok. Sağ üstteki “Görev” ile atayabilirsin." />
+        ) : (
+          <div className={t.listGroup}>
+            {openTaskRows.length === 0 && <div className={`${t.listRowStatic} text-[13px] text-fg-3`}>Açık görev yok, hepsi tamamlandı.</div>}
+            {[...openTaskRows, ...(showDoneTasks ? doneTaskRows : [])].map(({ a, targets, done, complete }) => {
+              const late = !complete && !!a.dueAt && a.dueAt < Date.now();
+              const waiting = targets.filter((b) => !done.includes(b));
+              return (
+                <div key={a.id} className={`${t.listRowStatic} ${complete ? 'opacity-60' : ''}`}>
+                  <span className={t.iconChip(complete ? 'positive' : late ? 'negative' : 'caution')}><Icon name={complete ? 'check' : a.kind === 'lesson' ? 'book' : 'clipboard'} size={15} /></span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-medium leading-snug">{a.title}</div>
+                    <div className="text-[12px] text-fg-3 mt-0.5">
+                      {a.baristaId ? (baristas.find((b) => b.id === a.baristaId)?.name || '—') : 'Tüm mağaza'} · {done.length}/{targets.length} bitirdi · Atayan: {a.createdBy === s.uid ? 'sen' : a.createdByName}
+                    </div>
+                    {!complete && targets.length > 1 && waiting.length > 0 && (
+                      <div className="text-[11.5px] text-fg-3 mt-0.5">Bekleyen: {waiting.map((b) => b.name.split(' ')[0]).join(', ')}</div>
+                    )}
+                  </div>
+                  {!complete && a.dueAt && <Badge tone={late ? 'negative' : 'neutral'}>{late ? 'Gecikti' : relDays(a.dueAt)}</Badge>}
+                  {a.createdBy === s.uid && (
+                    <button className={t.iconBtn} aria-label="Görevi sil" onClick={async () => {
+                      if (!confirm(`“${a.title}” görevi silinsin mi?`)) return;
+                      try { await deleteDoc(doc(db, 'assignments', a.id)); toast('Görev silindi'); } catch (e) { toast(errorText(e), 'negative'); }
+                    }}><Icon name="trash" size={14} /></button>
+                  )}
+                </div>
+              );
+            })}
+            {doneTaskRows.length > 0 && (
+              <button onClick={() => setShowDoneTasks((v) => !v)} className={`${t.listRow} justify-center text-[13px] text-fg-2`}>
+                {showDoneTasks ? 'Tamamlananları gizle' : `Tamamlananları göster · ${doneTaskRows.length}`}
+              </button>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section label="Son sınavlar">
@@ -417,7 +474,128 @@ export const TeamPage: React.FC = () => {
         creator={{ uid: s.uid, name: s.name }}
         fixedStoreId={s.storeId}
         baristas={baristas}
+        progressOf={progressOf}
       />
+
+      <MemberSheet b={memberB} onClose={() => setMember(null)} progress={memberB ? progressOf(memberB.id) : undefined}
+        attempts={memberB ? attempts.filter((a) => a.baristaId === memberB.id && a.submittedAt && !a.voided) : []}
+        tasks={memberB ? assignments.filter((a) => !a.baristaId || a.baristaId === memberB.id) : []} />
     </Page>
+  );
+};
+
+/**
+ * Ekibim → bir barista: hangi modülde, hangi görevde, son sınavları.
+ * Panelin barista sayfasının sadeleştirilmiş, salt okunur hali. PIN'i
+ * Bölge Müdürü sıfırlar; mağaza müdürü buradan hazır bir talep gönderir.
+ */
+const MemberSheet: React.FC<{ b: Barista | null; onClose: () => void; progress?: Progress; attempts: Attempt[]; tasks: Assignment[] }> = ({ b, onClose, progress, attempts, tasks }) => {
+  const s = useBaristaSession();
+  const { tracks, modules, lessons } = useContent();
+  const { items: requests } = useStoreRequests(true);
+  const [openAttempt, setOpenAttempt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const p = progress || { ...EMPTY_PROGRESS, baristaId: b?.id || '', storeId: s.storeId };
+  const mods = tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published));
+  const pinTitle = b ? `${b.name} için PIN sıfırlama` : '';
+  const pinOpen = requests.find((r) => r.category === 'personel' && r.title === pinTitle && !isClosed(r.status));
+
+  const askPin = async () => {
+    if (!b) return;
+    if (!confirm(`${b.name} için PIN sıfırlama talebi Kahve Operasyonu'na gönderilsin mi?\n\nBölge Müdürü yeni davet kodu verir; eski PIN geçersiz olur.`)) return;
+    setBusy(true);
+    try {
+      await createRequest({
+        storeId: s.storeId, storeName: s.storeName, category: 'personel', priority: 'normal', title: pinTitle,
+        detail: `${b.name} PIN'ini unuttu. Yeni davet kodu gerekiyor.`, by: { uid: s.uid, name: s.name }
+      });
+      toast('Talep gönderildi. Yanıtı Ben → Talepler\'de görürsün.', 'positive');
+    } catch (e) {
+      toast(errorText(e), 'negative');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet open={!!b} title={b?.name || ''} onClose={onClose}>
+      {b && (
+        <>
+          <div className="flex items-center gap-3">
+            <Avatar name={b.name} size={44} dim={b.pinPending} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] text-fg-2">{BARISTA_ROLE_LABEL[b.role]} · %{overallPercent(modules, lessons, p)} ilerleme</div>
+              {b.pinPending && <div className="text-[12px] text-caution mt-0.5">Davet kodunu henüz kullanmadı</div>}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className={t.sectionLabel}>Modüller</span>
+            <div className={t.listGroup}>
+              {mods.map((m) => {
+                const st = moduleState(m, lessons, p);
+                return (
+                  <div key={m.id} className={t.listRowStatic}>
+                    <span className={t.iconChip(st.passed ? 'positive' : st.lessonsDone ? 'caution' : 'neutral')}>
+                      <Icon name={st.passed ? 'check' : st.locked ? 'lock' : 'book'} size={14} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-medium truncate">{m.title}</div>
+                      <div className="text-[11.5px] text-fg-3">
+                        {st.passed ? `Geçti · ${st.score} puan` : st.locked ? 'Kilitli: önceki modül geçilmedi' : `${st.lessonsDone}/${st.lessons.length} ders`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className={t.sectionLabel}>Görevler</span>
+            {tasks.length === 0 ? <div className="text-[13px] text-fg-3">Atanmış görev yok.</div> : (
+              <div className={t.listGroup}>
+                {[...tasks].sort((x, y) => Number(assignmentDone(x, p)) - Number(assignmentDone(y, p)) || (x.dueAt ?? Infinity) - (y.dueAt ?? Infinity)).map((a) => {
+                  const done = assignmentDone(a, p);
+                  const late = isOverdue(a, done);
+                  return (
+                    <div key={a.id} className={`${t.listRowStatic} ${done ? 'opacity-60' : ''}`}>
+                      <span className={t.iconChip(done ? 'positive' : late ? 'negative' : 'caution')}><Icon name={done ? 'check' : 'flag'} size={14} /></span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium">{a.title}</div>
+                        <div className="text-[11.5px] text-fg-3">{done ? `Tamamlandı ${fmtDate(assignmentDoneAt(a, p))}` : a.dueAt ? `Son tarih ${fmtDate(a.dueAt)}` : 'Süresiz'}</div>
+                      </div>
+                      {late && <Badge tone="negative">Gecikti</Badge>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className={t.sectionLabel}>Son sınavlar</span>
+            {attempts.length === 0 ? <div className="text-[13px] text-fg-3">Henüz sınava girmedi.</div> : (
+              <div className="flex flex-col gap-2">
+                {attempts.slice(0, 5).map((a) => <AttemptRow key={a.id} a={a} open={openAttempt === a.id} onToggle={() => setOpenAttempt(openAttempt === a.id ? null : a.id)} />)}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+            {pinOpen ? (
+              <p className="text-[12.5px] text-fg-3 leading-relaxed">PIN sıfırlama talebi açık ({fmtDateTime(pinOpen.createdAt)}). Yanıtı Ben → Talepler'de.</p>
+            ) : (
+              <>
+                <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-start`} onClick={askPin} disabled={busy}>
+                  {busy ? <Spinner size={14} /> : <Icon name="key" size={15} />} PIN sıfırlama iste
+                </button>
+                <span className="text-[11.5px] text-fg-3">PIN'ini unuttuysa: Kahve Operasyonu'na hazır bir talep gider, Bölge Müdürü yeni davet kodu verir.</span>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </Sheet>
   );
 };

@@ -100,6 +100,8 @@ export const StoreHome: React.FC = () => {
   const crew = ready.filter((b) => b.role === 'barista');
 
   const [selected, setSelected] = useState<Barista | null>(null);
+  const [forgot, setForgot] = useState(false);
+  useEffect(() => { setForgot(false); }, [selected]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
@@ -143,6 +145,15 @@ export const StoreHome: React.FC = () => {
         <PinPad length={4} onComplete={submit} busy={busy} errorKey={errKey} />
         <div className="h-5">{busy && <Spinner />}</div>
         <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
+        {/* PIN'i unutan ne yapacağını bilmiyor, deneye deneye hesabı kilitliyordu. */}
+        {forgot ? (
+          <p className="w-full max-w-[340px] text-[13px] text-fg-2 leading-relaxed bg-panel border border-line rounded-xl px-4 py-3 text-center">
+            PIN'ini unuttuysan tahmin etmeye çalışma. Mağaza müdürüne söyle: Ekibim'den <b>PIN sıfırlama iste</b> der, Bölge Müdürü sana yeni davet kodu verir.
+            Kodla <b>Yeni misin?</b> bölümünden yeni PIN belirlersin; eski PIN'in iptal olur.
+          </p>
+        ) : (
+          <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={() => setForgot(true)}>PIN'imi unuttum</button>
+        )}
         <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => { setSelected(null); setError(null); }}>
           <Icon name="chevronLeft" size={16} /> Başka barista
         </button>
