@@ -20,7 +20,8 @@ const SITES = [
 const APP_PATHS = 'src public shared index.html package.json firestore.rules firestore.indexes.json firebase.json vite.config.ts scripts/source';
 
 const sh = (cmd) => { try { return execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
-const tree = (rev) => sh(`git rev-parse ${rev}^{tree}`);
+// İki commit uygulama dosyalarında aynı mı (belge değişiklikleri sayılmaz).
+const same = (a, b) => { try { execSync(`git diff --quiet --ignore-cr-at-eol ${a} ${b} -- ${APP_PATHS}`, { stdio: 'ignore' }); return true; } catch { return false; } };
 const fmt = (iso) => iso ? new Date(iso).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '?';
 const ok = (b, yes, no) => console.log(b ? `  ✓ ${yes}` : `  ✗ ${no}`);
 
@@ -46,13 +47,13 @@ console.log(`  ${'Bu bilgisayar'.padEnd(20)} ${head}${dirty ? ' + kaydedilmemiş
 
 const [canli, eski, demo] = live.map((s) => s.info);
 const clean = (i) => i && !String(i.commit).endsWith('+');
-const sameCode = (a, b) => a && b && tree(a.commit.replace('+', '')) === tree(b.commit.replace('+', ''));
+const sameCode = (a, b) => a && b && same(a.commit.replace('+', ''), b.commit.replace('+', ''));
 
 ok(canli && eski && canli.commit === eski.commit && canli.built === eski.built,
   'İki canlı adres aynı yayını gösteriyor.', 'İki canlı adres farklı yayında. Canlıya yeniden dağıt (YAYIN-GUNU.md §2).');
 ok(sameCode(canli, demo) && clean(canli) && clean(demo),
   'Canlı ve demo aynı kodda.', 'Canlı ve demo farklı kodda ya da biri kaydedilmemiş değişiklikle derlenmiş.');
-ok(canli && tree(canli.commit.replace('+', '')) === tree('origin/master'),
+ok(canli && same(canli.commit.replace('+', ''), 'origin/master'),
   "Canlıdaki kod GitHub'daki master ile aynı.", "Canlıdaki kod master'dan farklı: master'ı birleştir ya da canlıyı master'dan dağıt.");
 const pending = canli ? sh(`git log --oneline ${canli.commit.replace('+', '')}..HEAD -- ${APP_PATHS}`) : '';
 ok(!dirty && !pending,
