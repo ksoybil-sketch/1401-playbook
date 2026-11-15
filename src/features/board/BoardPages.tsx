@@ -13,10 +13,10 @@ import { useQueryLive } from '../../hooks/useFirestore';
 import { badgeReport, fromBarista, TITLE_IDS } from '../../lib/badges';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from '../../lib/progress';
 import { taskInvalidReason, taskTargets } from '../../lib/taskValidity';
-import { localDay } from '../../lib/day';
+import { localDay, mondayOf, TZ } from '../../lib/day';
 import { closedOf, fmtDur, requestStats } from '../../lib/requestStats';
 import {
-  attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
+  attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodJustStarted, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
   type BoardCtx, type Period, type PeriodId, type ScoreRow
 } from '../../lib/boardStats';
 import { catOf, isClosed, reasonLabel, STATUS } from '../../api/requests';
@@ -47,12 +47,11 @@ import { errorText } from '../../api/backend';
  */
 const WEEKS = 12;
 const DAY_MS = 86400000;
-const mondayOf = (now = Date.now()) => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime(); };
 function rangeFrom(period: Period): number {
   return dayStart(Math.min(previousOf(period).from, mondayOf() - (WEEKS - 1) * 7 * DAY_MS));
 }
 /** Dönemin üst sınırı: bugüne kadar süren dönemlerde yok (null). */
-const periodTo = (p: Period) => (p.id === 'gecen-ay' ? p.to : null);
+const periodTo = (p: Period) => (p.id === 'gecen-ay' || p.id === 'gecen-yil' ? p.to : null);
 const statsKey = (p: Period) => `board-stats:${p.id}:${dayStart(p.from)}`;
 
 function useBoardCtx(period: Period, opts: { exams?: boolean } = {}): BoardCtx & { loading: boolean; error: string | null } {
@@ -128,14 +127,28 @@ function usePeriod(): [Period, (id: PeriodId) => void] {
   return [periodOf(PERIODS.some((x) => x.id === id) ? id : '30'), set];
 }
 
-const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }> = ({ value, onChange }) => (
-  <div className={`${t.segment} ${t.scrollX} max-w-full print:hidden`}>
-    {PERIODS.map((p) => (
-      <button key={p.id} onClick={() => onChange(p.id)}
-        className={`${t.segmentItem} whitespace-nowrap ${value.id === p.id ? t.segmentItemOn : t.segmentItemOff}`}>{p.label}</button>
-    ))}
-  </div>
-);
+const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }> = ({ value, onChange }) => {
+  // Yılın/ayın ilk haftası: "Bu yıl" birkaç günlük veri gösterir; geçen döneme bakmayı öner (H11).
+  const hint = periodJustStarted(value);
+  return (
+    <>
+      <div className={`${t.segment} ${t.scrollX} max-w-full print:hidden`}>
+        {PERIODS.map((p) => (
+          <button key={p.id} onClick={() => onChange(p.id)}
+            className={`${t.segmentItem} whitespace-nowrap ${value.id === p.id ? t.segmentItemOn : t.segmentItemOff}`}>{p.label}</button>
+        ))}
+      </div>
+      {hint && (
+        <p className="text-[12px] text-fg-3 print:hidden">
+          {value.id === 'yil' ? 'Yıl yeni başladı; bu dönemde henüz az veri var.' : 'Ay yeni başladı; bu dönemde henüz az veri var.'}{' '}
+          <button type="button" onClick={() => onChange(hint)} className="underline font-semibold text-fg-2">
+            {hint === 'gecen-yil' ? 'Geçen yıla bak' : 'Geçen aya bak'}
+          </button>
+        </p>
+      )}
+    </>
+  );
+};
 
 /** "Sor" düğmesi: konuyu Kahve Operasyonu'na soru olarak açar. */
 const AskBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Sor' }) => {
@@ -155,15 +168,17 @@ function useAsk() {
   const me = useStaffSession();
   const [topic, setTopic] = useState<BoardTopic | null>(null);
   const sheet = <AskSheet topic={topic} me={{ uid: me.uid, name: me.name }} onClose={() => setTopic(null)} />;
-  return { ask: setTopic, sheet };
+  return { ask: setTopic, sheet, asking: !!topic };
 }
 
 /**
  * Mağaza ve talep ayrıntısı, açıldığı sayfanın üstünde pencere olarak
  * açılır (?magaza= / ?talep=); kapatınca aynı sayfada kalınır. Mağaza
- * penceresinden bir talep açılırsa talep üstte açılır, kapanınca mağazaya dönülür.
+ * penceresinden bir talep açılırsa talep onun yerine açılır, kapanınca
+ * mağazaya dönülür. Aynı anda tek pencere görünür: eskiden mağaza, talep ve
+ * "Bu konuyu sor" üst üste biniyordu (asking: soru penceresi açık).
  */
-function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
+function useDetailSheets(period: Period, ask: (t: BoardTopic) => void, asking = false) {
   const me = useStaffSession();
   const [params, setParams] = useSearchParams();
   // Sınav göstergeleri yalnızca mağaza penceresi açıkken (Gidişat ve Mağazalar zaten okumuştur).
@@ -177,10 +192,10 @@ function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
   const req = ctx.requests.find((r) => r.id === params.get('talep')) || null;
   const sheets = (
     <>
-      <Sheet open={!!store} title={store?.store.name || ''} onClose={() => set('magaza', null)}>
+      <Sheet open={!!store && !req && !asking} title={store?.store.name || ''} onClose={() => set('magaza', null)}>
         {store && <StoreDetail row={store} period={period} onOpenReq={(id) => set('talep', id)} onAsk={() => ask({ kind: 'store', id: store.store.id, title: store.store.name })} />}
       </Sheet>
-      <Sheet open={!!req} title={req ? `${req.storeName} · ${STATUS[req.status].label}` : ''} onClose={() => set('talep', null)}>
+      <Sheet open={!!req && !asking} title={req ? `${req.storeName} · ${STATUS[req.status].label}` : ''} onClose={() => set('talep', null)}>
         {req && (
           <>
             <RequestSummary r={req} showStore />
@@ -247,7 +262,7 @@ const WeekBars: React.FC<{ weeks: number[]; series: BarSeries[]; tip: (i: number
                 })}
                 {(i % 2 === weeks.length % 2 || weeks.length <= 8) && (
                   <text x={pad.l + i * slot + slot / 2} y={Hh - 6} textAnchor="middle" className="fill-fg-4 text-[9px]">
-                    {new Date(w).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                    {new Date(w).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', timeZone: TZ })}
                   </text>
                 )}
               </g>
@@ -284,7 +299,7 @@ export const BoardOverviewPage: React.FC = () => {
   const go = (perm: Parameters<typeof allowFn>[1], to: string) => (allowFn(meB.role, perm) ? to : undefined);
   const { tracks } = useContent();
   const badgeConfig = useBadgeConfig((x) => x.config);
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const navigate = useNavigate();
   const trend = useExamTrend(period);
   const s = useMemo(() => summary(ctx, period), [ctx, period]);
@@ -320,7 +335,7 @@ export const BoardOverviewPage: React.FC = () => {
   const totalLevels = levels ? levels.reduce((x, l) => x + l.n, 0) : 0;
 
   const me = useStaffSession();
-  const { openStore, openReq, sheets } = useDetailSheets(period, ask);
+  const { openStore, openReq, sheets } = useDetailSheets(period, ask, asking);
   const card = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const best = useMemo(() => bestStore(card), [card]);
   const star = useMemo(() => bestBarista(ctx, period), [ctx, period]);
@@ -345,7 +360,7 @@ export const BoardOverviewPage: React.FC = () => {
       <div className={`${t.card} p-5 sm:p-6 flex flex-col gap-4`}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[26px] sm:text-[30px] font-bold text-crema leading-tight">{greeting(me.name)}</h1>
-          <span className="text-[14px] text-fg-3">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          <span className="text-[14px] text-fg-3">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ })}</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-fg-3">{period.label} · kısa özet</span>
@@ -495,14 +510,14 @@ export const BoardStoresPage: React.FC = () => {
   const [period, setPeriod] = usePeriod();
   const ctx = useBoardCtx(period, { exams: true });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'progress', dir: -1 });
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const rows = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const sorted = useMemo(() => [...rows].sort((a, b) => {
     if (sort.key === 'name') return a.store.name.localeCompare(b.store.name, 'tr') * sort.dir;
     const va = a[sort.key] ?? -1, vb = b[sort.key] ?? -1;
     return ((va as number) - (vb as number)) * sort.dir;
   }), [rows, sort]);
-  const { openStore, sheets } = useDetailSheets(period, ask);
+  const { openStore, sheets } = useDetailSheets(period, ask, asking);
 
   const cols: { key: SortKey; label: string }[] = [
     { key: 'name', label: 'Mağaza' }, { key: 'progress', label: 'İlerleme' }, { key: 'passRate', label: 'Sınav başarısı' },
@@ -660,7 +675,7 @@ export const BoardWorkPage: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('sekme') || 'talep') as WorkTab;
   const setTab = (x: WorkTab) => setParams(x === 'talep' ? {} : { sekme: x }, { replace: true });
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const people = useOpsPeople();
   const { data: bulletins } = useQueryLive<Bulletin>(query(collection(db, 'bulletins'), orderBy('createdAt', 'desc'), limit(30)), 'board-bulletins');
   const now = Date.now();
@@ -671,7 +686,7 @@ export const BoardWorkPage: React.FC = () => {
     .sort((a, b) => (b.closedAt || b.updatedAt) - (a.closedAt || a.updatedAt));
   const pending = ctx.proposals.filter((p) => p.status === 'pending');
   const approvalReqs = open.filter((r) => r.status === 'approval');
-  const tasks = useMemo(() => ctx.assignments.filter((a) => !taskInvalidReason(a, { modules: ctx.modules, lessons: ctx.lessons, tracks: ctx.tracks, baristas: ctx.baristas })).map((a) => {
+  const tasks = useMemo(() => ctx.assignments.filter((a) => !taskInvalidReason(a, { modules: ctx.modules, lessons: ctx.lessons, tracks: ctx.tracks, baristas: ctx.baristas, stores: ctx.stores })).map((a) => {
     const team = taskTargets(a, ctx.baristas);
     const done = team.filter((b) => assignmentDone(a, ctx.progress[b.id])).length;
     const overdue = team.filter((b) => isOverdue(a, assignmentDone(a, ctx.progress[b.id]))).length;
@@ -680,7 +695,7 @@ export const BoardWorkPage: React.FC = () => {
     .sort((x, y) => y.overdue - x.overdue || (x.a.dueAt || Infinity) - (y.a.dueAt || Infinity)), [ctx]);
   const live = bulletins.filter((b) => b.published && (!b.expiresAt || b.expiresAt > now));
 
-  const { openReq, sheets } = useDetailSheets(periodOf('30'), ask);
+  const { openReq, sheets } = useDetailSheets(periodOf('30'), ask, asking);
   const storeName = (id: string) => ctx.stores.find((s) => s.id === id)?.name || '';
 
   const TABS: { id: WorkTab; label: string; n: number }[] = [
@@ -877,8 +892,24 @@ export const BoardReportsPage: React.FC = () => {
 };
 
 /** Yazdırılabilir yönetim raporu. Tarayıcının "Yazdır → PDF olarak kaydet"i ile dosyaya dönüşür. */
+/**
+ * window.print() bazı yerlerde sessizce hiçbir şey yapmıyor (tarayıcı ayarı,
+ * eklenti, gömülü tarayıcı). Yazdırma penceresi açılınca tarayıcı
+ * "beforeprint" olayını yollar; 1,2 sn içinde gelmezse kullanıcıya ne
+ * yapacağını söyleriz.
+ */
+function printOrExplain(setBlocked: (b: boolean) => void) {
+  let opened = false;
+  const mark = () => { opened = true; };
+  window.addEventListener('beforeprint', mark, { once: true });
+  setBlocked(false);
+  try { window.print(); } catch { /* aşağıdaki denetim yakalar */ }
+  setTimeout(() => { window.removeEventListener('beforeprint', mark); if (!opened) setBlocked(true); }, 1200);
+}
+
 export const BoardPrintReport: React.FC = () => {
   const [period] = usePeriod();
+  const [printBlocked, setPrintBlocked] = useState(false);
   const ctx = useBoardCtx(period, { exams: true });
   const me = useStaffSession();
   const trend = useExamTrend(period);
@@ -899,8 +930,15 @@ export const BoardPrintReport: React.FC = () => {
     <div className="print-report max-w-[860px] mx-auto px-5 py-6 flex flex-col gap-6">
       <div className="flex items-center gap-2 print:hidden">
         <Link to={`/raporlar${period.id !== '30' ? `?donem=${period.id}` : ''}`} className={`${t.btn} ${t.btnGhost} ${t.btnSm}`}><Icon name="chevronLeft" size={14} /> Raporlar</Link>
-        {!IS_ANDROID_APP && <button onClick={() => window.print()} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>}
+        {!IS_ANDROID_APP && <button onClick={() => printOrExplain(setPrintBlocked)} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>}
       </div>
+      {printBlocked && (
+        <div className="print:hidden rounded-xl border border-caution-line bg-caution-bg px-4 py-3 text-[13px] text-fg-2 leading-relaxed">
+          <b className="text-caution">Yazdırma penceresi açılmadı.</b> Tarayıcı bu sayfadan yazdırmayı engellemiş olabilir.
+          Klavyeden <b>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ + P' : 'Ctrl + P'}</b>'ye bas; açılan pencerede hedef olarak <b>PDF olarak kaydet</b>'i seç.
+          {' '}Olmazsa raporu <a className="underline" href={window.location.href} target="_blank" rel="noreferrer">yeni sekmede aç</a> ve orada dene.
+        </div>
+      )}
       <header className="flex flex-col gap-1 border-b border-line pb-4">
         <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-fg-3">1401 Coffee · Yönetim Kurulu</div>
         <h1 className="text-[24px] font-bold">Kahve Operasyonu raporu · {period.label}</h1>

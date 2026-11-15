@@ -1,0 +1,18 @@
+import { chromium, BASE, ready, txt, phoneCtx, staffLogin } from './lib.mjs';
+import { db } from './admin.mjs';
+const pad = async (page, digits) => { for (const d of digits) { await page.getByRole('button', { name: d, exact: true }).click(); await page.waitForTimeout(120); } };
+const browser = await chromium.launch();
+const id = (await db.collection('requests').add({ storeId: 'moda-cadde', storeName: 'Moda Cadde', category: 'personel', priority: 'normal', title: 'Deniz Aydın için PIN sıfırlama', detail: 'x', status: 'open', notes: [], createdAt: Date.now(), createdBy: 'x', createdByName: 'Ayşe', updatedAt: Date.now(), lastSide: 'store', closedAt: null })).id;
+const st = await browser.newContext(); const sp = await st.newPage();
+await staffLogin(sp, 'regional');
+const b = { id: 'demo-yeni', ...(await db.doc('baristas/demo-yeni').get()).data() };
+const r = await sp.evaluate(async (b) => { const { backend } = await import('/src/api/backend.ts'); return backend.resetBaristaPin(b, 'Test'); }, b);
+await sp.waitForTimeout(2000); await st.close();
+console.log('sıfırlama sonrası', (await db.doc('requests/' + id).get()).data().status, (await db.doc('requests/' + id).get()).data().subjectBaristaId);
+const ctx = await phoneCtx(browser, {}); const page = await ctx.newPage();
+page.on('console', (m) => { if (/pin talebi|error/i.test(m.text())) console.log('KONSOL', m.text().slice(0, 300)); });
+await page.goto(BASE + '/#/'); await page.getByText('Kim çalışıyor?').waitFor({ timeout: 45000 }); await page.waitForTimeout(800);
+await page.getByText('Yeni misin?').click(); await page.waitForTimeout(600);
+await pad(page, r.code); await page.waitForTimeout(2000); await pad(page, '5937'); await page.waitForTimeout(600); await pad(page, '5937'); await page.waitForTimeout(7000);
+console.log('kod sonrası', (await db.doc('requests/' + id).get()).data().status);
+await browser.close(); process.exit(0);

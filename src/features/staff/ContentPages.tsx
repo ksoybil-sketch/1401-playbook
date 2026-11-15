@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
@@ -12,7 +12,7 @@ import { useStaffSession } from './StaffLayout';
 import { authorName, can } from '../../lib/roles';
 import { getAiKey, setAiKey } from '../../lib/aiKey';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
+import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT, MAX } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { ImportLessonSheet } from './ImportLessonSheet';
 import { MediaInput } from './MediaInput';
@@ -38,6 +38,29 @@ async function swapOrder(col: 'tracks' | 'modules' | 'lessons', a: { id: string;
     toast(errorText(e), 'negative');
   }
 }
+
+/**
+ * Sıralama okları: bir yazım sürerken listenin bütün okları kilitli. Çift
+ * dokunma iki aynı öneri oluşturuyordu; yayın yetkisi olanda da art arda iki
+ * dokunuş eski sıra değerleriyle yazabilirdi. Bağlantı yoksa kilit en geç
+ * birkaç saniyede açılır (yazım kuyrukta kalır).
+ */
+function useSwap() {
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const swap = async (...args: Parameters<typeof swapOrder>) => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    try { await sendOrQueue(swapOrder(...args)); } finally { lock.current = false; setBusy(false); }
+  };
+  return { busy, swap };
+}
+
+const ICON_LABEL: Partial<Record<IconName, string>> = {
+  coffee: 'Kahve', book: 'Kitap', users: 'Kişiler', store: 'Mağaza', shield: 'Kalkan',
+  package: 'Paket', cap: 'Kep', award: 'Ödül', clipboard: 'Pano', flag: 'Bayrak'
+};
 
 /**
  * Pencere kaydı: yazım kuyruğa alındıysa (çevrimdışı) pencere yine kapanır.
@@ -73,6 +96,7 @@ export const ContentPage: React.FC = () => {
   const [syncOpen, setSyncOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const { busy: swapping, swap } = useSwap();
 
   return (
     <Page wide>
@@ -126,28 +150,32 @@ export const ContentPage: React.FC = () => {
             action={
               <div className="flex gap-1.5 items-center">
                 <PublishBadge on={tr.published} />
-                <button className={t.iconBtn} disabled={ti === 0} onClick={() => swapOrder('tracks', tr, tracks[ti - 1])} title="Yukarı"><Icon name="arrowUp" size={14} /></button>
-                <button className={t.iconBtn} disabled={ti === tracks.length - 1} onClick={() => swapOrder('tracks', tr, tracks[ti + 1])} title="Aşağı"><Icon name="arrowDown" size={14} /></button>
-                <button className={t.iconBtn} onClick={() => setEditTrack(tr)} title="Düzenle"><Icon name="edit" size={14} /></button>
+                <button className={t.iconBtn} disabled={swapping || ti === 0} onClick={() => swap('tracks', tr, tracks[ti - 1])} title="Yukarı" aria-label={`${tr.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                <button className={t.iconBtn} disabled={swapping || ti === tracks.length - 1} onClick={() => swap('tracks', tr, tracks[ti + 1])} title="Aşağı" aria-label={`${tr.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                <button className={t.iconBtn} onClick={() => setEditTrack(tr)} title="Düzenle" aria-label={`${tr.title}: düzenle`}><Icon name="edit" size={14} /></button>
               </div>
             }>
             <div className={t.listGroup}>
               {mods.map((m, mi) => (
-                <div key={m.id} className={`${t.listRow} cursor-default`}>
-                  <Link to={`/icerik/modul/${m.id}`} className="flex-1 min-w-0 flex items-center gap-3">
+                // Telefonda modül adı tam satırı alır, rozet ve oklar alt satıra iner
+                // (360-390 px'te ad 1-2 harfe iniyordu).
+                <div key={m.id} className={`${t.listRow} cursor-default flex-wrap gap-y-2`}>
+                  <Link to={`/icerik/modul/${m.id}`} className="flex-1 min-w-[min(100%,14rem)] flex items-center gap-3">
                     <span className="w-7 h-7 rounded-full bg-panel-3 border border-line text-[12px] font-semibold flex items-center justify-center tnum shrink-0">{mi + 1}</span>
                     <div className="min-w-0">
-                      <div className="text-[14px] font-medium truncate">{m.title}</div>
+                      <div className="text-[14px] font-medium line-clamp-2 break-words">{m.title}</div>
                       <div className="text-[12px] text-fg-3">
                         {lessons.filter((l) => l.moduleId === m.id).length} ders · {qCounts.data?.[m.id] ?? m.questionCount ?? 0} soru · geçme notu {m.passScore}
                         {m.prerequisiteId ? ' · Kilitli' : ''}
                       </div>
                     </div>
                   </Link>
-                  <PublishBadge on={m.published} />
-                  <button className={t.iconBtn} disabled={mi === 0} onClick={() => swapOrder('modules', m, mods[mi - 1])}><Icon name="arrowUp" size={14} /></button>
-                  <button className={t.iconBtn} disabled={mi === mods.length - 1} onClick={() => swapOrder('modules', m, mods[mi + 1])}><Icon name="arrowDown" size={14} /></button>
-                  <Link to={`/icerik/modul/${m.id}`} className={t.iconBtn}><Icon name="chevronRight" size={14} /></Link>
+                  <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                    <PublishBadge on={m.published} />
+                    <button className={t.iconBtn} disabled={swapping || mi === 0} onClick={() => swap('modules', m, mods[mi - 1])} aria-label={`${m.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                    <button className={t.iconBtn} disabled={swapping || mi === mods.length - 1} onClick={() => swap('modules', m, mods[mi + 1])} aria-label={`${m.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                    <Link to={`/icerik/modul/${m.id}`} className={t.iconBtn} aria-label={`${m.title}: aç`}><Icon name="chevronRight" size={14} /></Link>
+                  </div>
                 </div>
               ))}
               <button className={`${t.listRow} text-fg-2`} onClick={() => setEditModule({ trackId: tr.id })}>
@@ -331,12 +359,12 @@ export const TrackSheet: React.FC<{ value: Partial<Track> | null; onClose: () =>
   return (
     <Sheet open={!!value} title={f.id ? 'Eğitim yolunu düzenle' : 'Yeni eğitim yolu'} onClose={onClose}
       footer={<>{f.id && <button className={`${t.btn} ${t.btnDanger} ${t.btnMd} mr-auto`} disabled={busy} onClick={remove}>Sil</button>}<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={save}>{busy ? <Spinner size={14} /> : 'Kaydet'}</button></>}>
-      <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-      <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+      <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} maxLength={MAX.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+      <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} maxLength={MAX.text} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
       <div className={t.field}><span className={t.label}>İkon</span>
         <div className="flex flex-wrap gap-2">
           {TRACK_ICONS.map((ic) => (
-            <button key={ic} onClick={() => setF({ ...f, icon: ic })} className={`w-10 h-10 rounded-lg border flex items-center justify-center ${f.icon === ic ? 'border-crema bg-panel-3' : 'border-line bg-panel'}`}><Icon name={ic} size={18} /></button>
+            <button key={ic} onClick={() => setF({ ...f, icon: ic })} aria-label={`İkon: ${ICON_LABEL[ic] || ic}`} aria-pressed={f.icon === ic} className={`w-10 h-10 rounded-lg border flex items-center justify-center ${f.icon === ic ? 'border-crema bg-panel-3' : 'border-line bg-panel'}`}><Icon name={ic} size={18} /></button>
           ))}
         </div>
       </div>
@@ -374,8 +402,8 @@ export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () 
   return (
     <Sheet open={!!value} title={f.id ? 'Modül ayarları' : 'Yeni modül'} onClose={onClose}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={save}>{busy ? <Spinner size={14} /> : 'Kaydet'}</button>}>
-      <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
-      <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+      <label className={t.field}><span className={t.label}>Başlık</span><input className={t.input} value={f.title || ''} maxLength={MAX.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+      <label className={t.field}><span className={t.label}>Açıklama</span><textarea className={t.textarea} value={f.description || ''} maxLength={MAX.text} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
       <label className={t.field}><span className={t.label}>Eğitim yolu</span>
         <select className={t.input} value={f.trackId || ''} onChange={(e) => setF({ ...f, trackId: e.target.value })}>
           {tracks.map((tr) => <option key={tr.id} value={tr.id}>{tr.title}</option>)}
@@ -412,6 +440,7 @@ export const ModuleEditorPage: React.FC = () => {
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [editQ, setEditQ] = useState<Partial<Question> | null>(null);
   const [importing, setImporting] = useState(false);
+  const { busy: swapping, swap } = useSwap();
 
   if (!mod) return <Page wide><PageTitle title="Modül bulunamadı" back="/icerik" /></Page>;
   const ls = lessons.filter((l) => l.moduleId === mod.id);
@@ -444,17 +473,19 @@ export const ModuleEditorPage: React.FC = () => {
       {tab === 'lessons' ? (
         <div className={t.listGroup}>
           {ls.map((l, i) => (
-            <div key={l.id} className={`${t.listRow} cursor-default`}>
-              <Link to={`/icerik/ders/${l.id}`} className="flex-1 min-w-0 flex items-center gap-3">
+            <div key={l.id} className={`${t.listRow} cursor-default flex-wrap gap-y-2`}>
+              <Link to={`/icerik/ders/${l.id}`} className="flex-1 min-w-[min(100%,14rem)] flex items-center gap-3">
                 <span className="w-7 h-7 rounded-full bg-panel-3 border border-line text-[12px] font-semibold flex items-center justify-center tnum shrink-0">{i + 1}</span>
                 <div className="min-w-0">
-                  <div className="text-[14px] font-medium truncate">{l.title}</div>
+                  <div className="text-[14px] font-medium line-clamp-2 break-words">{l.title}</div>
                   <div className="text-[12px] text-fg-3">{l.blocks?.length || 0} blok · {l.durationMin} dk</div>
                 </div>
               </Link>
-              <PublishBadge on={l.published} />
-              <button className={t.iconBtn} disabled={i === 0} onClick={() => swapOrder('lessons', l, ls[i - 1])}><Icon name="arrowUp" size={14} /></button>
-              <button className={t.iconBtn} disabled={i === ls.length - 1} onClick={() => swapOrder('lessons', l, ls[i + 1])}><Icon name="arrowDown" size={14} /></button>
+              <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                <PublishBadge on={l.published} />
+                <button className={t.iconBtn} disabled={swapping || i === 0} onClick={() => swap('lessons', l, ls[i - 1])} aria-label={`${l.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                <button className={t.iconBtn} disabled={swapping || i === ls.length - 1} onClick={() => swap('lessons', l, ls[i + 1])} aria-label={`${l.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+              </div>
             </div>
           ))}
           <button className={`${t.listRow} text-fg-2`} onClick={addLesson}><Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Ders ekle</span></button>
@@ -548,12 +579,12 @@ export const QuestionSheet: React.FC<{ value: Partial<Question> | null; onClose:
         <span className={t.label}>Seçenekler — doğru olanı işaretle</span>
         {opts.map((o, i) => (
           <div key={i} className="flex items-center gap-2">
-            <button onClick={() => setF({ ...f, answer: i })} className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 ${f.answer === i ? 'bg-positive-bg border-positive-line text-positive' : 'border-line text-fg-4'}`}>
+            <button onClick={() => setF({ ...f, answer: i })} aria-label={`Doğru cevap: ${String.fromCharCode(65 + i)}`} aria-pressed={f.answer === i} className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 ${f.answer === i ? 'bg-positive-bg border-positive-line text-positive' : 'border-line text-fg-4'}`}>
               <Icon name="check" size={14} strokeWidth={2.2} />
             </button>
             <input className={t.input} value={o} disabled={f.type === 'truefalse'} onChange={(e) => { const n = [...opts]; n[i] = e.target.value; setF({ ...f, options: n }); }} placeholder={`Seçenek ${String.fromCharCode(65 + i)}`} />
             {f.type !== 'truefalse' && opts.length > 2 && (
-              <button className={t.iconBtn} onClick={() => { const n = opts.filter((_, j) => j !== i); setF({ ...f, options: n, answer: Math.min(f.answer ?? 0, n.length - 1) }); }}><Icon name="minus" size={14} /></button>
+              <button className={t.iconBtn} aria-label="Seçeneği sil" onClick={() => { const n = opts.filter((_, j) => j !== i); setF({ ...f, options: n, answer: Math.min(f.answer ?? 0, n.length - 1) }); }}><Icon name="minus" size={14} /></button>
             )}
           </div>
         ))}
@@ -729,8 +760,8 @@ export const LessonEditorPage: React.FC = () => {
               <div key={i} className={`${t.card} p-3 flex flex-col gap-2.5`}>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3 flex-1">{BLOCK_TYPES.find((x) => x.type === b.type)?.label}</span>
-                  <button className={t.iconBtn} disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrowUp" size={13} /></button>
-                  <button className={t.iconBtn} disabled={i === draft.blocks.length - 1} onClick={() => move(i, 1)}><Icon name="arrowDown" size={13} /></button>
+                  <button className={t.iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label="Bloğu yukarı taşı"><Icon name="arrowUp" size={13} /></button>
+                  <button className={t.iconBtn} disabled={i === draft.blocks.length - 1} onClick={() => move(i, 1)} aria-label="Bloğu aşağı taşı"><Icon name="arrowDown" size={13} /></button>
                   <button className={t.iconBtn} aria-label="Bloğu sil" onClick={() => confirm('Bu blok silinsin mi?') && patch({ blocks: draft.blocks.filter((_, j) => j !== i) })}><Icon name="trash" size={13} /></button>
                 </div>
                 <BlockEditor block={b} onChange={(nb) => setBlock(i, nb)} />
@@ -746,7 +777,7 @@ export const LessonEditorPage: React.FC = () => {
           </div>
 
           <div className={`${t.card} p-4 flex flex-col gap-3 lg:sticky lg:top-4`}>
-            <label className={t.field}><span className={t.label}>Ders başlığı</span><input className={t.input} value={draft.title} onChange={(e) => patch({ title: e.target.value })} /></label>
+            <label className={t.field}><span className={t.label}>Ders başlığı</span><input className={t.input} value={draft.title} maxLength={MAX.title} onChange={(e) => patch({ title: e.target.value })} /></label>
             <label className={t.field}><span className={t.label}>Süre (dk)</span><input type="number" className={t.input} value={draft.durationMin} onChange={(e) => patch({ durationMin: Number(e.target.value) })} /></label>
             <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" checked={draft.published} onChange={(e) => patch({ published: e.target.checked })} /> Yayında</label>
             <button className={`${t.btn} ${t.btnDanger} ${t.btnSm}`} onClick={remove}>Dersi sil</button>
@@ -787,7 +818,7 @@ export const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlo
             <div key={i} className="flex gap-2 items-center">
               <span className="text-[12px] text-fg-3 tnum w-5">{i + 1}.</span>
               <input className={t.input} value={it} onChange={(e) => onChange({ ...b, items: b.items.map((x, j) => (j === i ? e.target.value : x)) })} />
-              <button className={t.iconBtn} onClick={() => onChange({ ...b, items: b.items.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
+              <button className={t.iconBtn} aria-label="Maddeyi sil" onClick={() => onChange({ ...b, items: b.items.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
             </div>
           ))}
           <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`} onClick={() => onChange({ ...b, items: [...b.items, ''] })}><Icon name="plus" size={13} /> Adım</button>
@@ -800,7 +831,7 @@ export const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlo
             <div key={i} className="flex gap-2 items-center">
               <input className={t.input} value={r.label} placeholder="Ör. Espresso" onChange={(e) => onChange({ ...b, rows: b.rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
               <input className={t.input} value={r.value} placeholder="Ör. 2 shot (36 ml)" onChange={(e) => onChange({ ...b, rows: b.rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })} />
-              <button className={t.iconBtn} onClick={() => onChange({ ...b, rows: b.rows.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
+              <button className={t.iconBtn} aria-label="Satırı sil" onClick={() => onChange({ ...b, rows: b.rows.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
             </div>
           ))}
           <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`} onClick={() => onChange({ ...b, rows: [...b.rows, { label: '', value: '' }] })}><Icon name="plus" size={13} /> Satır</button>
@@ -914,7 +945,7 @@ export const BlockEditor: React.FC<{ block: LessonBlock; onChange: (b: LessonBlo
             <div key={i} className="flex gap-2 items-center">
               <button onClick={() => onChange({ ...b, answer: i })} className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 ${b.answer === i ? 'bg-positive-bg border-positive-line text-positive' : 'border-line text-fg-4'}`}><Icon name="check" size={13} strokeWidth={2.2} /></button>
               <input className={t.input} value={o} onChange={(e) => onChange({ ...b, options: b.options.map((x, j) => (j === i ? e.target.value : x)) })} />
-              {b.options.length > 2 && <button className={t.iconBtn} onClick={() => onChange({ ...b, options: b.options.filter((_, j) => j !== i), answer: 0 })}><Icon name="minus" size={13} /></button>}
+              {b.options.length > 2 && <button className={t.iconBtn} aria-label="Seçeneği sil" onClick={() => onChange({ ...b, options: b.options.filter((_, j) => j !== i), answer: 0 })}><Icon name="minus" size={13} /></button>}
             </div>
           ))}
           <button className={`${t.btn} ${t.btnGhost} ${t.btnSm} self-start`} onClick={() => onChange({ ...b, options: [...b.options, ''] })}><Icon name="plus" size={13} /> Seçenek</button>
@@ -958,8 +989,8 @@ const AiKeySheet: React.FC<{ open: boolean; onClose: () => void; by: string }> =
       <div className="flex gap-3 p-3.5 rounded-xl bg-caution-bg border border-caution-line text-[12.5px] leading-relaxed">
         <Icon name="alert" size={16} className="text-caution mt-0.5" />
         <span>
-          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Kahve Operasyonu ve geliştiricinin
-          tarayıcısına iner (baristalar göremez). Console'da yalnızca bu iş için ayrı bir anahtar açıp <strong>aylık harcama sınırı</strong> koy.
+          Uygulamanın sunucusu olmadığı için çağrı tarayıcıdan yapılır: anahtar yalnızca Kahve Operasyon Direktörü'nün
+          tarayıcısına iner (diğer roller ve baristalar göremez). Console'da yalnızca bu iş için ayrı bir anahtar açıp <strong>aylık harcama sınırı</strong> koy.
         </span>
       </div>
       <div className="text-[13px]">Durum: {has === null ? '…' : has ? <span className="text-positive">Anahtar tanımlı</span> : <span className="text-fg-3">Tanımlı değil — dosyalar OCR ve kurallarla okunuyor</span>}</div>

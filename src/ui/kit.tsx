@@ -1,11 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 import { useBackHandler } from '../lib/backButton';
-import { confirmLeave } from '../lib/unsaved';
+import { confirmLeave, useDirtySheet } from '../lib/unsaved';
+import { registerSheet } from '../lib/webHistory';
 import { whenPrepared } from '../lib/writeGate';
+import { TZ, dayDiff } from '../lib/day';
 
 /* ------------------------------------------------------------------ */
 /* Sayfa iskeleti                                                      */
@@ -92,8 +94,10 @@ export const Ring: React.FC<{ value: number; size?: number; label?: string; colo
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        {/* İz temanın çizgi rengiyle (açık temada beyaz iz görünmüyordu); renk
+            style ile: CSS değişkeni (var(--hue-…)) SVG özniteliğinde çalışmaz. */}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-line" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" style={{ stroke: color }} strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c - (v / 100) * c} className="transition-[stroke-dashoffset] duration-700" />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tnum">{label ?? `${Math.round(v)}%`}</span>
@@ -143,12 +147,45 @@ export const Stat: React.FC<{
   return <div className={cls}>{body}</div>;
 };
 
+/**
+ * Metin alanı sınırları. Eskiden yoktu: 500 karakterlik ad kabul ediliyor,
+ * geri bildirim sessizce 2.000'de kesiliyordu. Güvenlik kurallarındaki
+ * sınırların altında tutulur (ad ≤ 80, başlık ≤ 200, uzun metin ≤ 4000).
+ */
+export const MAX = { name: 60, title: 120, text: 2000, long: 4000 } as const;
+
+/** Sınırlı alanın altında: sınıra yaklaşınca kaç karakter yazıldığı. */
+export const CharCount: React.FC<{ value: string; max: number }> = ({ value, max }) =>
+  value.length >= max * 0.8 ? (
+    <span className={`text-[11px] tnum self-end -mt-1 ${value.length >= max ? 'text-caution' : 'text-fg-3'}`} aria-live="polite">
+      {value.length >= max ? `En çok ${max} karakter` : `${value.length}/${max}`}
+    </span>
+  ) : null;
+
 export const ErrorText: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
   children ? (
     <div className="flex gap-2 items-start text-[13px] text-negative bg-negative-bg border border-negative-line rounded-lg px-3 py-2.5 leading-relaxed">
       <Icon name="alert" size={16} className="mt-0.5" />
       <span>{children}</span>
     </div>
+  ) : null;
+
+/**
+ * Uzun liste: ilk `step` satır çizilir, gerisi "Daha fazla göster" ile.
+ * 300 görevli mağazada liste 20.000 px'i geçiyordu. `reset` değişince
+ * (süzgeç, sekme) baştan başlar.
+ */
+export function useShowMore(step = 30, reset?: unknown) {
+  const [n, setN] = useState(step);
+  useEffect(() => { setN(step); }, [reset, step]);
+  return { limit: n, more: () => setN((x) => x + step) };
+}
+
+export const ShowMore: React.FC<{ shown: number; total: number; onMore: () => void; className?: string }> = ({ shown, total, onMore, className = '' }) =>
+  total > shown ? (
+    <button type="button" onClick={onMore} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-center ${className}`}>
+      Daha fazla göster · {total - shown} kaldı
+    </button>
   ) : null;
 
 /* ------------------------------------------------------------------ */
@@ -160,8 +197,12 @@ export const ErrorText: React.FC<{ children?: React.ReactNode }> = ({ children }
  * dokunmak, Esc, geri tuşu ve Kapat önce sorar (eskiden yazılan sessizce
  * gidiyordu: talep yanıtı, ret notu, bülten metni…).
  */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; dirty?: boolean }> = ({ open, title, onClose, children, footer, dirty }) => {
   const close = () => { if (!dirty || confirm('Yazdıkların silinecek. Kapatılsın mı?')) onClose(); };
+  // Öteki sekmeden çıkış yapılırken bu pencere "kaydedilmemiş" sayılır (H14).
+  useDirtySheet(open && !!dirty);
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => {
@@ -172,10 +213,45 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
   }, [open]);
   // Android geri tuşu önce alt sayfayı kapatır.
   useBackHandler(open, () => { closeRef.current(); return true; });
+  // Web: tarayıcının geri düğmesi de önce pencereyi kapatır (geçmişe kayıt eklenir).
+  useEffect(() => (open ? registerSheet(() => closeRef.current()) : undefined), [open]);
+  // Yazılmış ama gönderilmemiş bir şey varken sayfa yenilenirse (F5) ya da
+  // sekme kapanırsa tarayıcı sorar.
+  useEffect(() => {
+    if (!open || !dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [open, dirty]);
+  // Klavye ve ekran okuyucu (H21): açılınca odak pencereye geçer, Tab pencerenin
+  // içinde döner, kapanınca odak pencereyi açan öğeye geri gider.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const focusables = () => [...(panel?.querySelectorAll<HTMLElement>(FOCUSABLE) || [])].filter((el) => el.offsetParent !== null || el === document.activeElement);
+    // İlk alan (kapat düğmesi değil); yoksa pencerenin kendisi.
+    const first = focusables().find((el) => el.getAttribute('aria-label') !== 'Kapat') || panel;
+    first?.focus({ preventScroll: true });
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !panel) return;
+      const list = focusables();
+      if (!list.length) { e.preventDefault(); panel.focus(); return; }
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      if (e.shiftKey && (i <= 0)) { e.preventDefault(); list[list.length - 1].focus(); }
+      else if (!e.shiftKey && (i === -1 || i === list.length - 1)) { e.preventDefault(); list[0].focus(); }
+    };
+    document.addEventListener('keydown', onTab);
+    return () => {
+      document.removeEventListener('keydown', onTab);
+      if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+    };
+  }, [open]);
   if (!open) return null;
   return (
     <div className={t.modalOverlay} onClick={close}>
-      <div className={t.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+      <div ref={panelRef} tabIndex={-1} className={`${t.modalPanel} outline-none`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className={t.modalGrabber} />
         <div className={t.modalHeader}>
           <h2 className={t.modalTitle}>{title}</h2>
@@ -232,7 +308,7 @@ export async function sendOrQueue(p: Promise<unknown>, opts: { ms?: number; onLa
 }
 
 /** Kuyruğa alınan yazım için kullanıcıya gösterilen metin. */
-export const QUEUED_TEXT = 'Bağlantı yok: kaydedildi, bağlantı gelince gönderilecek.';
+export const QUEUED_TEXT = 'Bağlantı yok: kaydedildi, bağlantı gelince bu telefondan gönderilecek (çıkış yapsan da).';
 
 export const ToastHost: React.FC = () => {
   const { text, tone } = useToast();
@@ -252,20 +328,19 @@ export const ToastHost: React.FC = () => {
 /* ------------------------------------------------------------------ */
 
 export const fmtDate = (ms?: number | null) =>
-  ms ? new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  ms ? new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: TZ }) : '—';
 
+/** Tarih ve saat — İstanbul saatiyle (telefonun saat dilimi ne olursa olsun; bkz. lib/day). */
 export const fmtDateTime = (ms?: number | null) =>
-  ms ? new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  ms ? new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '—';
 
 /**
- * "bugün", "yarın", "3 gün sonra" — TAKVİM gününe göre. Eskiden milisaniye
- * farkı yuvarlanıyordu: son tarihi bugün 23:59 olan görev sabah "yarın",
- * yarın olan "2 gün sonra" görünüyordu.
+ * "bugün", "yarın", "3 gün sonra" — TAKVİM gününe göre (İstanbul). Eskiden
+ * milisaniye farkı yuvarlanıyordu: son tarihi bugün 23:59 olan görev sabah
+ * "yarın", yarın olan "2 gün sonra" görünüyordu.
  */
 export function relDays(ms: number, now = Date.now()): string {
-  const day = (x: number) => { const t = new Date(x); return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime(); };
-  // Yaz saati geçişinde gün 23/25 saat olabilir: yuvarlama farkı tam güne indirir.
-  const d = Math.round((day(ms) - day(now)) / 86400000);
+  const d = dayDiff(ms, now);
   if (d === 0) return 'bugün';
   if (d === 1) return 'yarın';
   if (d === -1) return 'dün';

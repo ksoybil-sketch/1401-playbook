@@ -3,7 +3,7 @@ import type { Assignment, Attempt, Lesson, Module, Progress, Track } from '../..
 import type { IconName } from '../ui/Icon';
 import { assignmentDone, assignmentDoneAt, isOverdue, visibleModules } from './progress';
 import { isTaskValid } from './taskValidity';
-import { localDayStart } from './day';
+import { localDayStart, TZ } from './day';
 
 /**
  * Başarımlar ve önlük rozetleri.
@@ -175,7 +175,9 @@ function derive(c: BadgeContext, windowDays = 0): Derived {
     if (p !== undefined) scores.push(p);
     return scores.length ? Math.max(...scores) : null;
   };
-  const start = c.startedAt ? new Date(c.startedAt).getTime() : c.createdAt || now;
+  // Kıdem İstanbul gününe göre: `new Date('YYYY-AA-GG')` UTC gece yarısıydı,
+  // gece 00:00–03:00 arası kıdem bir gün eksik çıkıyordu (H13).
+  const start = localDayStart(c.startedAt) ?? (c.createdAt || now);
   return {
     ...c, progress, now, done, activity, best,
     passed: (id, min = 0) => (best(id) ?? -1) >= min && !!progress.modules?.[id],
@@ -437,6 +439,9 @@ export type ReportBadge = Omit<BadgeDef, 'rule'> & BadgeStatus & {
   granted?: OverrideMark;
 };
 
+/** Rozet süresi dolmadan kaç gün önce uyarılır (şartlar sağlanmıyorsa). */
+export const EXPIRY_WARN_DAYS = 14;
+
 export interface BadgeReport {
   badges: ReportBadge[];
   earned: number;
@@ -450,8 +455,14 @@ export interface BadgeReport {
   qualified: TitleDef | null;
   /** Bir sonraki rozet ve eksikler. */
   next: { title: TitleDef; reqs: Requirement[] } | null;
-  /** Teslim edilen rozetin geçerlilik süresi doldu. */
+  /** Teslim edilen rozetin geçerlilik süresi doldu (ve şartları artık sağlamıyor). */
   expired: boolean;
+  /** Şartları sağlamıyor ve süresi 14 gün içinde doluyor: dolacağı an. */
+  expiresSoon: number | null;
+  /** Süre doldu ama şartlar hâlâ sağlandığı için kendiliğinden yenilendi. */
+  renewed: boolean;
+  /** Teslim edilen rozetin (yenilenmişse yeni dönemin) bitişi; süresizse null. */
+  validUntil: number | null;
   /** Rozet geri alındıysa: hangi seviyeden itibaren, neden. */
   capped: BadgeOverrides['titleCap'] | null;
   titles: TitleDef[];
@@ -498,7 +509,7 @@ export function badgeReport(ctx: BadgeContext): BadgeReport {
   for (const t of titles) {
     const reqs = requirements(t, have, names, have.size, avg, d0.days);
     if (cap && TITLE_RANK[t.id] >= TITLE_RANK[cap.from]) {
-      next = { title: t, reqs: [{ label: `Rozet geri alındı: ${cap.reason}`, met: false, detail: cap.until ? `${new Date(cap.until).toLocaleDateString('tr-TR')}'e kadar` : undefined }, ...reqs] };
+      next = { title: t, reqs: [{ label: `Rozet geri alındı: ${cap.reason}`, met: false, detail: cap.until ? `${new Date(cap.until).toLocaleDateString('tr-TR', { timeZone: TZ })}'e kadar` : undefined }, ...reqs] };
       break;
     }
     if (reqs.every((r) => r.met)) qualified = t;
@@ -508,7 +519,18 @@ export function badgeReport(ctx: BadgeContext): BadgeReport {
   // Teslim edilen rozet ve geçerlilik süresi.
   const delivered = ctx.delivered ? titles.find((t) => t.id === ctx.delivered) || null : null;
   const deliveredLive = delivered && (!cap || TITLE_RANK[delivered.id] < TITLE_RANK[cap.from]) ? delivered : null;
-  const expired = !!(deliveredLive && deliveredLive.validDays && ctx.deliveredAt && ctx.deliveredAt + deliveredLive.validDays * DAY < now);
+  // Geçerlilik (H12): süre dolduğunda barista o rozetin şartlarını hâlâ
+  // sağlıyorsa rozet kendiliğinden yenilenir (yeni dönem teslim anından
+  // validDays katlarıyla sayılır); kimsenin elle yeniden teslim etmesi
+  // gerekmez. Şartları sağlamıyorsa süre dolunca düşer; dolmadan 14 gün önce
+  // baristaya ve panele uyarı gider (expiresSoon).
+  const validMs = deliveredLive?.validDays ? deliveredLive.validDays * DAY : 0;
+  const holds = !!(deliveredLive && qualified && TITLE_RANK[qualified.id] >= TITLE_RANK[deliveredLive.id]);
+  let validUntil: number | null = deliveredLive && validMs && ctx.deliveredAt ? ctx.deliveredAt + validMs : null;
+  const renewed = holds && validUntil !== null && validUntil < now;
+  if (renewed) validUntil = ctx.deliveredAt! + Math.ceil((now - ctx.deliveredAt!) / validMs) * validMs;
+  const expired = validUntil !== null && validUntil < now;
+  const expiresSoon = !expired && !holds && validUntil !== null && validUntil - now <= EXPIRY_WARN_DAYS * DAY ? validUntil : null;
 
   let title: TitleDef | null = qualified;
   let pendingTitle: TitleDef | null = null;
@@ -522,7 +544,7 @@ export function badgeReport(ctx: BadgeContext): BadgeReport {
       for (let i = TITLE_RANK[qualified.id] - 2; i >= 0; i--) if (titles[i].mode === 'auto') { title = titles[i]; break; }
     }
   }
-  return { badges, earned: have.size, avg, days: d0.days, title, pendingTitle, qualified, next, expired, capped: cap, titles };
+  return { badges, earned: have.size, avg, days: d0.days, title, pendingTitle, qualified, next, expired, expiresSoon, renewed, validUntil, capped: cap, titles };
 }
 
 /** Barista belgesinden rozet hesabına giren alanlar (kıdem, istisnalar, teslim). */

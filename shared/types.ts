@@ -75,7 +75,10 @@ export interface Barista {
   phone?: string;
   startedAt?: string;
   createdAt: number;
-  deactivatedAt?: number;
+  /** Son çıkarılma anı. Yeniden etkinleştirilince silinmez (geçmiş; bkz. history). */
+  deactivatedAt?: number | null;
+  /** Çıkış/dönüş geçmişi (backend.ts setBaristaActive, resetBaristaPin). */
+  history?: { kind: 'cikis' | 'donus'; at: number; byName?: string }[];
   /** Bağlı Firebase Auth hesabı. PIN sıfırlanınca yeni hesap açılır, eskisi pasifleşir. */
   uid: string;
   authEmail: string;
@@ -515,6 +518,8 @@ export interface StoreRequest {
   waitReason?: RequestWaitReason | null;
   /** Reddedildiyse nedeni. */
   rejectReason?: RequestRejectReason | null;
+  /** Kişiye bağlı talep (PIN sıfırlama): kod kullanılınca kendiliğinden kapanır. */
+  subjectBaristaId?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

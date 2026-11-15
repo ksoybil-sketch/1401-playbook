@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { LessonBlock } from '../../shared/types';
 import type { DraftQuestion, ImportResult } from './importLesson';
 import { lessonMinutes } from './pdfLesson';
+import { loadChunk } from './chunk';
 
 /**
  * Dosyadan ders + soru üretimi — Claude ile.
@@ -117,8 +118,8 @@ export async function lessonFromFileWithAI(
 
   onProgress?.('Dosya hazırlanıyor…');
   const data = toBase64(await file.arrayBuffer());
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const { betaZodOutputFormat } = await import('@anthropic-ai/sdk/helpers/beta/zod');
+  const { default: Anthropic } = await loadChunk(() => import('@anthropic-ai/sdk'));
+  const { betaZodOutputFormat } = await loadChunk(() => import('@anthropic-ai/sdk/helpers/beta/zod'));
   // Sunucu yok (Spark): çağrı tarayıcıdan. Bkz. dosya başındaki not.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 

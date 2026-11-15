@@ -187,7 +187,7 @@ export const RecipesPage: React.FC = () => {
                 <span className={t.sectionLabel}>Son baktıkların</span>
                 <button onClick={() => { recent.clear(); setRecentIds([]); }} className="text-[12px] text-fg-3 hover:text-crema px-2 py-1 -mr-2">Temizle</button>
               </div>
-              <div className={t.scrollX}>
+              <div className={`${t.scrollX} py-1.5 -my-1.5`}>
                 {recentHits.map((h) => (
                   <Link key={h.lesson.id} to={`/recete/${h.lesson.id}`} className={`${t.chip} ${t.chipOff} gap-1.5 h-9 shrink-0`}>
                     <Icon name="clock" size={12} className="text-fg-3" /> {h.lesson.title}
@@ -196,7 +196,8 @@ export const RecipesPage: React.FC = () => {
               </div>
             </div>
           )}
-          <div className={t.scrollX}>
+          {/* py/-my: şerit kaydığı için çiplerin görünmez dokunma payı kesiliyordu. */}
+          <div className={`${t.scrollX} py-1.5 -my-1.5`}>
             <button onClick={() => setCat('hepsi')} className={`${t.chip} ${cat === 'hepsi' ? t.chipOn : t.chipOff}`}>
               Hepsi
             </button>

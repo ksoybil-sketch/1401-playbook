@@ -28,7 +28,7 @@ export const BaristaLayout: React.FC = () => {
 
   // Yarıda kalıp süresi dolmuş denemeler, oturum açılır açılmaz o ana kadarki
   // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
-  useEffect(() => { finalizeExpired(s.baristaId).catch(() => {}); }, [s.baristaId]);
+  useEffect(() => { if (!s.offline) finalizeExpired(s.baristaId).catch(() => {}); }, [s.baristaId, s.offline]);
 
   // Yeni ekran her zaman en üstten açılır (önceki sayfanın kaydırması kalmasın).
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -75,6 +75,15 @@ export const BaristaLayout: React.FC = () => {
           )}
         </div>
       </header>
+
+      {/* Çevrimdışı PIN girişi (H17): salt okunur olduğu açıkça yazar. */}
+      {s.offline && (
+        <div role="status" className="bg-caution-bg border-b border-caution-line text-caution text-[12.5px] leading-snug px-4 py-2">
+          <div className="max-w-[560px] mx-auto">
+            <b>Çevrimdışı mod · yalnızca okuma.</b> Derslere ve reçetelere bakabilirsin; sınav, ders tamamlama ve talepler kapalı. Bağlantı gelince tam girişe kendiliğinden geçilir.
+          </div>
+        </div>
+      )}
 
       <main className="flex-1">
         <Outlet />

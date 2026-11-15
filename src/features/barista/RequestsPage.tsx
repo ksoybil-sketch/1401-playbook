@@ -8,9 +8,10 @@ import { useBaristaSession } from './useBaristaData';
 import { RequestSummary, RequestThread } from '../shared/Requests';
 import { MediaInput } from '../staff/MediaInput';
 import { Icon } from '../../ui/Icon';
-import { Page, PageTitle, Section, Sheet, Empty, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
+import { Page, PageTitle, Section, Sheet, Empty, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT, MAX, CharCount } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { RequestCategory, RequestPriority, StoreRequest } from '../../../shared/types';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * Talepler — mağaza / vardiya müdürünün Kahve Operasyonu'na açtığı işler.
@@ -117,6 +118,7 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
     setError(null);
     if (title.trim().length < 3) return setError('Kısaca ne olduğunu yaz: "Espresso makinesi 2. grup su kaçırıyor".');
     if (category === 'ariza' && !equipment) return setError('Hangi ekipman arızalı?');
+    if (blockedReadOnly()) return;
     setBusy(true);
     try {
       // Çevrimdışıyken yazım yerel kuyruğa alınır; pencere sonsuza kadar
@@ -165,12 +167,14 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
       )}
       <label className={t.field}>
         <span className={t.label}>Başlık</span>
-        <input className={t.input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Değirmen öğütmüyor, motor sesi var" />
+        <input className={t.input} value={title} maxLength={MAX.title} onChange={(e) => setTitle(e.target.value)} placeholder="Değirmen öğütmüyor, motor sesi var" />
+        <CharCount value={title} max={MAX.title} />
       </label>
       <label className={t.field}>
         <span className={t.label}>Ayrıntı</span>
-        <textarea className={`${t.textarea} min-h-24`} value={detail} onChange={(e) => setDetail(e.target.value)}
+        <textarea className={`${t.textarea} min-h-24`} value={detail} maxLength={MAX.text} onChange={(e) => setDetail(e.target.value)}
           placeholder="Ne zaman başladı, denediklerin, misafiri etkiliyor mu…" />
+        <CharCount value={detail} max={MAX.text} />
       </label>
       <div className={t.field}>
         <span className={t.label}>Fotoğraf (isteğe bağlı)</span>

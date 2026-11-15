@@ -10,6 +10,7 @@ import { useBaristaSession, useMyProgress } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
 import { Section, toast } from '../../ui/kit';
 import type { Barista } from '../../../shared/types';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /** Baristanın temaları: hangileri açık, hangisi seçili. */
 export function useMyThemes() {
@@ -75,6 +76,7 @@ export const ThemesSection: React.FC = () => {
   }, [statuses, baristaId]);
 
   const choose = async (id: BaristaThemeId) => {
+    if (blockedReadOnly()) return;
     setBusy(id);
     try {
       await updateDoc(doc(db, 'progress', baristaId), { theme: id, updatedAt: Date.now() });

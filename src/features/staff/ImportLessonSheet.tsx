@@ -12,6 +12,7 @@ import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { IS_ANDROID_APP } from '../../lib/backButton';
+import { loadChunk } from '../../lib/chunk';
 
 /**
  * Excel / CSV / PDF / görsel dosyasından ders taslakları ve soru önerileri
@@ -36,8 +37,8 @@ const ASK_RANGE_OVER = 20;
 const RANGE_MAX = 40;
 
 const AI_OFF: Record<Exclude<AiKeyStatus['reason'], 'ok'>, string> = {
-  none: 'Yapay zekâ anahtarı tanımlı değil. Uygulama geliştiricisi Akademi → "Yapay zekâ" düğmesinden anahtarı girince PDF ve görseller Claude ile okunur.',
-  denied: 'Yapay zekâ bu hesabın rolünde kapalı.',
+  none: 'Yapay zekâ anahtarı henüz girilmedi; dosya yapay zekâsız okunur.',
+  denied: 'Yapay zekâ ile okuma yalnızca Kahve Operasyon Direktörü\'nde açık; dosya yapay zekâsız okundu.',
   offline: 'Yapay zekâ anahtarı okunamadı (bağlantı sorunu). Sayfayı yenileyip tekrar dene.'
 };
 
@@ -126,14 +127,14 @@ export const ImportLessonSheet: React.FC<{
     };
     try {
       if ((isPdf(file) || isImage(file)) && aiKey && useAi) {
-        const { lessonFromFileWithAI } = await import('../../lib/aiLesson');
+        const { lessonFromFileWithAI } = await loadChunk(() => import('../../lib/aiLesson'));
         finish(await lessonFromFileWithAI(file, aiKey, {
           moduleTitle,
           existingTitles: moduleLessons.map((l) => l.title),
           pages: pdfRange ? { ...pdfRange, total } : undefined
         }, setProgress));
       } else if (isPdf(file)) {
-        const { extractPdf } = await import('../../lib/pdfText');
+        const { extractPdf } = await loadChunk(() => import('../../lib/pdfText'));
         const read = await extractPdf(file, pdfRange, setProgress);
         const text = read.lines.length ? pdfLinesToLessons(read.lines, read.to - read.from + 1, base) : { lessons: [], warnings: [] };
         const warnings = [...text.warnings];
@@ -147,7 +148,7 @@ export const ImportLessonSheet: React.FC<{
         if (ai && ai.reason !== 'ok') warnings.push(`${AI_OFF[ai.reason]} Bu yüzden dersler kaynağın dilinde kaldı, sorular yalnızca metindeki ölçü ve adımlardan üretildi.`);
         finish({ lessons: all, warnings });
       } else if (isImage(file)) {
-        const { ocrPage } = await import('../../lib/pdfText');
+        const { ocrPage } = await loadChunk(() => import('../../lib/pdfText'));
         const o = ocrLessons([await ocrPage(file, setProgress)], base);
         finish({ lessons: o.lessons, warnings: [o.warning] });
       } else {
@@ -168,7 +169,7 @@ export const ImportLessonSheet: React.FC<{
       setBusy(true);
       setProgress('PDF açılıyor…');
       try {
-        const { pdfPageCount } = await import('../../lib/pdfText');
+        const { pdfPageCount } = await loadChunk(() => import('../../lib/pdfText'));
         const pages = await pdfPageCount(file);
         if (pages > ASK_RANGE_OVER) {
           setRange({ from: 1, to: ASK_RANGE_OVER });

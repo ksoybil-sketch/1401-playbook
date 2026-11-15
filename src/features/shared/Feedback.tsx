@@ -5,11 +5,12 @@ import { errorText } from '../../api/backend';
 import { useSession } from '../../store/session';
 import { MediaInput } from '../staff/MediaInput';
 import { Icon } from '../../ui/Icon';
-import { Sheet, Spinner, ErrorText, toast, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
+import { Sheet, Spinner, ErrorText, toast, sendOrQueue, QUEUED_TEXT, MAX, CharCount } from '../../ui/kit';
 import { authorName } from '../../lib/roles';
 import * as t from '../../ui/tokens';
 import type { FeedbackKind } from '../../../shared/types';
 import { APP_VERSION, bundleName } from '../../lib/version';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * "Bir sorun var / Önerim var" — uygulamanın her yerinden iki dokunuşla
@@ -48,6 +49,7 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
   const send = async () => {
     if (!who) return;
     if (text.trim().length < 5) return setError('Kısaca ne olduğunu yaz.');
+    if (blockedReadOnly()) return;
     setBusy(true);
     setError(null);
     try {
@@ -85,8 +87,10 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
       </div>
       {lessonTitle && <p className="text-[13px] text-fg-2">Konu: <b>{lessonTitle}</b></p>}
       {questionPrompt && <p className="text-[13px] text-fg-2">Soru: <b>{questionPrompt}</b></p>}
-      <textarea className={`${t.textarea} min-h-28`} value={text} onChange={(e) => setText(e.target.value)}
+      {/* Eskiden 2.000'den uzunu sessizce kesiliyordu: alan sınırlı, sayaç görünür. */}
+      <textarea className={`${t.textarea} min-h-28`} value={text} maxLength={MAX.text} onChange={(e) => setText(e.target.value)}
         placeholder={kind === 'icerik' ? '12 oz\'da süt 270 ml yazıyor, kitapçıkta 250 ml…' : kind === 'oneri' ? 'Şöyle olsa daha kolay olurdu…' : 'Ne yapıyordun, ne oldu?'} />
+      <CharCount value={text} max={MAX.text} />
       <div className={t.field}><span className={t.label}>Ekran görüntüsü (isteğe bağlı)</span>
         <MediaInput url={image} kind="image" onChange={setImage} placeholder="Fotoğraf ya da ekran görüntüsü" /></div>
       <ErrorText>{error}</ErrorText>

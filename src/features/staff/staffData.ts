@@ -5,6 +5,7 @@ import {
   type DocumentData, type Query, type QueryFieldFilterConstraint
 } from 'firebase/firestore';
 import { db } from '../../api/firebase';
+import { dayStartOf } from '../../lib/day';
 import type { Assignment, Attempt, Barista, Progress, Proposal, StoreRequest } from '../../../shared/types';
 import { DELETED_MODULES, type ExamAgg, type ExamStats } from '../../lib/boardStats';
 export type { ExamAgg, ExamStats } from '../../lib/boardStats';
@@ -182,7 +183,7 @@ export function invalidate(prefix: string) {
 const read = async <T,>(q: Query<DocumentData>) => docs<T>(await getDocs(q));
 
 /** Gün başına yuvarlanmış zaman: önbellek anahtarı gün içinde aynı kalsın. */
-export const dayStart = (ms: number) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+export const dayStart = (ms: number) => dayStartOf(ms);
 
 /** `from`dan bu yana teslim edilmiş bütün sınavlar (tek seferlik). */
 export const loadExamsSince = (from: number) =>
@@ -267,6 +268,9 @@ export function useQuestionCounts(moduleIds: string[]) {
 const aggOf = (exams: number, passed: number, total: number): ExamAgg =>
   ({ exams, passed, sum: total, avgScore: exams ? Math.round(total / exams) : null });
 
+/** Birkaç özetin toplamı. */
+const mergeAgg = (xs: ExamAgg[]): ExamAgg => aggOf(xs.reduce((s, x) => s + x.exams, 0), xs.reduce((s, x) => s + x.passed, 0), xs.reduce((s, x) => s + x.sum, 0));
+
 /** Belgelerden aynı özet (dizin yoksa yedek yol). İptal ve mini sınav hariç. */
 export function aggOfDocs(list: Attempt[]): ExamAgg {
   const xs = list.filter((a) => a.submittedAt && !a.voided && !a.lessonId);
@@ -305,18 +309,22 @@ export const loadExamAgg = (from: number, to: number | null) => examAggWhere([],
 export interface OverviewExams { total: ExamAgg; mini: number; byStore: Record<string, ExamAgg> }
 export async function loadOverviewExams(from: number, storeIds: string[]): Promise<OverviewExams> {
   try {
-    const [total, all, ...stores] = await Promise.all([
-      examAggWhere([], from, null),
+    // Toplam = aktif mağaza satırlarının toplamı (H7): pasif mağazanın
+    // sınavları satırlarda yokken toplamda sayılıyordu. Mini sınav sayısı tek
+    // toplama sorgusuyla bütün mağazalardan (mağaza başına ayrı sorgu kotayı ikiye katlar).
+    const [totalAll, all, ...stores] = await Promise.all([
+      examAggWhere([], from, null, false),
       // Mini sınavlar dahil, iptaller hariç (sum('score') iptali dışarıda bırakır).
       getAggregateFromServer(query(collection(db, 'attempts'), where('submittedAt', '>=', from)), { n: count(), s: sum('score') }),
       ...storeIds.map((id) => examAggWhere([where('storeId', '==', id)], from, null))
     ]);
-    return { total, mini: Math.max(0, all.data().n - total.exams), byStore: Object.fromEntries(storeIds.map((id, i) => [id, stores[i]])) };
+    const total = mergeAgg(stores);
+    return { total, mini: Math.max(0, all.data().n - totalAll.exams), byStore: Object.fromEntries(storeIds.map((id, i) => [id, stores[i]])) };
   } catch (e) {
     console.warn('[genel bakış] toplama sorgusu olmadı (dizin?), belgelerden hesaplanıyor', e);
     const docs = (await loadExamsSince(from)).filter((a) => !a.voided);
     return {
-      total: aggOfDocs(docs),
+      total: aggOfDocs(docs.filter((a) => storeIds.includes(a.storeId))),
       mini: docs.filter((a) => !!a.lessonId).length,
       byStore: Object.fromEntries(storeIds.map((id) => [id, aggOfDocs(docs.filter((a) => a.storeId === id))]))
     };

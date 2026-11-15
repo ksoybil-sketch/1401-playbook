@@ -1,0 +1,23 @@
+// U2'nin hata metni (eski sekme, tembel parça silinmiş) + "Dosyadan ders" (PDF parçası)
+import { chromium, ready, STAFF, save } from './lib.mjs';
+const S = '/private/tmp/claude-501/-Users-kutays-Desktop-Projects-1401-Playbook/3b587317-47ad-4c62-b2ce-6ae7edec1428/scratchpad';
+const P = 'http://localhost:5180';
+const deploy = (d) => fetch(`${P}/__deploy?dir=${S}/${d}`).then((r) => r.text());
+await deploy('buildA');
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'tr-TR' });
+const page = await ctx.newPage();
+const [email, pw] = STAFF.director;
+await page.goto(P + '/#/yonetici-girisi');
+await page.locator('input[type=email]').fill(email); await page.locator('input[type=password]').fill(pw);
+await page.getByRole('button', { name: 'Giriş yap' }).click();
+await page.waitForURL((u) => !u.hash.includes('yonetici-girisi'), { timeout: 30000 }); await ready(page, 45000);
+await page.goto(P + '/#/icerik'); await ready(page); await page.waitForTimeout(1500);
+await deploy('buildB');
+await page.getByRole('button', { name: /Müfredatı güncelle/ }).first().click();
+await page.waitForTimeout(4000);
+const t = await page.locator('[role=dialog]').innerText();
+const err = t.split('\n').filter((l) => /fail|module|yüklen|hata|bağlant|import/i.test(l));
+console.log('hata satırı:', JSON.stringify(err));
+save('guncelleme-u2.json', { err });
+await browser.close();

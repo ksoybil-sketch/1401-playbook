@@ -51,12 +51,36 @@ export function useBackHandler(active: boolean, handler: Handler) {
   }, [active]);
 }
 
+/**
+ * Web'de taban kaydın sıra damgası (history.state.campusSeq, bkz. lib/webHistory). Tarayıcının geri düğmesi bu
+ * sıradan geriye gidince ileri itilir (bkz. lib/webHistory): çıkıştan sonra
+ * geri düğmesi önceki kişinin adresine dönüyor, o adres bir sonraki girişe
+ * taşınıyordu. Sekme yenilenince de bilinsin diye sessionStorage'da tutulur.
+ */
+const FLOOR_KEY = 'campusFloorIdx';
+let floorIdx: number | null = null;
+export function backFloorIdx(): number | null {
+  if (floorIdx !== null) return floorIdx;
+  try { const v = sessionStorage.getItem(FLOOR_KEY); floorIdx = v === null ? null : Number(v); } catch { /* yok say */ }
+  return Number.isFinite(floorIdx) ? floorIdx : null;
+}
+
+/** Kendi gönderdiğimiz popstate olayı: web geçmiş bekçisi karışmasın. */
+export const popBypass = { on: false };
+
 /** Çıkışta çağrılır: adres köke döner, önceki ekranlara geri tuşuyla dönülmez. */
 export function resetBackHistory() {
   try {
     const state = { ...((window.history.state as Record<string, unknown> | null) || {}), [FLOOR]: true };
     window.history.replaceState(state, '', '#/');
-    window.dispatchEvent(new PopStateEvent('popstate', { state }));
+    // Sıra damgası (web): router'ın idx'i adres çubuğundan açılan kayıtlarda yok.
+    const idx = (state as Record<string, unknown>).campusSeq;
+    if (typeof idx === 'number') {
+      floorIdx = idx;
+      try { sessionStorage.setItem(FLOOR_KEY, String(idx)); } catch { /* yok say */ }
+    }
+    popBypass.on = true;
+    try { window.dispatchEvent(new PopStateEvent('popstate', { state })); } finally { popBypass.on = false; }
   } catch { /* yok say */ }
 }
 

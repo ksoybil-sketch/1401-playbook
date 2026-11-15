@@ -5,6 +5,7 @@ import { useSession } from '../store/session';
 import { useContent } from '../store/content';
 import { allowed, domainOf } from '../lib/permissions';
 import { authorName } from '../lib/roles';
+import { serverNow } from '../lib/serverTime';
 import type { ChangeOp, Proposal, ProposalKind, StaffRole } from '../../shared/types';
 
 /**
@@ -52,6 +53,61 @@ const nameOf = (s: ReturnType<typeof staff>) => authorName(s.role, s.name);
  *   - B17: aynı dersi/bülteni iki kişi düzenleyince sonraki öncekini siliyordu.
  */
 const VERSIONED = new Set<ChangeOp['col']>(['lessons', 'modules', 'tracks', 'questions', 'bulletins']);
+
+/* ------------------------------------------------------------------ */
+/* İzinli işlemler: beyaz liste (güvenlik raporu K-1)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Öneri ve onay yoluyla yazılabilen koleksiyonlar. Liste dışı her şey
+ * reddedilir (varsayılan: reddet). Öneri belgesindeki `ops` istemciden
+ * geldiği için tipine güvenilmez: bir ekip üyesi masum görünen bir ders
+ * önerisine `config/permissions` ya da `users/<kendisi>` yazımı gizleyip
+ * direktörün "Yayınla"sıyla kendi yetkisini yükseltebiliyordu. Yazım
+ * onaylayanın yetkisiyle yürüdüğü için kurallar bunu ayırt edemez; asıl
+ * kapı burası (bkz. firestore.rules proposals açıklaması).
+ *   - Görev (assignments) yalnızca "Yeni ürün" akışında, yeni belge olarak.
+ */
+export const CHANGE_COLLECTIONS: readonly ChangeOp['col'][] = ['lessons', 'modules', 'tracks', 'questions', 'bulletins', 'assignments'];
+const COLS = new Set<string>(CHANGE_COLLECTIONS);
+const OPS = new Set<string>(['set', 'update', 'delete']);
+
+/** İşlem tanınıyor mu: izinli koleksiyon, bilinen işlem, düz kimlik ve veri. */
+export function isKnownOp(o: unknown): o is ChangeOp {
+  if (!o || typeof o !== 'object') return false;
+  const x = o as Record<string, unknown>;
+  if (typeof x.col !== 'string' || !COLS.has(x.col)) return false;
+  if (typeof x.op !== 'string' || !OPS.has(x.op)) return false;
+  // Kimlik tek bir belge adı olmalı: "/" alt koleksiyona, "."/".." başka yola kaçar.
+  if (typeof x.id !== 'string' || !x.id || x.id.length > 200 || x.id.includes('/') || x.id === '.' || x.id === '..' || /^__.*__$/.test(x.id)) return false;
+  if (x.data !== undefined && (x.data === null || typeof x.data !== 'object' || Array.isArray(x.data))) return false;
+  // Görev yalnızca yeni ürün akışında oluşturulur; öneriyle görev silinmez/değiştirilmez.
+  if (x.col === 'assignments' && x.op !== 'set') return false;
+  // Güncellemede "a.b" biçimli alan yolu başka belgeye yazamaz ama iç alanlara
+  // dokunur; içerik editörleri bunu kullanmıyor, kabul edilmez.
+  if (x.op === 'update' && x.data && Object.keys(x.data).some((k) => k.includes('.'))) return false;
+  return true;
+}
+
+/** Tanınmayan işlemler (boşsa hepsi tanınıyor). */
+export function unknownOps(ops: unknown): unknown[] {
+  return Array.isArray(ops) ? ops.filter((o) => !isKnownOp(o)) : [ops];
+}
+
+/** Hepsi tanınıyor mu (liste değilse hayır). */
+export const allKnownOps = (ops: unknown): ops is ChangeOp[] => Array.isArray(ops) && ops.every(isKnownOp);
+
+/** Tanınmayan işlem içeren öneri yayınlanamaz, öneri olarak da kaydedilemez. */
+export class UnknownOpError extends Error {
+  constructor() {
+    super('Bu öneride uygulamanın tanımadığı bir değişiklik var (içerik dışı bir kayda yazım). Güvenlik nedeniyle yayınlanamaz; öneriyi reddet.');
+    this.name = 'UnknownOpError';
+  }
+}
+function assertKnown(ops: unknown): asserts ops is ChangeOp[] {
+  if (!allKnownOps(ops)) throw new UnknownOpError();
+}
+
 /** Sürüm haritasının anahtarı. */
 export const versionKey = (col: string, id: string) => `${col}:${id}`;
 /** Belgenin sürümü: updatedAt (yoksa 0); belge yoksa null. */
@@ -103,6 +159,8 @@ async function baseVersions(ops: ChangeOp[], known?: Versions): Promise<Versions
  * sunucu tarafında da denetler.
  */
 function opAllowed(role: StaffRole, o: ChangeOp, all: ChangeOp[]): boolean {
+  // Varsayılan reddet: tanınmayan koleksiyon/işlem asla "yayınlanabilir içerik" sayılmaz.
+  if (!isKnownOp(o)) return false;
   if (o.col === 'assignments') return allowed(role, 'gorevAtama');
   if (o.col === 'bulletins') return allowed(role, 'bultenYayin');
   const may = allowed(role, 'icerikYayin') || (o.col === 'questions' && allowed(role, 'soruDuzelt'));
@@ -125,7 +183,7 @@ function opAllowed(role: StaffRole, o: ChangeOp, all: ChangeOp[]): boolean {
 
 export function canPublishOps(ops: ChangeOp[]): boolean {
   const s = useSession.getState().session;
-  return s.kind === 'staff' && ops.length > 0 && ops.every((o) => opAllowed(s.role, o, ops));
+  return s.kind === 'staff' && allKnownOps(ops) && ops.length > 0 && ops.every((o) => opAllowed(s.role, o, ops));
 }
 
 /** Yayınlama yetkisi var mı. Hedef verilirse (ör. bir ders) alan sınırına da bakar. */
@@ -147,6 +205,8 @@ interface Writer {
   delete(ref: DocumentReference): unknown;
 }
 function writeOps(wb: WriteBatch | Transaction, ops: ChangeOp[], now: number) {
+  // Son kapı: yazımdan hemen önce bir kez daha (çağıran unutsa da).
+  assertKnown(ops);
   const w = wb as unknown as Writer;
   for (const o of ops) {
     const ref = doc(db, o.col, o.id);
@@ -160,7 +220,7 @@ function writeOps(wb: WriteBatch | Transaction, ops: ChangeOp[], now: number) {
 
 export async function applyOps(ops: ChangeOp[]): Promise<void> {
   const batch = writeBatch(db);
-  writeOps(batch, ops, Date.now());
+  writeOps(batch, ops, serverNow());
   await batch.commit();
 }
 
@@ -201,7 +261,7 @@ async function applyChecked(ops: ChangeOp[], base: Versions | null, extra: { ref
               ? String(d?.title || d?.prompt || o.data?.title || o.data?.prompt || '').slice(0, 60) || 'kayıt' : null;
           }).filter((x): x is string => !!x);
           if (stale.length) throw new StaleError(stale);
-          writeOps(tx, ops, Date.now());
+          writeOps(tx, ops, serverNow());
           if (extra) tx.update(extra.ref, extra.data);
         }),
         new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), TX_TIMEOUT_MS); })
@@ -220,7 +280,7 @@ async function applyChecked(ops: ChangeOp[], base: Versions | null, extra: { ref
     if (stale.length) throw new StaleError(stale);
   }
   const batch = writeBatch(db);
-  writeOps(batch, ops, Date.now());
+  writeOps(batch, ops, serverNow());
   if (extra) batch.update(extra.ref, extra.data);
   const p = batch.commit();
   queued();
@@ -255,6 +315,8 @@ export async function commitChange(ops: ChangeOp[], meta: ChangeMeta, proposalId
 
 async function commitChangeInner(ops: ChangeOp[], meta: ChangeMeta, proposalId: string | null | undefined, opts: CommitOptions, queued: () => void): Promise<ChangeResult> {
   const s = staff();
+  // Ne yayınlanır ne de öneri olarak kaydedilir: önce tanınıyor mu.
+  assertKnown(ops);
   const data = clean(ops);
   // Öneri üzerinde çalışılıyorsa önce öneriyi oku: kimin, hangi sürüme göre yapıldığı.
   const proposal = proposalId
@@ -323,13 +385,14 @@ export let lastProposalId: string | null = null;
  * öneriden sonra değiştiyse StaleError atar; force ile yine de yayınlanır.
  */
 export async function approveProposal(p: Proposal, force = false): Promise<void> {
+  assertKnown(p.ops);
   if (!canPublishOps(p.ops)) throw new Error('Bu öneri senin yetki alanının dışında; Kahve Operasyon Direktörü onaylayabilir.');
   await commitChange(p.ops, { kind: p.kind, title: p.title, summary: p.summary }, p.id, { force });
 }
 
 /** Önerinin hedef belgelerinden öneriden sonra değişenlerin başlıkları (boşsa güncel). */
 export async function proposalStale(p: ProposalDoc): Promise<string[]> {
-  return p.baseUpdatedAt ? staleTitles(p.ops, p.baseUpdatedAt) : [];
+  return p.baseUpdatedAt && allKnownOps(p.ops) ? staleTitles(p.ops, p.baseUpdatedAt) : [];
 }
 
 export async function rejectProposal(p: Proposal, note: string): Promise<void> {

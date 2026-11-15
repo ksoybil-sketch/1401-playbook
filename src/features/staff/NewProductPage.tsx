@@ -9,13 +9,13 @@ import { useStaffSession } from './StaffLayout';
 import { BlockEditor } from './ContentPages';
 import { MediaInput } from './MediaInput';
 import { Icon } from '../../ui/Icon';
-import { Page, PageTitle, Section, ErrorText, Spinner, toast } from '../../ui/kit';
+import { Page, PageTitle, Section, ErrorText, Spinner, toast, MAX } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { BulletinKind, ChangeOp, LessonBlock } from '../../../shared/types';
 import { useUnsavedGuard } from '../../lib/unsaved';
 import { allowed } from '../../lib/permissions';
 import { authorName } from '../../lib/roles';
-import { localDay } from '../../lib/day';
+import { localDay, localDayStart, TZ } from '../../lib/day';
 import { useStaffData } from './staffData';
 
 /**
@@ -99,7 +99,7 @@ export const NewProductPage: React.FC = () => {
   // Mini sınav ve bülten metni, elle değiştirilmedikçe reçeteyle birlikte güncellenir.
   const auto = useMemo(() => draftQuiz(name, cup.layers, steps), [name, cup.layers, stepsText]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!quizTouched) setQuiz(auto); }, [auto, quizTouched]);
-  const dueText = due ? new Date(`${due}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '';
+  const dueText = due ? new Date((localDayStart(due) ?? Date.now()) + 12 * 3600000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', timeZone: TZ }) : '';
   useEffect(() => {
     if (bTouched) return;
     const n = name.trim() || 'Yeni ürün';
@@ -179,7 +179,7 @@ export const NewProductPage: React.FC = () => {
       <Section label="1 · Ürün">
         <div className={`${t.card} ${t.cardPad} flex flex-col gap-3`}>
           <label className={t.field}><span className={t.label}>Ürün adı</span>
-            <input className={t.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ör. Chestnut Latte" /></label>
+            <input className={t.input} value={name} maxLength={MAX.name} onChange={(e) => setName(e.target.value)} placeholder="Ör. Chestnut Latte" /></label>
           <label className={t.field}><span className={t.label}>Kategori</span>
             <select className={t.input} value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
               <option value="">Seç…</option>
@@ -239,8 +239,8 @@ export const NewProductPage: React.FC = () => {
               <select className={t.input} value={bKind} onChange={(e) => setBKind(e.target.value as BulletinKind)}>
                 <option value="kampanya">Kampanya</option><option value="duyuru">Duyuru</option>
               </select>
-              <input className={t.input} value={bTitle} onChange={(e) => { setBTouched(true); setBTitle(e.target.value); }} />
-              <textarea className={`${t.textarea} min-h-28`} value={bBody} onChange={(e) => { setBTouched(true); setBBody(e.target.value); }} />
+              <input className={t.input} value={bTitle} maxLength={MAX.title} onChange={(e) => { setBTouched(true); setBTitle(e.target.value); }} />
+              <textarea className={`${t.textarea} min-h-28`} value={bBody} maxLength={MAX.long} onChange={(e) => { setBTouched(true); setBBody(e.target.value); }} />
               <label className={t.field}><span className={t.label}>Kampanya bitişi (isteğe bağlı)</span>
                 <input type="date" className={t.input} value={bUntil} onChange={(e) => setBUntil(e.target.value)} /></label>
             </>

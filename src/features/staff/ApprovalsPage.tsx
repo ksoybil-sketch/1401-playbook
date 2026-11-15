@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
-import { approveProposal, canPublishOps, proposalStale, rejectProposal, StaleError, withdrawProposal, type ProposalDoc } from '../../api/changes';
+import { allKnownOps, approveProposal, canPublishOps, isKnownOp, proposalStale, rejectProposal, StaleError, withdrawProposal, type ProposalDoc } from '../../api/changes';
 import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { authorName, can } from '../../lib/roles';
@@ -84,6 +84,7 @@ export const ApprovalsPage: React.FC = () => {
 
   /** Öneriyi kendi editöründe aç: ders ayrı sayfada, diğerleri sayfa üstünde. */
   const edit = (p: Proposal) => {
+    if (!allKnownOps(p.ops)) return;
     const op = p.ops.find((o) => o.col === 'lessons' && o.op !== 'delete') || p.ops.find((o) => o.op !== 'delete');
     if (!op) return;
     setDetail(null);
@@ -92,9 +93,9 @@ export const ApprovalsPage: React.FC = () => {
   };
   // Ders önerisi (dosyadan gelen sorularıyla birlikte olabilir) ders
   // editöründe açılır; diğerleri tek belgelik değişiklikse kendi formunda.
-  const editable = (p: Proposal) =>
+  const editable = (p: Proposal) => allKnownOps(p.ops) && (
     p.kind === 'lesson' ? p.ops.some((o) => o.col === 'lessons' && o.op !== 'delete')
-      : p.kind !== 'order' && p.ops.length === 1 && p.ops[0].op !== 'delete';
+      : p.kind !== 'order' && p.ops.length === 1 && p.ops[0].op !== 'delete');
 
   return (
     <Page wide>
@@ -117,7 +118,9 @@ export const ApprovalsPage: React.FC = () => {
           <div className="flex flex-col gap-2.5">
             {list.map((p) => {
               const k = KIND[p.kind] ?? KIND.lesson;
-              const st = STATUS[p.status];
+              const st = STATUS[p.status] ?? STATUS.pending;
+              // İçerik dışı bir kayda yazım (ör. yetki ayarı, kullanıcı rolü) gizlenmiş öneri (K-1).
+              const unknown = !allKnownOps(p.ops);
               return (
                 <div key={p.id} className={`${t.card} p-4 flex flex-col gap-3`}>
                   <div className="flex items-start gap-3">
@@ -127,6 +130,7 @@ export const ApprovalsPage: React.FC = () => {
                         <span className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-fg-3">{k.label}</span>
                         <Badge tone={st.tone}>{st.label}</Badge>
                         {p.editedOnReview && <Badge>Düzeltilerek yayınlandı</Badge>}
+                        {unknown && <Badge tone="negative">Tanınmayan değişiklik</Badge>}
                       </div>
                       <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{p.title}</div>
                       <div className="text-[12px] text-fg-3 mt-0.5">
@@ -138,7 +142,13 @@ export const ApprovalsPage: React.FC = () => {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => setDetail(p)}><Icon name="search" size={13} /> Ne değişiyor</button>
-                    {p.status === 'pending' && approver && !canPublishOps(p.ops) && p.createdBy !== me.uid && (
+                    {p.status === 'pending' && approver && unknown && (
+                      <>
+                        <span className="text-[12.5px] text-negative self-center">İçerik dışı bir kayda yazım içeriyor: yayınlanamaz.</span>
+                        <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => setRejecting(p)}>Reddet</button>
+                      </>
+                    )}
+                    {p.status === 'pending' && approver && !unknown && !canPublishOps(p.ops) && p.createdBy !== me.uid && (
                       <span className="text-[12.5px] text-fg-3 self-center">Yetki alanınızın dışında: Kahve Operasyon Direktörü onaylar.</span>
                     )}
                     {p.status === 'pending' && approver && canPublishOps(p.ops) && (
@@ -150,7 +160,7 @@ export const ApprovalsPage: React.FC = () => {
                         </button>
                       </>
                     )}
-                    {p.status === 'pending' && !(approver && canPublishOps(p.ops)) && p.createdBy === me.uid && (
+                    {p.status === 'pending' && !(approver && (unknown || canPublishOps(p.ops))) && p.createdBy === me.uid && (
                       <>
                         {editable(p) && <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => edit(p)}><Icon name="edit" size={13} /> Düzenle</button>}
                         <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={async () => {
@@ -229,8 +239,10 @@ const DiffSheet: React.FC<{ p: Proposal | null; onClose: () => void; onPublish?:
     let alive = true;
     setLoading(true);
     setStale([]);
-    if (p.status === 'pending') proposalStale(p as ProposalDoc).then((x) => alive && setStale(x)).catch(() => {});
-    Promise.all(p.ops.map(async (o) => {
+    const ops: unknown[] = Array.isArray(p.ops) ? p.ops : [];
+    if (p.status === 'pending' && allKnownOps(ops)) proposalStale(p as ProposalDoc).then((x) => alive && setStale(x)).catch(() => {});
+    // Tanınmayan işlemin hedefi okunmaz (rastgele bir yol olabilir).
+    Promise.all(ops.filter(isKnownOp).map(async (o) => {
       const snap = await getDoc(doc(db, o.col, o.id)).catch(() => null);
       return [`${o.col}/${o.id}`, snap?.exists() ? (snap.data() as Record<string, unknown>) : null] as const;
     })).then((rows) => { if (alive) { setCurrent(Object.fromEntries(rows)); setLoading(false); } });
@@ -238,14 +250,16 @@ const DiffSheet: React.FC<{ p: Proposal | null; onClose: () => void; onPublish?:
   }, [p]);
 
   const lessonPreview = useMemo(() => {
-    const op = p?.ops.find((o) => o.col === 'lessons' && o.op === 'set');
+    const op = p && Array.isArray(p.ops) ? p.ops.filter(isKnownOp).find((o) => o.col === 'lessons' && o.op === 'set') : undefined;
     return op ? (op.data as unknown as Lesson) : null;
   }, [p]);
 
   if (!p) return null;
+  const ops: unknown[] = Array.isArray(p.ops) ? p.ops : [p.ops];
+  const unknown = !allKnownOps(p.ops);
   return (
     <Sheet open title="Ne değişiyor" onClose={onClose}
-      footer={onPublish && p.status === 'pending' ? (
+      footer={onPublish && p.status === 'pending' && !unknown ? (
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={() => onPublish(p)}>{busy ? <Spinner size={14} /> : 'Olduğu gibi yayınla'}</button>
       ) : undefined}>
       {stale.length > 0 && (
@@ -254,7 +268,27 @@ const DiffSheet: React.FC<{ p: Proposal | null; onClose: () => void; onPublish?:
           <span><strong>{stale.join(', ')}</strong> öneriden sonra değişti. Aşağıdaki fark şu anki hâline göre: üstü çizili olanlar yayında, öneri onları geri alır. Olduğu gibi yayınlarsan sonraki değişiklikler gider; istersen "Düzelt ve yayınla" ile birleştir.</span>
         </div>
       )}
-      {loading ? <Spinner /> : p.ops.map((o, i) => {
+      {unknown && (
+        <div className="flex gap-3 p-3.5 rounded-xl bg-negative-bg border border-negative-line text-[13px] leading-relaxed">
+          <Icon name="alert" size={16} className="text-negative mt-0.5 shrink-0" />
+          <span><strong>Bu öneri yayınlanamaz.</strong> İçinde uygulamanın tanımadığı, içerik dışı bir kayda (ör. yetki ayarları, kullanıcı rolü) yazım var; başlığı ve özeti ne derse desin. Öneriyi reddet ve durumu uygulama geliştiricisine bildir.</span>
+        </div>
+      )}
+      {loading ? <Spinner /> : ops.map((raw, i) => {
+        if (!isKnownOp(raw)) {
+          const x = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+          const keys = x.data && typeof x.data === 'object' ? Object.keys(x.data as object).slice(0, 8).join(', ') : '';
+          return (
+            <div key={i} className={`${t.card} p-3 flex flex-col gap-1 border-negative-line`}>
+              <div className="text-[12px] text-negative font-semibold">Tanınmayan işlem · yayınlanamaz</div>
+              <div className="text-[13px] break-all">
+                {String(x.op ?? '?').slice(0, 20)} · {String(x.col ?? '?').slice(0, 60)}/{String(x.id ?? '?').slice(0, 80)}
+                {keys && <span className="text-fg-3"> · alanlar: {keys}</span>}
+              </div>
+            </div>
+          );
+        }
+        const o = raw;
         const before = current[`${o.col}/${o.id}`];
         const changes: { k: string; a: unknown; b: unknown }[] = [];
         if (o.op !== 'delete') {

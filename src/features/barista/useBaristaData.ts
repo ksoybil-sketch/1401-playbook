@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { useContent } from '../../store/content';
 import { badgeReport, fromBarista, type BadgeReport } from '../../lib/badges';
 import { useBadgeConfig } from '../../store/badgeConfig';
+import { isReadOnly } from '../../lib/readOnly';
 
 type BaristaSession = Extract<ReturnType<typeof useSession.getState>['session'], { kind: 'barista' }>;
 let lastBarista: BaristaSession | null = null;
@@ -60,7 +61,8 @@ export function useMyBulletins(): { items: Bulletin[]; unread: number; loading: 
 
 /** Bülteni okundu olarak işaretler; zaten okunduysa hiçbir şey yazmaz. */
 export async function markBulletinRead(baristaId: string, bulletinId: string, already: boolean): Promise<void> {
-  if (already) return;
+  // Çevrimdışı (salt okunur) oturumda okundu bilgisi yazılmaz (H17).
+  if (already || isReadOnly()) return;
   await updateDoc(doc(db, 'progress', baristaId), {
     [`bulletins.${bulletinId}`]: Date.now(),
     updatedAt: Date.now()

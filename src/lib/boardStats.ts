@@ -16,6 +16,7 @@ export interface ExamStats {
 }
 /** Dönemde sınavı olup sonradan silinen modüllerin toplamı (uzun dönemde). */
 export const DELETED_MODULES = '__silinmis__';
+import { TZ, istParts, mondayOf, monthStartOf, yearStartOf } from './day';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from './progress';
 import { closedOf } from './requestStats';
 import { taskInvalidReason, taskTargets } from './taskValidity';
@@ -28,7 +29,7 @@ import { taskInvalidReason, taskTargets } from './taskValidity';
 
 const DAY = 86400000;
 
-export type PeriodId = '30' | '90' | 'ay' | 'gecen-ay' | 'yil';
+export type PeriodId = '30' | '90' | 'ay' | 'gecen-ay' | 'yil' | 'gecen-yil';
 export interface Period { id: PeriodId; from: number; to: number; label: string }
 
 export const PERIODS: { id: PeriodId; label: string }[] = [
@@ -36,23 +37,39 @@ export const PERIODS: { id: PeriodId; label: string }[] = [
   { id: '90', label: 'Son 90 gün' },
   { id: 'ay', label: 'Bu ay' },
   { id: 'gecen-ay', label: 'Geçen ay' },
-  { id: 'yil', label: 'Bu yıl' }
+  { id: 'yil', label: 'Bu yıl' },
+  // 1 Ocak'tan sonra geçen yılın yıllık raporu (karne, Excel) başka hiçbir dönemle alınamıyordu (H11).
+  { id: 'gecen-yil', label: 'Geçen yıl' }
 ];
 
+/** Dönem sınırları İstanbul takvimiyle (bkz. lib/day): telefonun saat dilimi sonucu değiştirmez. */
 export function periodOf(id: PeriodId, now = Date.now()): Period {
-  const d = new Date(now);
   const label = PERIODS.find((p) => p.id === id)?.label || '';
   switch (id) {
     case '90': return { id, from: now - 90 * DAY, to: now, label };
-    case 'ay': return { id, from: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), to: now, label };
+    case 'ay': return { id, from: monthStartOf(now), to: now, label };
     case 'gecen-ay': {
-      const from = new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime();
-      const to = new Date(d.getFullYear(), d.getMonth(), 1).getTime() - 1;
-      return { id, from, to, label: new Date(from).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }) };
+      const from = monthStartOf(now, -1);
+      const to = monthStartOf(now) - 1;
+      return { id, from, to, label: new Date(from).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric', timeZone: TZ }) };
     }
-    case 'yil': return { id, from: new Date(d.getFullYear(), 0, 1).getTime(), to: now, label };
+    case 'yil': return { id, from: yearStartOf(now), to: now, label };
+    case 'gecen-yil': {
+      const from = yearStartOf(now, -1);
+      return { id, from, to: yearStartOf(now) - 1, label: `${istParts(from).y} yılı` };
+    }
     default: return { id: '30', from: now - 30 * DAY, to: now, label };
   }
+}
+
+/**
+ * Yıl ya da ay yeni başladı (ilk 7 gün): "Bu yıl"/"Bu ay" birkaç günlük veriyi
+ * dönem özeti gibi gösteriyor; ekran geçen döneme bakmayı önerir.
+ */
+export function periodJustStarted(p: Period, now = Date.now()): PeriodId | null {
+  if (p.id === 'yil' && now - p.from < 7 * DAY) return 'gecen-yil';
+  if (p.id === 'ay' && now - p.from < 7 * DAY) return 'gecen-ay';
+  return null;
 }
 
 /** Aynı uzunlukta bir önceki dönem (karşılaştırma için). */
@@ -95,7 +112,7 @@ const fromAgg = (a: ExamAgg | undefined) => ({
 function overdueOf(c: BoardCtx, list: Assignment[], team?: Barista[]): number {
   let n = 0;
   for (const a of list) {
-    if (taskInvalidReason(a, { modules: c.modules, lessons: c.lessons, tracks: c.tracks, baristas: c.baristas })) continue;
+    if (taskInvalidReason(a, { modules: c.modules, lessons: c.lessons, tracks: c.tracks, baristas: c.baristas, stores: c.stores })) continue;
     for (const b of taskTargets(a, team || c.baristas)) if (isOverdue(a, assignmentDone(a, c.progress[b.id]))) n++;
   }
   return n;
@@ -228,8 +245,7 @@ export function modulePerformance(c: BoardCtx, p: Period) {
 
 /** Son N hafta: sınav ve talep akışı (pazartesi başlangıçlı). */
 export function weekly(c: BoardCtx, weeks = 12, now = Date.now()) {
-  const d = new Date(now);
-  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
+  const monday = mondayOf(now);
   return Array.from({ length: weeks }, (_, i) => {
     const from = monday - (weeks - 1 - i) * 7 * DAY;
     const p: Period = { id: '30', from, to: from + 7 * DAY - 1, label: '' };
@@ -314,7 +330,7 @@ export const forBoard = (r: StoreRequest) => r.category !== 'personel';
 
 /** Saate göre selam ve hitap: "İyi akşamlar, Ogün Bey". Baş harf (R.) atlanır. */
 export function greeting(name: string, now = new Date()): string {
-  const h = now.getHours();
+  const h = istParts(now.getTime()).h;
   const hello = h >= 5 && h < 11 ? 'Günaydın' : h >= 11 && h < 17 ? 'İyi günler' : h >= 17 && h < 22 ? 'İyi akşamlar' : 'İyi geceler';
   const first = name.split(/\s+/).find((w) => w && !w.endsWith('.')) || name;
   return `${hello}, ${first} Bey`;

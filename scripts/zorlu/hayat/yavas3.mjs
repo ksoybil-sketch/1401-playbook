@@ -1,0 +1,26 @@
+// Yavaş 3G + 4x: ikinci barista girişi (sıcak önbellek) ve uygulama yeniden açılınca giriş.
+import { chromium, save, ready, EK } from './lib.mjs';
+const P = 'http://localhost:5180';
+const res = {};
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'tr-TR', isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+await ctx.addInitScript((d) => { try { if (!localStorage.getItem('CapacitorStorage.playbook.device.v2')) localStorage.setItem('CapacitorStorage.playbook.device.v2', JSON.stringify(d)); } catch {} }, EK.kalDevice);
+const page = await ctx.newPage();
+const cdp = await ctx.newCDPSession(page);
+await cdp.send('Network.enable');
+let wire = 0; cdp.on('Network.dataReceived', (e) => { wire += e.encodedDataLength; });
+const throttle = async (on) => { await cdp.send('Network.emulateNetworkConditions', on ? { offline: false, latency: 400, downloadThroughput: 50000, uploadThroughput: 50000 } : { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); await cdp.send('Emulation.setCPUThrottlingRate', { rate: on ? 4 : 1 }); };
+const pad = async (d) => { for (const c of d) await page.getByRole('button', { name: c, exact: true }).click(); };
+const login = async (name) => { await page.getByText('Kim çalışıyor?').waitFor({ timeout: 180000 }); const t = Date.now(); wire = 0; await page.getByRole('button', { name: new RegExp(name) }).first().click(); await pad('1925'); await page.getByText('Çıkış').first().waitFor({ timeout: 240000 }); await ready(page, 240000); return { ms: Date.now() - t, kb: Math.round(wire / 1024) }; };
+await throttle(false);
+await page.goto(P + '/#/'); await page.getByText('Kim çalışıyor?').waitFor({ timeout: 60000 });
+await throttle(true);
+res.ilkGiris = await login('Öykü Doğan');
+await page.getByRole('button', { name: 'Çıkış' }).first().click();
+res.ikinciGiris = await login('Yiğit Kaya');
+await page.getByRole('button', { name: 'Çıkış' }).first().click();
+await page.getByText('Kim çalışıyor?').waitFor({ timeout: 120000 });
+await page.reload(); 
+res.yenidenAcilisSonrasiGiris = await login('Damla Kılıç');
+console.log(JSON.stringify(res)); save('yavas3-kalabalik.json', res);
+await browser.close(); process.exit(0);

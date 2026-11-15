@@ -5,6 +5,10 @@ import { useBaristaSession } from './useBaristaData';
 import { Icon } from '../../ui/Icon';
 import { Sheet, Spinner, ErrorText, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
+import { blockedReadOnly } from '../../lib/readOnly';
+import { rememberPin } from '../../lib/offlineLogin';
+import { useSession } from '../../store/session';
+import { auth } from '../../api/firebase';
 
 /**
  * "Ben" sekmesi: PIN değiştir. Eski PIN → yeni PIN → yeni PIN tekrar.
@@ -26,7 +30,7 @@ export const ChangePinRow: React.FC = () => {
 
   const onComplete = async (v: string) => {
     setError(null);
-    if (step === 'old') { setOldPin(v); setStep('new'); return; }
+    if (step === 'old') { if (blockedReadOnly()) return; setOldPin(v); setStep('new'); return; }
     if (step === 'new') {
       if (v === oldPin) return fail('Yeni PIN eskisiyle aynı olamaz.', 'new');
       if (weakPin(v)) return fail('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'new');
@@ -36,6 +40,10 @@ export const ChangePinRow: React.FC = () => {
     setBusy(true);
     try {
       await backend.changeOwnPin(s.baristaId, oldPin, newPin);
+      // Çevrimdışı giriş özeti yeni PIN'le (yalnızca eşleşmiş mağaza telefonunda; H17).
+      const dev = useSession.getState().device;
+      const email = auth.currentUser?.email;
+      if (dev && email && dev.storeId === s.storeId) void rememberPin({ id: s.baristaId, authEmail: email, storeId: s.storeId }, newPin, dev.password).catch(() => {});
       toast('PIN değişti. Bir sonraki girişte yeni PIN\'ini kullan.', 'positive');
       setBusy(false);
       close();

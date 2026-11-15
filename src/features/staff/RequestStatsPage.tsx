@@ -79,11 +79,12 @@ export const RequestStatsPage: React.FC = () => {
             <Section label="Neyi beklerken zaman kaybediyoruz">
               <div className={`${t.card} ${t.cardPad} flex flex-col gap-3`}>
                 {s.waits.length === 0 ? <p className="text-[13px] text-fg-3">Henüz bekleme nedeni girilmedi. Talebi işleme alırken "Şu an neyi bekliyor?" seçilir.</p> : s.waits.map((w) => (
-                  <div key={w.key} className="flex items-center gap-3 text-[13px]">
-                    <span className="w-44 text-fg-2 truncate">{w.key === 'yok' ? 'Neden girilmemiş' : reasonLabel(w.key)}</span>
+                  // Telefonda etiket üst satırda tam görünür (360 px'te kesiliyordu); süre ve sayı tek satır.
+                  <div key={w.key} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+                    <span className="basis-full sm:basis-auto sm:w-44 sm:shrink-0 text-fg-2 sm:truncate">{w.key === 'yok' ? 'Neden girilmemiş' : reasonLabel(w.key)}</span>
                     <Bar value={w.ms} max={maxWait} tone={w.key === 'yok' ? 'bg-fg-3' : 'bg-caution'} />
-                    <span className="w-24 text-right tnum">{fmtDur(w.ms)}</span>
-                    <span className="w-14 text-right text-fg-3 tnum">{w.requests} talep</span>
+                    <span className="shrink-0 sm:w-24 text-right tnum whitespace-nowrap">{fmtDur(w.ms)}</span>
+                    <span className="shrink-0 sm:w-14 text-right text-fg-3 tnum whitespace-nowrap">{w.requests} talep</span>
                   </div>
                 ))}
                 <p className="text-[12px] text-fg-3">Toplam bekleme süresi. Onaydaki talepler, neden seçilmediyse "Direktör onayı" sayılır.</p>
