@@ -6,6 +6,8 @@ export interface Live<T> {
   data: T;
   loading: boolean;
   error: string | null;
+  /** Son anlık görüntü sunucudan mı geldi (cihaz önbelleği değil). */
+  fromServer?: boolean;
 }
 
 /**
@@ -23,7 +25,7 @@ export function useQueryLive<T>(q: Query<DocumentData> | null, key: string): Liv
     setState((s) => ({ ...s, loading: true }));
     return onSnapshot(
       q,
-      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T), loading: false, error: null }),
+      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T), loading: false, error: null, fromServer: !snap.metadata.fromCache }),
       (err) => { console.error('[useQueryLive]', key, err); setState({ data: [], loading: false, error: err.message }); }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps

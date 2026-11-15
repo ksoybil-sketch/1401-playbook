@@ -58,6 +58,8 @@ export async function createRequest(input: {
   storeId: string; storeName: string; category: RequestCategory; priority: RequestPriority;
   title: string; detail: string; imageUrl?: string; equipment?: string;
   by: { uid: string; name: string };
+  /** Kişiye bağlı talep (PIN sıfırlama): o kişi kodu kullanınca kapanır. */
+  subjectBaristaId?: string;
 }): Promise<string> {
   const now = Date.now();
   const data: Omit<StoreRequest, 'id'> = {
@@ -65,6 +67,7 @@ export async function createRequest(input: {
     title: input.title.trim(), detail: input.detail.trim(),
     ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
     ...(input.equipment ? { equipment: input.equipment } : {}),
+    ...(input.subjectBaristaId ? { subjectBaristaId: input.subjectBaristaId } : {}),
     status: 'open', notes: [], createdAt: now, createdBy: input.by.uid, createdByName: input.by.name,
     updatedAt: now, lastSide: 'store', closedAt: null
   };

@@ -5,6 +5,7 @@ import { Icon } from '../../ui/Icon';
 import { Avatar, Badge, Spinner, toast, fmtDateTime, MAX, CharCount } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { RequestRejectReason, RequestStatus, RequestWaitReason, StoreRequest } from '../../../shared/types';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * Bir talebin kartı ve yazışması — mağaza ve Kahve Operasyonu aynı
@@ -107,6 +108,7 @@ export const RequestThread: React.FC<{
 
   /** Bekleme nedeni: yalnızca neden değişir, durum ve mağaza tarafı aynı kalır. */
   const setWait = async (reason: RequestWaitReason) => {
+    if (blockedReadOnly()) return;
     setBusy('reason');
     try { await addNote(r, { side, by: me, text: '', reason }); }
     catch (e) { toast(errorText(e), 'negative'); }
@@ -120,6 +122,7 @@ export const RequestThread: React.FC<{
       if (!rejectReason) { toast('Red nedenini seç.', 'negative'); return; }
       if (!text.trim()) { toast('Reddederken mağazaya kısaca açıkla.', 'negative'); return; }
     }
+    if (blockedReadOnly()) return;
     setBusy(status || 'send');
     try {
       await addNote(r, { side, by: me, text, status, reason: status === 'rejected' ? rejectReason || null : undefined });

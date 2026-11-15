@@ -29,7 +29,26 @@ service cloud.firestore {
      * bununla "erişimin kaldırıldı" deyip oturumu kapatır), ilk kurulum
      * (bootstrap) ve hata kaydı.
      */
-    function isActive() { return signedIn() && me().get('active', false) == true; }
+    //
+    // Pasif mağaza tamamen kapalıdır (H7, 15.11.2026 kullanıcı kararı): mağaza
+    // telefonu ve o mağazanın baristaları hiçbir şey okuyup yazamaz. Kendi
+    // users belgesi ve kendi mağaza belgesi okunur (uygulama "mağaza pasif"
+    // ekranını gösterir). Mağaza belgesi yoksa (eski kayıt) açık sayılır.
+    function isActive() {
+      return signedIn() && me().get('active', false) == true
+        && (!(me().get('role', '') in ['store', 'barista', 'lead', 'shift']) || storeOpen(me().get('storeId', '')));
+    }
+    function storeOpen(sid) {
+      let p = /databases/$(database)/documents/stores/$(sid);
+      return !exists(p) || get(p).data.get('active', true) != false;
+    }
+    /**
+     * Sunucu saatine yakın zaman (ms, ± tol). Telefonun saati yanlış olsa da
+     * kayıtlara sunucu saati yazılsın (H1, H2; istemci lib/serverTime.ts ile düzeltir).
+     */
+    function nearNow(t, tol) {
+      return t is number && t >= request.time.toMillis() - tol && t <= request.time.toMillis() + tol;
+    }
     function myRole() { return isActive() ? me().role : null; }
     // Yetki sıralaması — bkz. src/lib/roles.ts (ikisi birlikte değişmeli).
     //   developer  uygulama geliştiricisi; dağıtıma kadar hiçbir kurala takılmaz
@@ -308,6 +327,8 @@ service cloud.firestore {
 
     match /stores/{storeId} {
       allow read: if isActive();
+      // Kendi mağazası pasif olsa da okunur: uygulama "mağaza pasif" ekranını gösterir (H7).
+      allow get: if signedIn() && me().get('active', false) == true && me().get('storeId', null) == storeId;
       allow write: if canManageBaristas();
     }
 
@@ -394,7 +415,9 @@ service cloud.firestore {
     // Mağaza / vardiya müdürü açar ve yazar; Bölge Müdürü ve Kahve Operasyon
     // Müdürü durumunu değiştirir. Silinmez: "sözlü talep geçersiz", kayıt kalır.
     match /requests/{id} {
-      allow read: if canRead() || (isLead() && resource.data.storeId == myStoreId());
+      allow read: if canRead() || (isLead() && resource.data.storeId == myStoreId())
+        // Kişiye bağlı PIN sıfırlama talebi o kişiye görünür (kodu kullanınca kapatır; H20).
+        || (isBarista() && resource.data.get('subjectBaristaId', null) == myBaristaId());
       // Talep boş geçmişle açılır; başlık/ayrıntı sınırlı, görsel yalnızca yüklenen data URL (K-5).
       allow create: if ((isLead() && request.resource.data.storeId == myStoreId()
         && request.resource.data.createdBy == request.auth.uid
@@ -416,7 +439,16 @@ service cloud.firestore {
             && request.resource.data.lastSide == 'store'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide'])
             && appended(request.resource.data.notes, resource.data.get('notes', []), 'store', 3000)
-            && request.resource.data.notes[resource.data.get('notes', []).size()].keys().hasOnly(['at', 'by', 'byName', 'side', 'text'])));
+            && request.resource.data.notes[resource.data.get('notes', []).size()].keys().hasOnly(['at', 'by', 'byName', 'side', 'text']))
+        // Kişiye bağlı PIN sıfırlama talebi: o kişi yeni koduyla PIN belirleyince
+        // talebi "çözüldü" yapar (H20). Yalnızca açık kişisel talep, yalnızca
+        // kapatma; eklenen not o kişinin ve mağaza tarafının.
+        || (isBarista() && resource.data.get('subjectBaristaId', null) == myBaristaId()
+            && resource.data.category == 'personel' && !(resource.data.status in ['done', 'rejected'])
+            && request.resource.data.status == 'done' && request.resource.data.lastSide == 'store'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'closedAt', 'updatedAt', 'lastSide', 'waitReason', 'notes'])
+            && appended(request.resource.data.notes, resource.data.get('notes', []), 'store', 300)
+            && request.resource.data.notes[resource.data.get('notes', []).size()].keys().hasOnly(['at', 'by', 'byName', 'side', 'text', 'status'])));
       allow delete: if isAdmin();
       function requestTextOk() {
         return strMax(request.resource.data, 'title', 300) && strMax(request.resource.data, 'detail', 5000)
@@ -439,9 +471,15 @@ service cloud.firestore {
       // bkz. exam.ts startExam): başkası kurbanın belirlenimci kimliklerini
       // önceden kapıp onun sınav başlatmasını kilitleyemesin (güvenlik raporu
       // K-10). Şube kendi şubesi; puan alanları açılışta yazılamaz.
+      // Süre (H1): başlangıç sunucu saatine ±5 dk yakın, son teslim soru
+      // başına 90 sn (exam.ts SECONDS_PER_QUESTION). Telefonun saati 2 gün
+      // ileri/3 saat geri olsa da deneme sunucu saatiyle açılır.
       allow create: if (isBarista() && request.resource.data.baristaId == myBaristaId()
         && id.split('_')[0] == myBaristaId()
         && request.resource.data.storeId == myStoreId()
+        && nearNow(request.resource.data.startedAt, 300000)
+        && request.resource.data.total is int && request.resource.data.total > 0 && request.resource.data.total <= 100
+        && request.resource.data.deadline == request.resource.data.startedAt + request.resource.data.total * 90000
         && request.resource.data.submittedAt == null
         && !request.resource.data.keys().hasAny(['score', 'passed', 'correct', 'mistakes', 'voided', 'timedOut', 'regradedAt', 'voidedQuestions']))
         // Geliştirici: demo ortamına örnek sınav geçmişi yazmak için.
@@ -451,10 +489,29 @@ service cloud.firestore {
       // sonra hiçbir alan değişmez.
       // total/voidedQuestions: teslimde iptal edilen ya da bankadan silinen
       // sorular hesap dışı kalır, toplam da buna göre yazılır.
+      //
+      // Süre sunucuda (H1): son teslimden 2 dk sonrasına kadar cevap yazılır.
+      // Sonra cevaplar değişmez ve deneme yalnızca "süre doldu" ya da
+      // "geçersiz" olarak, o ana kadar kaydedilmiş cevaplarla kapanır (saat
+      // geri alınarak süresi geçmiş sınav "geçti" diye teslim edilemez).
+      // Teslim anı sunucu saatini geçemez, başlangıçtan önce olamaz.
+      // storeId: sınav sırasında başka şubeye taşınan barista sonucu güncel
+      // şubesine yazar (H8); başka bir şubeye yazamaz.
       allow update: if isBarista() && resource.data.baristaId == myBaristaId()
         && resource.data.submittedAt == null
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided', 'total', 'voidedQuestions']);
+             .hasOnly(['answers', 'submittedAt', 'correct', 'score', 'passed', 'mistakes', 'timedOut', 'voided', 'total', 'voidedQuestions', 'storeId'])
+        && (request.resource.data.storeId == resource.data.storeId || request.resource.data.storeId == myStoreId())
+        && attemptOnTime();
+      function attemptOnTime() {
+        let late = resource.data.get('deadline', null) is number && request.time.toMillis() > resource.data.deadline + 120000;
+        let closing = request.resource.data.get('submittedAt', null) != null;
+        return (!late || (request.resource.data.get('answers', null) == resource.data.get('answers', null)
+                          && (!closing || request.resource.data.get('timedOut', false) == true || request.resource.data.get('voided', false) == true)))
+          && (!closing || (request.resource.data.submittedAt is number
+                           && request.resource.data.submittedAt <= request.time.toMillis() + 300000
+                           && request.resource.data.submittedAt >= resource.data.get('startedAt', 0)));
+      }
       // Hatalı soru iptal edilince Kahve Operasyon Direktörü geçmiş sınavları
       // o soru olmadan yeniden puanlar (Soru havuzu); yalnızca puan alanları.
       allow update: if canFixQuestions() && resource.data.submittedAt != null && (isAdmin() || inModule(resource.data.moduleId))
@@ -536,7 +593,9 @@ service cloud.firestore {
       // üretirken çakışma denetimini (backend.ts uniqueCode) barista yönetimi
       // yetkisi olan yapar; ona var olmayan kod da okunur.
       allow get: if canManageBaristas() || (resource != null && resource.data.expiresAt > request.time.toMillis());
-      allow create: if canManageBaristas();
+      // Ömür sunucu saatiyle 30 dk (H2): yöneticinin saati yanlışsa kod doğduğu
+      // anda geçersiz ya da günlerce geçerli oluyordu (kod düz metin şifre taşır).
+      allow create: if canManageBaristas() && nearNow(request.resource.data.expiresAt - 1800000, 300000);
       // Kodu yalnızca onunla eşleşen telefon (kullanınca) ya da Bölge Müdürü siler.
       allow delete: if (isActive() && resource.data.uid == request.auth.uid) || canManageBaristas();
       allow update: if false;
@@ -550,14 +609,27 @@ service cloud.firestore {
       // davetini okuyup o baristanın hesabını devralabiliyordu (K-2).
       // Var olmayan kod mağaza oturumuna da reddedilir (kahin olmasın);
       // yeni kod üretirken çakışma denetimini barista yöneticisi yapar.
-      allow get: if canManageBaristas() || (isStoreSession() && resource.data.storeId == myStoreId());
+      // Süresi dolmuş davet mağaza oturumuna okunmaz (sunucu saatiyle; H2).
+      allow get: if canManageBaristas() || (isStoreSession() && resource.data.storeId == myStoreId()
+        && resource.data.get('expiresAt', 0) > request.time.toMillis());
       // Eski davetleri temizlerken (PIN sıfırlama, işten çıkarma) sorgulanır.
       allow list: if canManageBaristas();
-      allow create: if canManageBaristas();
+      // Ömür sunucu saatiyle 7 gün (H2).
+      allow create: if canManageBaristas() && nearNow(request.resource.data.expiresAt - 604800000, 300000);
       // Mağaza oturumu yalnızca kendi mağazasının davetini siler (kullanınca).
       allow delete: if (isStoreSession() && resource.data.storeId == myStoreId()) || canManageBaristas();
       // Barista başka mağazaya taşınınca bekleyen davet de taşınır (backend.ts updateBarista).
       allow update: if canManageBaristas() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeId']);
+    }
+
+    // --- Sunucu saati ölçümü (src/lib/serverTime.ts) --------------------
+    // Her hesap yalnızca kendi belgesine, yalnızca sunucu zamanını yazar
+    // (serverTimestamp); kimse başkasınınkini okuyamaz. İz bırakmaz: içinde
+    // ad ya da rol yok.
+    match /clock/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create, update: if isActive() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time;
     }
 
     // --- Yönetim Kurulu soruları ----------------------------------------

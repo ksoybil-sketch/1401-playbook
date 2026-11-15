@@ -1,0 +1,11 @@
+import { db } from './admin.mjs';
+const mods = (await db.collection('modules').get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+const qs = (await db.collection('questions').get()).docs.map((d) => d.data());
+const cnt = {}; qs.forEach((q) => { cnt[q.moduleId] = (cnt[q.moduleId] || 0) + 1; });
+const tracks = (await db.collection('tracks').get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+console.log(tracks.map((t) => `${t.id} pub=${t.published} ${t.title}`).join('\n'));
+console.log(mods.filter((m) => m.published).slice(0, 40).map((m) => `${m.id} tr=${m.trackId} pre=${m.prerequisiteId || '-'} size=${m.examSize} q=${cnt[m.id] || 0} ${m.title}`).join('\n'));
+const b = (await db.collection('baristas').get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+console.log(b.filter((x) => x.storeId === 'moda-cadde').map((x) => `${x.id} ${x.name} ${x.role} pinPending=${x.pinPending} uid=${x.uid} start=${x.startedAt}`).join('\n'));
+const p = (await db.doc('progress/demo-mehmet').get()).data();
+console.log('mehmet progress', JSON.stringify(p?.modules || {}).slice(0, 300));

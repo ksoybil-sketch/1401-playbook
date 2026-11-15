@@ -85,7 +85,7 @@ const big = (kb) => 'x'.repeat(kb * 1024);
 {
   const { db } = await as('bB');
   // startExam'in yaptığının aynısı: işlem içinde tx.get(attempts/bB_mK_sinav_2)
-  await t('barista (kurban bB)', 'kapılmış kimlikle sınav başlat (runTransaction tx.get bB_mK_sinav_2)', 'izin', () => runTransaction(db, async (tx) => { const s = await tx.get(doc(db, 'attempts/bB_mK_sinav_2')); if (!s.exists()) tx.set(s.ref, { baristaId: 'bB', storeId: 'S1', moduleId: 'mK', submittedAt: null }); }), 'kurbanın meşru işlemi');
+  await t('barista (kurban bB)', 'kapılmış kimlikle sınav başlat (runTransaction tx.get bB_mK_sinav_2)', 'izin', () => runTransaction(db, async (tx) => { const s = await tx.get(doc(db, 'attempts/bB_mK_sinav_2')); if (!s.exists()) { const n0 = Date.now(); tx.set(s.ref, { baristaId: 'bB', storeId: 'S1', moduleId: 'mK', startedAt: n0, deadline: n0 + 90000, total: 1, submittedAt: null }); } }), 'kurbanın meşru işlemi (H1: exam.ts biçimi, sunucu saatiyle)');
 }
 // ---------------- Mağaza müdürü (lead S1)
 {
@@ -252,13 +252,13 @@ const big = (kb) => 'x'.repeat(kb * 1024);
   await t('barista', 'geri bildirim: dış adresli görsel', 'red', () => addDoc(collection(db, 'feedback'), { ...fb, imageUrl: 'https://saldirgan.example/p.png' }));
   await t('barista', 'geri bildirim: data:text/html görsel', 'red', () => addDoc(collection(db, 'feedback'), { ...fb, imageUrl: 'data:text/html;base64,PHNjcmlwdD4=' }));
   // Sınav: kimlik ad alanı ve şube (K-10)
-  await t('barista', 'MEŞRU: sınav başlat işlemi (runTransaction, kendi kimliği)', 'izin', () => runTransaction(db, async (tx) => { const r = doc(db, 'attempts/bA_mK_sinav_9'); const s = await tx.get(r); if (!s.exists()) tx.set(r, { baristaId: 'bA', baristaName: 'Ayşe', storeId: 'S1', moduleId: 'mK', moduleTitle: 'Espresso', passScore: 80, lessonId: null, startedAt: now, deadline: now + 9e5, total: 1, questionIds: ['qK1'], orders: {}, answers: {}, submittedAt: null }); }));
-  await t('barista', 'MEŞRU: denemeyi teslim et (puanla kapat)', 'izin', () => updateDoc(doc(db, 'attempts/bA_mK_sinav_9'), { submittedAt: now, correct: 1, score: 100, passed: true, mistakes: [], timedOut: false, total: 1 }));
+  await t('barista', 'MEŞRU: sınav başlat işlemi (runTransaction, kendi kimliği)', 'izin', () => runTransaction(db, async (tx) => { const r = doc(db, 'attempts/bA_mK_sinav_9'); const s = await tx.get(r); const n0 = Date.now(); if (!s.exists()) tx.set(r, { baristaId: 'bA', baristaName: 'Ayşe', storeId: 'S1', moduleId: 'mK', moduleTitle: 'Espresso', passScore: 80, lessonId: null, startedAt: n0, deadline: n0 + 90000, total: 1, questionIds: ['qK1'], orders: {}, answers: {}, submittedAt: null }); }));
+  await t('barista', 'MEŞRU: denemeyi teslim et (puanla kapat)', 'izin', () => updateDoc(doc(db, 'attempts/bA_mK_sinav_9'), { submittedAt: Date.now(), correct: 1, score: 100, passed: true, mistakes: [], timedOut: false, total: 1 }));
 }
 {
   const { db } = await as('bB');
   // Kurban, saldırganın kapamadığı kimlikle sınav başlatabiliyor (K-10 öncesi bA bu kimlikleri kapıyordu)
-  await t('barista (kurban bB)', 'MEŞRU: kendi kimliğiyle sınav başlat (bB_mO_sinav_1)', 'izin', () => runTransaction(db, async (tx) => { const r = doc(db, 'attempts/bB_mO_sinav_1'); const s = await tx.get(r); if (s.exists()) throw new Error('kimlik dolu'); tx.set(r, { baristaId: 'bB', baristaName: 'Burak', storeId: 'S1', moduleId: 'mO', moduleTitle: 'İlk Gün', passScore: 80, lessonId: null, startedAt: now, deadline: now + 9e5, total: 1, questionIds: ['qK151'], orders: {}, answers: {}, submittedAt: null }); }));
+  await t('barista (kurban bB)', 'MEŞRU: kendi kimliğiyle sınav başlat (bB_mO_sinav_1)', 'izin', () => runTransaction(db, async (tx) => { const r = doc(db, 'attempts/bB_mO_sinav_1'); const s = await tx.get(r); if (s.exists()) throw new Error('kimlik dolu'); const n0 = Date.now(); tx.set(r, { baristaId: 'bB', baristaName: 'Burak', storeId: 'S1', moduleId: 'mO', moduleTitle: 'İlk Gün', passScore: 80, lessonId: null, startedAt: n0, deadline: n0 + 90000, total: 1, questionIds: ['qK151'], orders: {}, answers: {}, submittedAt: null }); }));
 }
 {
   // Talepler (K-4, K-5): meşru açma, mağaza notu ekleme, operasyon yanıtı

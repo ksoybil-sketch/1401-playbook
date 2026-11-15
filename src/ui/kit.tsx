@@ -4,9 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 import { useBackHandler } from '../lib/backButton';
-import { confirmLeave } from '../lib/unsaved';
+import { confirmLeave, useDirtySheet } from '../lib/unsaved';
 import { registerSheet } from '../lib/webHistory';
 import { whenPrepared } from '../lib/writeGate';
+import { TZ, dayDiff } from '../lib/day';
 
 /* ------------------------------------------------------------------ */
 /* Sayfa iskeleti                                                      */
@@ -196,8 +197,12 @@ export const ShowMore: React.FC<{ shown: number; total: number; onMore: () => vo
  * dokunmak, Esc, geri tuşu ve Kapat önce sorar (eskiden yazılan sessizce
  * gidiyordu: talep yanıtı, ret notu, bülten metni…).
  */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; dirty?: boolean }> = ({ open, title, onClose, children, footer, dirty }) => {
   const close = () => { if (!dirty || confirm('Yazdıkların silinecek. Kapatılsın mı?')) onClose(); };
+  // Öteki sekmeden çıkış yapılırken bu pencere "kaydedilmemiş" sayılır (H14).
+  useDirtySheet(open && !!dirty);
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => {
@@ -218,10 +223,35 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
     window.addEventListener('beforeunload', onUnload);
     return () => window.removeEventListener('beforeunload', onUnload);
   }, [open, dirty]);
+  // Klavye ve ekran okuyucu (H21): açılınca odak pencereye geçer, Tab pencerenin
+  // içinde döner, kapanınca odak pencereyi açan öğeye geri gider.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const focusables = () => [...(panel?.querySelectorAll<HTMLElement>(FOCUSABLE) || [])].filter((el) => el.offsetParent !== null || el === document.activeElement);
+    // İlk alan (kapat düğmesi değil); yoksa pencerenin kendisi.
+    const first = focusables().find((el) => el.getAttribute('aria-label') !== 'Kapat') || panel;
+    first?.focus({ preventScroll: true });
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !panel) return;
+      const list = focusables();
+      if (!list.length) { e.preventDefault(); panel.focus(); return; }
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      if (e.shiftKey && (i <= 0)) { e.preventDefault(); list[list.length - 1].focus(); }
+      else if (!e.shiftKey && (i === -1 || i === list.length - 1)) { e.preventDefault(); list[0].focus(); }
+    };
+    document.addEventListener('keydown', onTab);
+    return () => {
+      document.removeEventListener('keydown', onTab);
+      if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+    };
+  }, [open]);
   if (!open) return null;
   return (
     <div className={t.modalOverlay} onClick={close}>
-      <div className={t.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+      <div ref={panelRef} tabIndex={-1} className={`${t.modalPanel} outline-none`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className={t.modalGrabber} />
         <div className={t.modalHeader}>
           <h2 className={t.modalTitle}>{title}</h2>
@@ -278,7 +308,7 @@ export async function sendOrQueue(p: Promise<unknown>, opts: { ms?: number; onLa
 }
 
 /** Kuyruğa alınan yazım için kullanıcıya gösterilen metin. */
-export const QUEUED_TEXT = 'Bağlantı yok: kaydedildi, bağlantı gelince gönderilecek.';
+export const QUEUED_TEXT = 'Bağlantı yok: kaydedildi, bağlantı gelince bu telefondan gönderilecek (çıkış yapsan da).';
 
 export const ToastHost: React.FC = () => {
   const { text, tone } = useToast();
@@ -298,20 +328,19 @@ export const ToastHost: React.FC = () => {
 /* ------------------------------------------------------------------ */
 
 export const fmtDate = (ms?: number | null) =>
-  ms ? new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  ms ? new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: TZ }) : '—';
 
+/** Tarih ve saat — İstanbul saatiyle (telefonun saat dilimi ne olursa olsun; bkz. lib/day). */
 export const fmtDateTime = (ms?: number | null) =>
-  ms ? new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  ms ? new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '—';
 
 /**
- * "bugün", "yarın", "3 gün sonra" — TAKVİM gününe göre. Eskiden milisaniye
- * farkı yuvarlanıyordu: son tarihi bugün 23:59 olan görev sabah "yarın",
- * yarın olan "2 gün sonra" görünüyordu.
+ * "bugün", "yarın", "3 gün sonra" — TAKVİM gününe göre (İstanbul). Eskiden
+ * milisaniye farkı yuvarlanıyordu: son tarihi bugün 23:59 olan görev sabah
+ * "yarın", yarın olan "2 gün sonra" görünüyordu.
  */
 export function relDays(ms: number, now = Date.now()): string {
-  const day = (x: number) => { const t = new Date(x); return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime(); };
-  // Yaz saati geçişinde gün 23/25 saat olabilir: yuvarlama farkı tam güne indirir.
-  const d = Math.round((day(ms) - day(now)) / 86400000);
+  const d = dayDiff(ms, now);
   if (d === 0) return 'bugün';
   if (d === 1) return 'yarın';
   if (d === -1) return 'dün';

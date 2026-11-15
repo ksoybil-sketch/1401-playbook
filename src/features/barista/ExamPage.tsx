@@ -6,13 +6,15 @@ import {
   activeAttemptIn, saveAnswers, startExam, submitExam, SECONDS_PER_QUESTION, type ExamResult, EXAMS_PER_WEEK, QUIZ_PASS } from '../../api/exam';
 import { useContent } from '../../store/content';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
-import { examSlots, nextModuleAfter } from './Academy';
+import { examSlots, nextModuleAfter, renewText } from './Academy';
 import { useExamSize } from './useExamSize';
-import { moduleState } from '../../lib/progress';
+import { isModuleVisible, moduleState } from '../../lib/progress';
+import { clockSkew, serverNow } from '../../lib/serverTime';
+import { blockedReadOnly } from '../../lib/readOnly';
 import { Icon } from '../../ui/Icon';
 import { useBackHandler } from '../../lib/backButton';
 import { useBrowserBackConfirm } from '../../lib/unsaved';
-import { Page, ProgressBar, Ring, Spinner, ErrorText, fmtDateTime } from '../../ui/kit';
+import { Page, ProgressBar, Ring, Spinner, ErrorText } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { AttemptReviewItem, ExamQuestion } from '../../../shared/types';
 
@@ -53,7 +55,8 @@ export const ExamPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [now, setNow] = useState(Date.now());
+  // Geri sayım sunucu saatiyle (H1): telefonun saati yanlış olsa da süre doğru.
+  const [now, setNow] = useState(serverNow());
   const [slow, setSlow] = useState(false);
   const submitting = useRef(false);
 
@@ -90,7 +93,7 @@ export const ExamPage: React.FC = () => {
   // Geri sayım
   useEffect(() => {
     if (phase.k !== 'run') return;
-    const id = setInterval(() => setNow(Date.now()), 500);
+    const id = setInterval(() => setNow(serverNow()), 500);
     return () => clearInterval(id);
   }, [phase.k]);
 
@@ -148,6 +151,17 @@ export const ExamPage: React.FC = () => {
   }, [phase.k]);
 
   if (!mod) return <Page><p className="text-fg-3">Modül bulunamadı.</p></Page>;
+  // Yayından kalkmış (ya da yolu kapanmış) modülün sınavı adresle de açılmaz (H24).
+  if ((phase.k === 'intro' || phase.k === 'loading') && !isModuleVisible(mod, allTracks)) {
+    return (
+      <Page>
+        <div className="flex flex-col items-center gap-3 pt-24 text-center">
+          <p className="text-[14px] text-fg-2 leading-relaxed max-w-[300px]">Bu eğitim şu an yayında değil.</p>
+          <button onClick={() => navigate('/akademi', { replace: true })} className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`}>Akademi'ye dön</button>
+        </div>
+      </Page>
+    );
+  }
 
   // Yarım kalan denemede o denemenin soru sayısı; yoksa havuzdaki gerçek sayı.
   const size = resumable?.total || real.size;
@@ -155,6 +169,7 @@ export const ExamPage: React.FC = () => {
   const minutes = Math.ceil((size * SECONDS_PER_QUESTION) / 60);
 
   const start = async () => {
+    if (blockedReadOnly('Çevrimdışı moddasın: sınav için internet bağlantısı gerekiyor. Bağlantı gelince yeniden dene.')) return;
     setError(null);
     setPhase({ k: 'loading' });
     try {
@@ -163,13 +178,13 @@ export const ExamPage: React.FC = () => {
       // Devam edilen denemede ilk boş soruya git.
       const firstBlank = res.questions.findIndex((q) => res.answers[q.id] === undefined);
       setIdx(firstBlank < 0 ? 0 : firstBlank);
-      setNow(Date.now());
+      setNow(serverNow());
       setPhase({ k: 'run', attemptId: res.attemptId, passScore: res.passScore, questions: res.questions, deadline: res.deadline });
     } catch (e) {
       let msg = errorText(e);
       if (e instanceof AppError && e.code === 'weekly-limit') {
         const nextAt = (e.data as { nextAt: number } | undefined)?.nextAt;
-        msg = `Bu sınav için haftalık ${EXAMS_PER_WEEK} deneme hakkını kullandın.${nextAt ? ` Yeni hakkın ${fmtDateTime(nextAt)} tarihinde açılacak.` : ''}`;
+        msg = `Bu sınav için bu haftaki ${EXAMS_PER_WEEK} deneme hakkını kullandın.${nextAt ? ` Hakların ${renewText(nextAt)} yenilenir.` : ''}`;
       }
       setError(msg);
       setPhase({ k: 'intro' });
@@ -187,7 +202,10 @@ export const ExamPage: React.FC = () => {
   };
 
   if (phase.k === 'intro' || phase.k === 'loading') {
-    const left = resumable?.deadline ? resumable.deadline - Date.now() : 0;
+    const left = resumable?.deadline ? resumable.deadline - serverNow() : 0;
+    // Telefonun saati 2 dakikadan çok farklıysa söylenir; süre yine sunucu saatiyle işler.
+    const skew = clockSkew();
+    const skewMin = skew !== null && Math.abs(skew) > 120_000 ? Math.round(skew / 60000) : 0;
     return (
       <Page>
         <div className="flex items-center gap-3">
@@ -216,6 +234,11 @@ export const ExamPage: React.FC = () => {
           ) : null}
           {empty && (
             <p className="text-[13px] text-fg-2 bg-panel-2 border border-line rounded-lg px-3 py-2.5 leading-relaxed w-full text-left">Bu modülde şu an soru yok.</p>
+          )}
+          {skewMin !== 0 && (
+            <p className="text-[12px] text-fg-3 leading-relaxed w-full text-left">
+              Telefonunun saati {Math.abs(skewMin)} dakika {skewMin > 0 ? 'ileri' : 'geri'}. Sınav süresi sunucu saatine göre işler; saati "otomatik" yapman iyi olur.
+            </p>
           )}
           <div className="w-full"><ErrorText>{error}</ErrorText></div>
           <button onClick={start} disabled={phase.k === 'loading' || empty} className={`${t.btn} ${t.btnPrimary} ${t.btnLg} w-full`}>
@@ -278,7 +301,7 @@ export const ExamPage: React.FC = () => {
             </div>
           );
           const nextMod = phase.passed ? nextModuleAfter(mod, allModules) : undefined;
-          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: Date.now() } } }, { modules: allModules, tracks: allTracks }).locked ? nextMod : undefined;
+          const nextOpen = nextMod && !moduleState(nextMod, allLessons, { ...progress, modules: { ...progress.modules, [mod.id]: { score: phase.score, passedAt: serverNow() } } }, { modules: allModules, tracks: allTracks }).locked ? nextMod : undefined;
           const slots = examSlots(myAttempts, mod.id);
           return (
             <div className="flex flex-col gap-2">
@@ -286,7 +309,7 @@ export const ExamPage: React.FC = () => {
                 <p className="text-[13px] text-fg-2 text-center leading-relaxed">
                   {slots.left > 0
                     ? `Bu hafta ${slots.left} hakkın kaldı. Dersleri gözden geçirip yeniden dene.`
-                    : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${slots.nextSlotAt ? ` · yenisi ${fmtDateTime(slots.nextSlotAt)} tarihinde açılır` : ''}.`}
+                    : `Bu haftaki ${EXAMS_PER_WEEK} hakkın doldu${slots.nextSlotAt ? ` · hakların ${renewText(slots.nextSlotAt)} yenilenir` : ''}.`}
                 </p>
               )}
               {nextOpen ? (
@@ -339,18 +362,22 @@ export const ExamPage: React.FC = () => {
         <span className="text-[12px] text-fg-3 tnum">{idx + 1}/{phase.questions.length}</span>
       </div>
 
-      <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${left < 60000 ? 'bg-negative-bg border-negative-line text-negative' : left < total * 0.25 ? 'bg-caution-bg border-caution-line text-caution' : 'bg-panel border-line text-fg-2'}`}>
-        <span className="flex items-center gap-2 text-[12px] font-medium"><Icon name="clock" size={14} /> Kalan süre</span>
-        <span className="text-[15px] font-bold tnum">{fmtClock(left)}</span>
+      <div role="timer" aria-label={`Kalan süre ${fmtClock(left)}`} className={`flex items-center justify-between rounded-lg px-3 py-2 border ${left < 60000 ? 'bg-negative-bg border-negative-line text-negative' : left < total * 0.25 ? 'bg-caution-bg border-caution-line text-caution' : 'bg-panel border-line text-fg-2'}`}>
+        <span className="flex items-center gap-2 text-[12px] font-medium"><Icon name="clock" size={14} /> Kalan süre{left < 60000 ? ' · 1 dakikadan az' : ''}</span>
+        <span className="text-[15px] font-bold tnum" aria-hidden>{fmtClock(left)}</span>
       </div>
+      {/* Ekran okuyucu (H22): süre her saniye okunmaz; 1 dakika ve 10 saniye kala bir kez söylenir. */}
+      <span className="sr-only" aria-live="polite">{left <= 10_000 ? 'Son 10 saniye.' : left <= 60_000 ? 'Son 1 dakika.' : ''}</span>
 
       <div className="flex flex-col gap-5 pt-1">
         <h2 className="text-[19px] font-semibold leading-snug">{q.prompt}</h2>
         {q.imageUrl && <img src={q.imageUrl} alt="" className="w-full rounded-xl border border-line" />}
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Şıklar">
           {q.options.map((o, i) => (
             <button
               key={i}
+              role="radio"
+              aria-checked={picked === i}
               onClick={() => choose(phase.attemptId, q.id, i)}
               className={`text-left px-4 py-3.5 rounded-xl border text-[15px] leading-snug transition-colors flex items-center gap-3 ${
                 picked === i ? 'border-crema bg-panel-3' : 'border-line bg-panel hover:bg-panel-2'
@@ -367,7 +394,7 @@ export const ExamPage: React.FC = () => {
 
       <div className="fixed bottom-0 inset-x-0 z-30 bg-bean/95 backdrop-blur-xl border-t border-line pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-[560px] mx-auto px-4 py-3 flex gap-2">
-          <button disabled={idx === 0} onClick={() => setIdx((i) => i - 1)} className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`}>
+          <button disabled={idx === 0} onClick={() => setIdx((i) => i - 1)} className={`${t.btn} ${t.btnSecondary} ${t.btnLg}`} aria-label="Önceki soru">
             <Icon name="chevronLeft" size={16} />
           </button>
           {isLast ? (

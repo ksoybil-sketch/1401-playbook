@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { badgeReport, GROUP_LABEL, TITLE_RANK, type BadgeContext, type BadgeGroup, type BadgeReport, type TitleId } from '../../lib/badges';
 import { Icon } from '../../ui/Icon';
-import { ProgressBar, Sheet } from '../../ui/kit';
+import { ProgressBar, Sheet, fmtDate } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
 /** Unvan rengi: kademe yükseldikçe sıcaklaşır. */
@@ -68,7 +68,12 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
       {report.pendingTitle && (
         <div className="text-[13px] text-caution">{report.pendingTitle.label} rozetini hak ettin — Kahve Operasyonu’nun onayı / teslimi bekleniyor.</div>
       )}
-      {report.expired && <div className="text-[13px] text-caution">Önlükteki rozetinin süresi doldu; yeniden değerlendirilecek.</div>}
+      {report.expired && <div className="text-[13px] text-caution">Önlükteki rozetinin süresi doldu; şartları artık sağlamadığın için yeniden değerlendirilecek.</div>}
+      {report.expiresSoon && (
+        <div className="text-[13px] text-caution">
+          Önlükteki rozetinin süresi {fmtDate(report.expiresSoon)} tarihinde doluyor. Şartlarını şu an sağlamıyorsun; o güne kadar sağlarsan rozetin kendiliğinden yenilenir.
+        </div>
+      )}
       {report.capped && <div className="text-[13px] text-negative">{report.titles.find((x) => x.id === report.capped!.from)?.label} rozeti geri alındı: {report.capped.reason}</div>}
       {!next && title?.id === 'pro' && <div className="text-[13px] text-positive">En üst rozet. Önlükteki Pro rozeti senin.</div>}
 
@@ -85,7 +90,7 @@ export const TitleCard: React.FC<{ report: BadgeReport; self?: boolean }> = ({ r
             <span className="text-[13px] text-fg-2">
               {x.badges} başarım · zorunlu: {x.required.map((id) => report.badges.find((b) => b.id === id)?.title).filter(Boolean).join(', ') || '—'}
               {x.avg ? ` · ortalama ${x.avg} puan` : ''}{x.days ? ` · ${x.days >= 365 ? '1 yıl' : `${x.days} gün`} kıdem` : ''}
-              {x.validDays ? ` · ${x.validDays} gün geçerli` : ''}{x.mode === 'approval' ? ' · Kahve Operasyonu onayıyla' : ''}
+              {x.validDays ? ` · ${x.validDays} gün geçerli (şartları sağladıkça kendiliğinden yenilenir)` : ''}{x.mode === 'approval' ? ' · Kahve Operasyonu onayıyla' : ''}
             </span>
           </div>
         ))}

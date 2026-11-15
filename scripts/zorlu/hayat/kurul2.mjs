@@ -1,0 +1,37 @@
+import { chromium, BASE, save, txt, ready, staffLogin, HOUT } from './lib.mjs';
+import { db } from './admin.mjs';
+const res = {};
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'tr-TR', acceptDownloads: true });
+const page = await ctx.newPage();
+const errs = []; page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 160)); }); page.on('pageerror', (e) => errs.push(e.message.slice(0, 160)));
+await staffLogin(page, 'board');
+await page.goto(BASE + '/#/raporlar?donem=yil'); await ready(page, 60000); await page.waitForTimeout(2500);
+res.raporlarMetin = (await txt(page)).split('\n').filter((l) => /Excel|karnesi|CSV/i.test(l)).slice(0, 4);
+const item = page.getByRole('button', { name: /Mağaza karnesi/ }).first();
+res.itemButon = await item.count();
+const dl = page.waitForEvent('download', { timeout: 60000 }).catch(() => null);
+await (res.itemButon ? item : page.getByText('Mağaza karnesi').first()).click();
+const d = await dl;
+if (d) { const p = HOUT + 'karne.csv'; await d.saveAs(p); const { readFileSync } = await import('fs'); const c = readFileSync(p, 'utf8'); res.excel = { ad: d.suggestedFilename(), satir: c.split('\r\n').length, bom: c.charCodeAt(0) === 0xfeff }; } else res.excel = 'indirme yok: ' + (await txt(page)).split('\n').filter((l) => /hata|yetki|bağlan/i.test(l)).slice(0, 3).join(' | ');
+await page.goto(BASE + '/#/sorular'); await ready(page); await page.waitForTimeout(1200);
+await page.getByRole('button', { name: /Yeni soru/ }).first().click(); await page.waitForTimeout(700);
+res.soruPenceresi = (await page.locator('[role=dialog]').innerText()).replace(/\s+/g, ' ').slice(0, 300);
+const choices = page.locator('[role=dialog] button[type=button]');
+if (await choices.count()) await choices.first().click();
+await page.locator('[role=dialog] textarea').first().fill('Pendik sınav başarısı neden düşük?');
+await page.getByRole('button', { name: /Gönder/ }).click(); await page.waitForTimeout(3000);
+res.gonderSonrasi = (await page.locator('[role=dialog]').count()) ? (await page.locator('[role=dialog]').innerText()).split('\n').filter((l) => /seç|yaz|hata|gerek/i.test(l)).slice(0, 3) : 'pencere kapandı';
+const qs = (await db.collection('boardQuestions').get()).docs.filter((x) => x.data().messages?.[0]?.text === 'Pendik sınav başarısı neden düşük?');
+res.soruKaydi = qs.length;
+if (qs.length) {
+  const { FieldValue } = await import('firebase-admin/firestore');
+  await qs[0].ref.update({ messages: FieldValue.arrayUnion({ at: Date.now(), by: 'ops', byName: 'Kahve Operasyonu', side: 'ops', text: 'Yeni müdür eğitimde.' }), status: 'answered', lastSide: 'ops', updatedAt: Date.now() });
+  const t0 = Date.now();
+  await page.getByText('Pendik sınav başarısı neden düşük?').first().click().catch(() => {});
+  const ok = await page.getByText('Yeni müdür eğitimde.').first().waitFor({ timeout: 20000 }).then(() => true).catch(() => false);
+  res.yanitCanli = ok ? `${Date.now() - t0} ms` : 'görünmedi';
+}
+res.hatalar = [...new Set(errs)].slice(0, 4);
+console.log(JSON.stringify(res, null, 1)); save('kurul.json', res);
+await browser.close(); process.exit(0);

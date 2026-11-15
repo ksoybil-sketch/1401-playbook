@@ -18,7 +18,7 @@ let workerPromise: Promise<import('tesseract.js').Worker> | null = null;
 /** Tek OCR işçisi; ilk kullanımda dil verisi (~10 MB) indirilir ve önbelleğe alınır. */
 async function ocrWorker() {
   if (!workerPromise) {
-    workerPromise = import('tesseract.js').then(({ createWorker }) => createWorker(['tur', 'eng']));
+    workerPromise = loadChunk(() => import('tesseract.js')).then(({ createWorker }) => createWorker(['tur', 'eng']));
   }
   return workerPromise;
 }
@@ -43,9 +43,10 @@ export async function ocrPage(image: Blob | HTMLCanvasElement, onProgress?: Read
 }
 
 import type { PdfLine } from './pdfLesson';
+import { loadChunk } from './chunk';
 
 async function loadPdf(file: File) {
-  const pdfjs = await import('pdfjs-dist');
+  const pdfjs = await loadChunk(() => import('pdfjs-dist'));
   // Worker, ana paketten ayrı bir dosya; vite URL'i derleme sırasında çözer.
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',

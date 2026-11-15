@@ -8,6 +8,7 @@ import type { Assignment, AssignmentKind, Barista, Progress } from '../../../sha
 import { moduleState, EMPTY_PROGRESS } from '../../lib/progress';
 import { localDay, localDayStart } from '../../lib/day';
 import { errorText } from '../../api/backend';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * Görev atama formu — hem Kahve Operasyonu (tüm mağazalar) hem mağaza
@@ -108,6 +109,7 @@ export const AssignSheet: React.FC<{
     if (due && due < localDay()) return setError('Son tarih geçmiş bir gün olamaz.');
     if (!allStores && !storeBaristas.length) return setError('Bu mağazada aktif barista yok; görev tamamlanamaz.');
     if (allStores && !staffedStores.length) return setError('Aktif baristası olan mağaza yok.');
+    if (blockedReadOnly()) return;
     setBusy(true);
     try {
       const base: Omit<Assignment, 'id' | 'storeId'> = {

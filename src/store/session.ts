@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
-import { doc, getDoc, getDocFromServer, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, onSnapshot, waitForPendingWrites } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
-import { backend } from '../api/backend';
+import { AppError, backend, isNetworkError } from '../api/backend';
+import { clearOfflinePins, rememberPin, verifyOfflinePin } from '../lib/offlineLogin';
+import { syncServerClock } from '../lib/serverTime';
 import { loadDevice, saveDevice, clearDevice, type StoredDevice } from '../api/device';
 import type { Barista, BaristaRole, Profile, StaffRole } from '../../shared/types';
 import { STAFF_ROLES, BARISTA_ROLES } from '../lib/roles';
@@ -16,13 +18,25 @@ import { resetBackHistory } from '../lib/backButton';
  *   barista  → PIN ile giriş yapmış barista / mağaza sorumlusu
  *   staff    → Kahve Operasyonu yöneticisi
  *   offline  → cihaz kayıtlı ama sunucuya ulaşılamadı
+ *   closed   → mağaza pasif: telefon ve baristalar giriş yapamaz (H7)
+ *
+ * Çevrimdışı (H3, H17):
+ *  - store.offline: bağlantı yok; mağaza ekranı önbellekten çalışır.
+ *  - store.held: çıkış yapan baristanın gönderilmemiş işleri var ya da
+ *    telefonun hesabına geçilemedi. Oturum (Firebase Auth) O BARİSTADA
+ *    kalır, ekran mağaza ekranıdır; bağlantı gelince bekleyen yazımlar o
+ *    kişinin adıyla gönderilir, sonra telefonun hesabına geçilir. Eskiden
+ *    hesap hemen değişiyor, işler o kişi bu telefona yeniden girene kadar
+ *    gitmiyordu.
+ *  - barista.offline: çevrimdışı PIN girişi (lib/offlineLogin); salt okunur.
  */
 export type Session =
   | { kind: 'loading' }
   | { kind: 'unpaired' }
   | { kind: 'offline' }
-  | { kind: 'store'; uid: string; storeId: string; storeName: string }
-  | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole }
+  | { kind: 'closed'; storeName: string }
+  | { kind: 'store'; uid: string; storeId: string; storeName: string; offline?: boolean; held?: string }
+  | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole; offline?: boolean }
   | { kind: 'staff'; uid: string; name: string; email: string; role: StaffRole };
 
 interface SessionState {
@@ -48,6 +62,29 @@ interface SessionState {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+
+/** Bekleyen yazımlar ms içinde sunucuya gitti mi (bağlantı yoksa false). */
+async function pendingFlushed(ms: number): Promise<boolean> {
+  return Promise.race([waitForPendingWrites(db).then(() => true, () => false), sleep(ms).then(() => false)]);
+}
+
+/**
+ * Çıkışta bekletilen hesap (bkz. Session store.held). Uygulama bu arada
+ * kapanıp açılsa da o kişinin oturumu geri açılmasın, işleri gitsin diye
+ * cihazda tutulur. İçinde yalnızca uid ve ad var.
+ */
+const HOLD_KEY = 'playbook.logoutHold.v1';
+interface Hold { uid: string; name: string; at: number }
+function readHold(): Hold | null {
+  try { const v = JSON.parse(localStorage.getItem(HOLD_KEY) || 'null'); return v && typeof v.uid === 'string' ? v : null; } catch { return null; }
+}
+function writeHold(h: Hold | null) {
+  try { if (h) localStorage.setItem(HOLD_KEY, JSON.stringify(h)); else localStorage.removeItem(HOLD_KEY); } catch { /* yok say */ }
+}
+
+/** Çevrimdışı girişteki barista ve PIN'i: yalnızca bellekte, bağlantı gelince gerçek giriş için. */
+let offlineLogin: { barista: Barista; pin: string } | null = null;
 
 /**
  * Profil okumasının sonucu. "Pasif" ve "yok" yalnızca SUNUCUDAN doğrulanınca
@@ -98,11 +135,17 @@ async function readProfile(uid: string): Promise<ProfileRead> {
 const BAD_CREDENTIAL = ['auth/invalid-credential', 'auth/user-not-found', 'auth/user-disabled', 'auth/wrong-password', 'auth/invalid-email'];
 
 /** Kısa bildirim (ui/kit yalnızca gerektiğinde yüklenir; bu dosya node testlerinde de çalışır). */
-function notify(text: string) {
-  import('../ui/kit').then((m) => m.toast(text, 'negative')).catch(() => {});
+function notify(text: string, tone: 'negative' | 'neutral' | 'positive' = 'negative') {
+  import('../ui/kit').then((m) => m.toast(text, tone)).catch(() => {});
 }
 
 export const useSession = create<SessionState>((set, get) => {
+  const storeSession = (device: StoredDevice, extra: { offline?: boolean; held?: string } = {}): Session => {
+    const cur = get().session;
+    const name = cur.kind === 'store' || cur.kind === 'barista' ? cur.storeName : device.storeName;
+    return { kind: 'store', uid: device.uid, storeId: device.storeId, storeName: name || 'Mağaza', ...extra };
+  };
+
   async function enterStoreMode(device: StoredDevice) {
     try {
       await backend.deviceSignIn(device);
@@ -111,14 +154,120 @@ export const useSession = create<SessionState>((set, get) => {
       if (BAD_CREDENTIAL.includes(code)) {
         // Hesap silinmiş / şifre geçersiz — telefon yeniden eşleştirilmeli.
         await clearDevice();
+        clearOfflinePins();
         set({ device: null, session: { kind: 'unpaired' } });
+      } else if (isNetworkError(e) || !isOnline()) {
+        // Bağlantı yok: mağaza ekranı önbellekten açılır (reçeteler, çevrimdışı
+        // PIN girişi; H17). Bağlantı gelince telefonun hesabıyla yeniden girilir.
+        // Eskiden "Sunucuya ulaşılamadı" ekranında kimse bir şey yapamıyordu.
+        set({ session: storeSession(device, { offline: true }) });
+        startReconnect();
       } else {
-        // Ağ, zaman aşımı, "çok fazla deneme", Firebase iç hatası…: eşleşme
-        // silinmez, "Bağlantı yok" ekranından yeniden denenir. Eskiden her
-        // barista çıkışında küçük bir ağ aksaklığı telefonu kullanılamaz yapıyordu.
+        // "Çok fazla deneme", Firebase iç hatası…: eşleşme silinmez, "Bağlantı
+        // yok" ekranından yeniden denenir.
         set({ session: { kind: 'offline' } });
       }
     }
+  }
+
+  /* --- Yeniden bağlanma (bekletilen çıkış, çevrimdışı giriş) -------------- */
+  let reconnectTimer: ReturnType<typeof setInterval> | null = null;
+  let reconnecting = false;
+  function startReconnect() {
+    if (reconnectTimer || typeof window === 'undefined') return;
+    reconnectTimer = setInterval(() => void tryReconnect(), 15_000);
+    window.addEventListener('online', onOnline);
+  }
+  function stopReconnect() {
+    if (reconnectTimer) clearInterval(reconnectTimer);
+    reconnectTimer = null;
+    if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
+  }
+  const onOnline = () => { setTimeout(() => void tryReconnect(), 500); };
+
+  async function tryReconnect() {
+    if (reconnecting || !isOnline()) return;
+    reconnecting = true;
+    try {
+      const s = get().session;
+      const device = get().device;
+      const hold = readHold();
+      const holding = !!hold && auth.currentUser?.uid === hold.uid;
+      // Önce bekletilen kişinin işleri, onun adıyla gitsin.
+      if (holding && !(await pendingFlushed(8000))) return;
+      if (s.kind === 'barista' && s.offline && offlineLogin) {
+        const { barista, pin } = offlineLogin;
+        try {
+          await backend.baristaSignIn(barista, pin);
+          offlineLogin = null;
+          writeHold(null);
+          stopReconnect();
+          notify('Bağlantı geldi; tam girişe geçildi.', 'positive');
+        } catch (e) {
+          if (isNetworkError(e)) return;
+          offlineLogin = null;
+          if (device) set({ session: storeSession(device, { held: holding ? hold!.name : undefined }) });
+          notify('Bağlantı geldi. PIN\'inle yeniden giriş yap.');
+        }
+        return;
+      }
+      if (device && (holding || (s.kind === 'store' && s.offline))) {
+        try {
+          await backend.deviceSignIn(device);
+          writeHold(null);
+          stopReconnect();
+          // Hesap değiştiyse onAuthStateChanged telefonun hesabını çözer (store
+          // oturumu). Oturumsuz çevrimdışı açılıştan gelindiyse de aynı.
+        } catch { /* sonra yine denenir */ }
+        return;
+      }
+      if (!holding) { writeHold(null); stopReconnect(); }
+    } finally {
+      reconnecting = false;
+    }
+  }
+
+  /* --- Mağazanın açık/pasif durumu (H7) ----------------------------------- */
+  let stopStoreWatch: (() => void) | null = null;
+  function watchStore(storeId: string, uid: string) {
+    stopStoreWatch?.();
+    stopStoreWatch = onSnapshot(doc(db, 'stores', storeId), (snap) => {
+      if (snap.metadata.fromCache || auth.currentUser?.uid !== uid) return;
+      if (snap.data()?.active === false) {
+        stopStoreWatch?.();
+        stopStoreWatch = null;
+        void closeStore(storeId, snap.data()?.name || 'Mağaza');
+      }
+    }, () => { /* oturum değişirken izin hatası: yok say */ });
+  }
+  /** Mağaza pasif: barista açıksa telefonun hesabına dön, ekran "mağaza pasif". */
+  async function closeStore(storeId: string, name: string) {
+    const device = get().device;
+    const cur = auth.currentUser;
+    if (device && cur && cur.uid !== device.uid) {
+      try { await backend.deviceSignIn(device); } catch { await signOut(auth).catch(() => {}); }
+    }
+    set({ session: { kind: 'closed', storeName: name } });
+    watchReopen(storeId);
+  }
+  /** Pasif mağaza yeniden açılınca telefon kendiliğinden mağaza ekranına döner. */
+  function watchReopen(storeId: string) {
+    stopStoreWatch?.();
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    stopStoreWatch = onSnapshot(doc(db, 'stores', storeId), (snap) => {
+      if (snap.metadata.fromCache || auth.currentUser?.uid !== uid || get().session.kind !== 'closed') return;
+      if (snap.exists() && snap.data()?.active !== false) {
+        stopStoreWatch?.();
+        stopStoreWatch = null;
+        void get().retry();
+      }
+    }, () => {});
+  }
+  /** Mağaza belgesi: pasifse null değil, false döner. */
+  async function storeIsOpen(storeId: string): Promise<{ open: boolean; name: string }> {
+    const snap = await getDoc(doc(db, 'stores', storeId)).catch(() => null);
+    return { open: snap?.data()?.active !== false, name: snap?.data()?.name || 'Mağaza' };
   }
 
   /** Hesap pasif ya da silinmiş (sunucudan doğrulandı): oturumu kapat. */
@@ -155,6 +304,16 @@ export const useSession = create<SessionState>((set, get) => {
   }
 
   async function resolveUser(user: User) {
+    // Çıkışta bekletilen hesap: o kişinin oturumu geri açılmaz, mağaza ekranı (H3).
+    const hold = readHold();
+    const device = get().device;
+    if (hold && device && hold.uid === user.uid && user.uid !== device.uid) {
+      set({ session: storeSession(device, { held: hold.name, offline: !isOnline() }) });
+      startReconnect();
+      void tryReconnect();
+      return;
+    }
+    if (hold && hold.uid !== user.uid) writeHold(null);
     const read = await readProfile(user.uid);
     if (auth.currentUser?.uid !== user.uid) return; // bu arada başka hesaba geçildi
 
@@ -169,6 +328,8 @@ export const useSession = create<SessionState>((set, get) => {
     }
     const profile = read.profile;
     watchProfile(user.uid);
+    // Sunucu saati (sınav ve kod süreleri; arka planda, beklenmez).
+    void syncServerClock();
 
     if (STAFF_ROLES.includes(profile.role as StaffRole)) {
       set({ session: { kind: 'staff', uid: user.uid, role: profile.role as StaffRole, name: profile.name || user.email || 'Yönetici', email: user.email || '' } });
@@ -178,15 +339,21 @@ export const useSession = create<SessionState>((set, get) => {
       // Mağaza adı her zaman Firestore'dan okunur (önbellekteki device.storeName ile
       // yarışa girmemek için — telefon eşleştirildikten hemen sonra iki ayrı
       // oturum çözümlemesi aynı anda tetiklenebilir).
-      const name = await storeName(profile.storeId!);
-      set({ session: { kind: 'store', uid: user.uid, storeId: profile.storeId!, storeName: name } });
+      const st = await storeIsOpen(profile.storeId!);
+      if (!st.open) { set({ session: { kind: 'closed', storeName: st.name } }); watchReopen(profile.storeId!); return; }
+      watchStore(profile.storeId!, user.uid);
+      set({ session: { kind: 'store', uid: user.uid, storeId: profile.storeId!, storeName: st.name, offline: !isOnline() || undefined } });
+      if (!isOnline()) startReconnect();
       return;
     }
     if (BARISTA_ROLES.includes(profile.role as BaristaRole)) {
-      const [b, name] = await Promise.all([
+      const [b, st] = await Promise.all([
         getDoc(doc(db, 'baristas', profile.baristaId!)).catch(() => null),
-        storeName(profile.storeId!)
+        storeIsOpen(profile.storeId!)
       ]);
+      if (!st.open) { await closeStore(profile.storeId!, st.name); return; }
+      watchStore(profile.storeId!, user.uid);
+      const name = st.name;
       set({
         session: {
           kind: 'barista', uid: user.uid, storeId: profile.storeId!, storeName: name,
@@ -198,10 +365,6 @@ export const useSession = create<SessionState>((set, get) => {
     await signOut(auth);
   }
 
-  async function storeName(storeId: string): Promise<string> {
-    const snap = await getDoc(doc(db, 'stores', storeId)).catch(() => null);
-    return snap?.data()?.name || 'Mağaza';
-  }
 
   return {
     session: { kind: 'loading' },
@@ -229,6 +392,8 @@ export const useSession = create<SessionState>((set, get) => {
         }
         stopWatch?.();
         stopWatch = null;
+        stopStoreWatch?.();
+        stopStoreWatch = null;
         const device = get().device;
         if (device) {
           set({ session: { kind: 'loading' } });
@@ -237,7 +402,7 @@ export const useSession = create<SessionState>((set, get) => {
           set({ session: { kind: 'unpaired' } });
         }
       });
-      return () => { unsub(); stopWatch?.(); stopWatch = null; };
+      return () => { unsub(); stopWatch?.(); stopWatch = null; stopStoreWatch?.(); stopStoreWatch = null; stopReconnect(); };
     },
 
     pair: async (code) => {
@@ -250,7 +415,38 @@ export const useSession = create<SessionState>((set, get) => {
       // çağırmak iki eşzamanlı çözümleme arasında yarışa yol açardı.
     },
 
-    baristaLogin: (barista, pin) => backend.baristaSignIn(barista, pin),
+    /**
+     * PIN girişi. Bağlantı yoksa (H17) bu telefonda daha önce girmiş barista
+     * için yerel PIN özetiyle salt okunur çevrimdışı oturum açılır.
+     */
+    baristaLogin: async (barista, pin) => {
+      const device = get().device;
+      // Bekletilen çıkış: önceki kişinin işleri onun adıyla gitsin, sonra hesap değişsin.
+      const hold = readHold();
+      if (hold && auth.currentUser?.uid === hold.uid) await pendingFlushed(4000);
+      try {
+        await backend.baristaSignIn(barista, pin);
+        writeHold(null);
+        offlineLogin = null;
+        // Sonraki çevrimdışı giriş için PIN özeti (yalnızca eşleşmiş mağaza telefonunda).
+        if (device && barista.storeId === device.storeId) void rememberPin(barista, pin, device.password).catch(() => {});
+      } catch (e) {
+        if (!device || !isNetworkError(e)) throw e;
+        const r = await verifyOfflinePin(barista, pin, device.password);
+        if (r === 'none') throw new AppError('İnternet bağlantısı yok. Bu telefonda daha önce internetle giriş yapmadığın için çevrimdışı giriş açılamıyor.');
+        if (r === 'wrong') throw new AppError('PIN hatalı.');
+        if (typeof r === 'object') throw new AppError(`Çok fazla hatalı deneme. ${Math.ceil((r.lockedUntil - Date.now()) / 60000)} dakika sonra tekrar dene.`);
+        offlineLogin = { barista, pin };
+        const cur = get().session;
+        set({
+          session: {
+            kind: 'barista', uid: device.uid, storeId: device.storeId, storeName: cur.kind === 'store' ? cur.storeName : device.storeName,
+            baristaId: barista.id, name: barista.name, role: barista.role, offline: true
+          }
+        });
+        startReconnect();
+      }
+    },
 
     redeemInvite: async (code, pin) => {
       const s = get().session;
@@ -275,18 +471,45 @@ export const useSession = create<SessionState>((set, get) => {
      */
     logout: async () => {
       const device = get().device;
-      const cur = auth.currentUser;
-      let switched = false;
-      if (device && cur && cur.uid !== device.uid) {
-        try { await backend.deviceSignIn(device); switched = true; } catch { /* aşağıda normal çıkış */ }
-      }
-      if (!switched) await signOut(auth);
+      const s = get().session;
       // Geri tuşu bir önceki kişinin ekranlarına dönmesin.
       resetBackHistory();
+      // Çevrimdışı girişten çıkış: hesap zaten değişmedi, mağaza ekranına dön.
+      if (s.kind === 'barista' && s.offline && device) {
+        offlineLogin = null;
+        const hold = readHold();
+        set({ session: storeSession(device, { offline: !isOnline() || undefined, held: hold && auth.currentUser?.uid === hold.uid ? hold.name : undefined }) });
+        return;
+      }
+      const cur = auth.currentUser;
+      if (device && cur && cur.uid !== device.uid) {
+        // Barista çıkışı (H3): bekleyen yazımlar (çevrimdışı tamamlanan ders,
+        // talep…) o kişinin hesabıyla gitmeli. Gitmediyse ya da telefonun
+        // hesabına geçilemiyorsa oturum o kişide bekletilir, ekran mağaza ekranı olur.
+        const barista = s.kind === 'barista';
+        const flushed = await pendingFlushed(barista ? 3000 : 1500);
+        if (flushed || !barista) {
+          try { await backend.deviceSignIn(device); return; } catch (e) {
+            if (!barista || !isNetworkError(e)) { await signOut(auth); return; }
+          }
+        }
+        writeHold({ uid: cur.uid, name: s.kind === 'barista' ? s.name : '', at: Date.now() });
+        stopWatch?.(); stopWatch = null;
+        stopStoreWatch?.(); stopStoreWatch = null;
+        set({ session: storeSession(device, { offline: !isOnline() || undefined, held: s.kind === 'barista' ? s.name : '' }) });
+        notify(flushed
+          ? 'Bağlantı yok: mağaza ekranına geçildi. Bağlantı gelince telefon kendiliğinden bağlanır.'
+          : 'Gönderilmemiş işlerin var. Bağlantı gelince bu telefondan kendiliğinden gönderilecek; uygulamayı silme.', 'neutral');
+        startReconnect();
+        return;
+      }
+      await signOut(auth);
     },
 
     unpair: async () => {
       await clearDevice();
+      clearOfflinePins();
+      writeHold(null);
       set({ device: null });
       await signOut(auth);
       set({ session: { kind: 'unpaired' } });

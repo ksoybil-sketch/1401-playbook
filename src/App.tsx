@@ -8,7 +8,7 @@ import { useAllow, usePermStore } from './lib/permissions';
 import { PermissionsPage } from './features/staff/PermissionsPage';
 import { useBadgeConfig } from './store/badgeConfig';
 import { FullLoader, ToastHost } from './ui/kit';
-import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen } from './features/device/DeviceScreens';
+import { PairScreen, StoreHome, InviteScreen, StaffLogin, OfflineScreen, BootstrapScreen, ClosedScreen } from './features/device/DeviceScreens';
 import { BaristaLayout } from './features/barista/BaristaLayout';
 import { HomePage, ResultsPage, TeamPage } from './features/barista/HomePages';
 import { TracksPage, TrackPage, ModulePage, LessonPage } from './features/barista/Academy';
@@ -61,7 +61,8 @@ export const App: React.FC = () => {
     if (signedIn) setContentOn(true);
     else if (session.kind !== 'loading') setContentOn(false);
   }, [signedIn, session.kind]);
-  useEffect(() => (contentOn ? subscribeContent() : undefined), [contentOn, authEpoch, subscribeContent]);
+  // Mağaza telefonu (telefon, barista) dersleri "fark" yöntemiyle tutar; panel canlı dinler (bkz. store/content.ts, H4).
+  useEffect(() => (contentOn ? subscribeContent(useSession.getState().session.kind === 'staff' ? 'live' : 'delta') : undefined), [contentOn, authEpoch, subscribeContent]);
   // Yetki ayarları (Yetkiler ekranı): panel ve kurul oturumlarında dinlenir.
   const subscribePerms = usePermStore((s) => s.subscribe);
   useEffect(() => (session.kind === 'staff' ? subscribePerms() : undefined), [session.kind, sessionKey, subscribePerms]);
@@ -96,6 +97,13 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
       return <FullLoader />;
     case 'offline':
       return <OfflineScreen />;
+    case 'closed':
+      return (
+        <Routes>
+          <Route path="/yonetici-girisi" element={<StaffLogin />} />
+          <Route path="*" element={<ClosedScreen name={session.storeName} />} />
+        </Routes>
+      );
     case 'unpaired':
       return (
         <Routes>

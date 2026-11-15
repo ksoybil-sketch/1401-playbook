@@ -30,7 +30,10 @@ import { db } from './firebase';
 import { stopwatch } from '../lib/perf';
 import { AppError } from './backend';
 import { useContent } from '../store/content';
-import { EMPTY_PROGRESS, isLocked } from '../lib/progress';
+import { EMPTY_PROGRESS, isLocked, isModuleVisible } from '../lib/progress';
+import { clockSkew, serverNow, syncServerClock } from '../lib/serverTime';
+import { mondayOf } from '../lib/day';
+import { useSession } from '../store/session';
 import type { Attempt, AttemptReviewItem, ExamQuestion, Lesson, Module, Progress, Question } from '../../shared/types';
 import { MAX_EXAMS_PER_WEEK } from '../../shared/types';
 
@@ -230,9 +233,9 @@ const openAttemptsQuery = (baristaId: string) => query(
 const asAttempt = (d: { id: string; data: () => unknown }) => ({ id: d.id, ...(d.data() as object) } as Attempt);
 const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-/** Bu modülde süresi dolmamış, açık deneme. */
+/** Bu modülde süresi dolmamış, açık deneme (sunucu saatine göre; bkz. lib/serverTime). */
 export function activeAttemptIn(open: Attempt[], moduleId: string, lessonId?: string | null): Attempt | null {
-  const now = Date.now();
+  const now = serverNow();
   return open.find((a) => !a.submittedAt && a.moduleId === moduleId && (a.lessonId || null) === (lessonId || null) && !!a.deadline && a.deadline > now) || null;
 }
 
@@ -240,15 +243,38 @@ export function activeAttemptIn(open: Attempt[], moduleId: string, lessonId?: st
  * Haftalık deneme hakkı — MODÜL BAŞINA. Önceden tüm sınavlar toplam 3
  * hakkı paylaşıyordu: üç farklı modülün sınavına giren barista dördüncü
  * modülü bir hafta bekliyordu. Demo ve emülatörde sınav denemek serbest.
+ *
+ * Hafta TAKVİM haftasıdır: haklar İstanbul saatiyle Pazartesi 00:00'da
+ * yenilenir (eskiden kayan 7 gündü; ekran "Bu hafta" dediği hâlde Pazartesi
+ * hak açılmıyordu — H10). Sınav ekranları weekWindow ile aynı hesabı yapar.
  */
 const TEST_ENV = import.meta.env.VITE_DEMO === 'true' || import.meta.env.MODE === 'emulator';
 export const EXAMS_PER_WEEK = TEST_ENV ? 20 : MAX_EXAMS_PER_WEEK;
+
+/** Bu takvim haftası (İstanbul): Pazartesi 00:00 ve haklar yenilendiği an (gelecek Pazartesi). */
+export function weekWindow(now = serverNow()): { from: number; renewAt: number } {
+  const from = mondayOf(now);
+  return { from, renewAt: from + 7 * DAY_MS };
+}
 
 /** Mini sınav (Yeni ürün akışı): 3 sorudan 2'si. */
 export const QUIZ_PASS = 67;
 
 const OFFLINE_MSG = 'Sınava girmek için internet bağlantısı gerekiyor. Bağlantı gelince yeniden dene.';
 const VOIDED_MSG = 'Bu sınavın soruları güncellendi; sınav geçersiz sayıldı ve hakkından düşmedi. Yeniden başlayabilirsin.';
+const UNPUBLISHED_MSG = 'Bu eğitim şu an yayında değil. Açık sınavın geçersiz sayıldı ve hakkından düşmedi.';
+const CLOCK_MSG = 'Sınav başlatılamadı: telefonun saati sunucu saatinden farklı görünüyor. Telefonun tarih ve saat ayarını "otomatik" yapıp tekrar dene.';
+
+/**
+ * Modül baristaya görünmüyor mu (yayından kalktı, yolu kapandı, silindi)?
+ * İçerik henüz yüklenmediyse (liste boş) bilinmiyor sayılır: false.
+ */
+function moduleHidden(moduleId: string): boolean {
+  const { modules, tracks } = useContent.getState();
+  if (!modules.length) return false;
+  const m = modules.find((x) => x.id === moduleId);
+  return !m || !isModuleVisible(m, tracks);
+}
 
 /**
  * Sınavı başlatır ya da bu modülde açık deneme varsa ona devam eder.
@@ -280,7 +306,10 @@ export async function startExam(
   const poolQuery = (force = false) => readPool(poolQ, stampKey, force || !!quiz);
 
   // Okumalar aynı anda yapılır (yavaş bağlantıda her biri ayrı bir gidiş-dönüş).
-  const [openSnap, modSnap, pSnap, firstPool] = await Promise.all([
+  // Sunucu saati: deneme zamanları kuralda request.time ile denetlenir (H1).
+  const [, openSnap, modSnap, pSnap, firstPool] = await Promise.all([
+    // Ölçüm 5 dakikadan eskiyse yenilenir (cihaz uyuyup uyanınca tekdüze saat de şaşabilir).
+    timed('saat', syncServerClock(false, 5 * 60_000)),
     timed('açık denemeler', getDocs(openAttemptsQuery(who.baristaId))),
     timed('modül denemeleri', getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('moduleId', '==', mod.id)))),
     !quiz && mod.prerequisiteId ? timed('ilerleme', getDoc(doc(db, 'progress', who.baristaId))) : Promise.resolve(null),
@@ -292,7 +321,7 @@ export async function startExam(
 
   // Süresi geçmiş açık denemeler arka planda kapatılır: haftalık hakka
   // zaten sayılıyorlar, beklemeye gerek yok.
-  const now = Date.now();
+  const now = serverNow();
   const expired = open.filter((a) => (a.deadline && a.orders ? a.deadline <= now : now - a.startedAt > LEGACY_GRACE_MS));
   if (expired.length) void closeAttempts(expired);
 
@@ -313,12 +342,14 @@ export async function startExam(
   if (!quiz && isLocked(mod, progress, { modules: content.modules, tracks: content.tracks })) {
     throw new AppError('Bu sınav kilitli. Önce önceki modülü geçmelisin.');
   }
-  const since = now - 7 * DAY_MS;
-  const recent = moduleAttempts.filter((a) => a.startedAt >= since && !a.voided && (a.lessonId || null) === quiz);
-  if (recent.length >= EXAMS_PER_WEEK) {
-    const oldest = Math.min(...recent.map((a) => a.startedAt));
-    throw new AppError('weekly-limit', 'weekly-limit', { nextAt: oldest + 7 * DAY_MS });
+  if (moduleHidden(mod.id)) throw new AppError('Bu eğitim şu an yayında değil.');
+  const week = weekWindow(now);
+  const thisWeek = moduleAttempts.filter((a) => a.startedAt >= week.from && !a.voided && (a.lessonId || null) === quiz);
+  if (thisWeek.length >= EXAMS_PER_WEEK) {
+    throw new AppError('weekly-limit', 'weekly-limit', { nextAt: week.renewAt });
   }
+  // Önceki yanlışlar: son 7 gün (hak penceresinden bağımsız).
+  const recent = moduleAttempts.filter((a) => a.startedAt >= now - 7 * DAY_MS && !a.voided && (a.lessonId || null) === quiz);
   // Ekran açık deneme bekliyordu ama yokmuş (bu arada teslim edildi): havuzu şimdi oku.
   let pooled = firstPool ?? await timed('soru havuzu', poolQuery());
   let all = pooled.snap.docs.map((d) => ({ id: d.id, ...d.data() } as Question));
@@ -369,7 +400,8 @@ export async function startExam(
   });
   sw.lap('soru seçimi');
 
-  const startedAt = Date.now();
+  // Kural: startedAt sunucu saatine ±5 dk yakın, deadline = startedAt + soru × 90 sn.
+  const startedAt = serverNow();
   const deadline = startedAt + picked.length * SECONDS_PER_QUESTION * 1000;
   const data = {
     baristaId: who.baristaId, baristaName: who.name, storeId: who.storeId,
@@ -382,24 +414,42 @@ export async function startExam(
   const base = `${who.baristaId}_${mod.id}_${quiz || 'sinav'}`;
   const firstSeq = moduleAttempts.filter((a) => (a.lessonId || null) === quiz).length + 1;
   let outcome: { created: string } | { resume: Attempt };
-  try {
-    outcome = await runTransaction(db, async (tx) => {
+  const open1 = (d: typeof data) => runTransaction(db, async (tx): Promise<{ created: string } | { resume: Attempt }> => {
       // Sıra numarası eski (önbellekten) olabilir: dolu ve kapanmış kimlikler atlanır.
       for (let n = firstSeq; n < firstSeq + 15; n++) {
         const ref = doc(db, 'attempts', `${base}_${n}`);
         const snap = await tx.get(ref);
-        if (!snap.exists()) { tx.set(ref, data); return { created: ref.id }; }
+        if (!snap.exists()) { tx.set(ref, d); return { created: ref.id }; }
         const other = asAttempt(snap);
         if (activeAttemptIn([other], mod.id, quiz)) return { resume: other };
       }
       throw new AppError('Sınav başlatılamadı. Tekrar dene.');
     });
+  try {
+    try {
+      outcome = await open1(data);
+    } catch (e) {
+      // Kural zamanı reddettiyse (saat ölçümü bayat) bir kez yeniden ölçüp dene.
+      if ((e as { code?: string })?.code !== 'permission-denied') throw e;
+      await syncServerClock(true);
+      const s0 = serverNow();
+      data.startedAt = s0;
+      data.deadline = s0 + picked.length * SECONDS_PER_QUESTION * 1000;
+      outcome = await open1(data);
+    }
   } catch (e) {
     // Bağlantı koptu ya da onay yolda kayboldu: deneme sunucuda açılmış
     // olabilir. Açık deneme varsa ona devam edilir (yeni hak yemez).
     const fresh = await getDocsFromServer(openAttemptsQuery(who.baristaId)).catch(() => null);
     const again = fresh ? activeAttemptIn(fresh.docs.map(asAttempt), mod.id, quiz) : null;
-    if (!again) throw e;
+    if (!again) {
+      // Yetki reddi + saat farkı: büyük olasılıkla telefonun saati yanlış (kural request.time'a bakar).
+      if ((e as { code?: string })?.code === 'permission-denied' && clockSkew() === null && fresh) {
+        void syncServerClock(true);
+        throw new AppError(CLOCK_MSG);
+      }
+      throw e;
+    }
     outcome = { resume: again };
   }
   if ('resume' in outcome) {
@@ -426,6 +476,11 @@ export async function startExam(
  * edilirse 0 puanla "kaldı" yazılıyordu.
  */
 async function resumeExam(a: Attempt, known: Question[] = []): Promise<ExamSession> {
+  // Eğitim yayından kalktıysa açık deneme hak yemeden geçersiz (H9).
+  if (moduleHidden(a.moduleId)) {
+    await updateDoc(doc(db, 'attempts', a.id), { submittedAt: serverNow(), voided: true }).catch(() => {});
+    throw new AppError(UNPUBLISHED_MSG, 'exam-voided');
+  }
   const ids = a.questionIds || [];
   const want = new Set(ids);
   const qs = new Map(known.filter((q) => want.has(q.id)).map((q) => [q.id, q]));
@@ -435,7 +490,7 @@ async function resumeExam(a: Attempt, known: Question[] = []): Promise<ExamSessi
   const voided = new Set(a.voidedQuestions || []);
   const shown = ids.filter((id) => qs.has(id) && !qs.get(id)!.disabled && !voided.has(id));
   if (!shown.length) {
-    await updateDoc(doc(db, 'attempts', a.id), { submittedAt: Date.now(), voided: true }).catch(() => {});
+    await updateDoc(doc(db, 'attempts', a.id), { submittedAt: serverNow(), voided: true }).catch(() => {});
     asked.delete(a.id);
     throw new AppError(VOIDED_MSG, 'exam-voided');
   }
@@ -539,13 +594,20 @@ export async function submitExam(
   }
   const voidedQuestions = ids.filter((id) => voided.has(id));
   const passScore = a.passScore ?? 80;
-  const now = Date.now();
   const timedOut = !!opts.timedOut;
+  // Teslim anı sunucu saatiyle; süresi dolmuş denemede son teslim anı (raporlar
+  // sınavı doğru güne yazsın). Kural: submittedAt sunucu saatini geçemez.
+  const now = timedOut && a.deadline ? Math.min(serverNow(), a.deadline) : serverNow();
+  // Sınav sırasında başka şubeye taşınan baristanın sonucu güncel şubesine
+  // yazılır (H8): yeni şubenin müdürü görür, sayılar yeni şubeye girer.
+  const sess = useSession.getState().session;
+  const moved = sess.kind === 'barista' && sess.baristaId === a.baristaId && !!sess.storeId && sess.storeId !== a.storeId
+    ? { storeId: sess.storeId } : {};
 
   const batch = writeBatch(db);
   if (!total) {
     // Puanlanacak soru kalmadı: hak yemeden kapat.
-    batch.update(aRef, { submittedAt: now, voided: true, answers: given, timedOut, ...(voidedQuestions.length ? { voidedQuestions } : {}) });
+    batch.update(aRef, { submittedAt: now, voided: true, answers: given, timedOut, ...moved, ...(voidedQuestions.length ? { voidedQuestions } : {}) });
     await commitOrRecover(batch, aRef);
     asked.delete(attemptId);
     sw.done({ geçersiz: true });
@@ -554,7 +616,7 @@ export async function submitExam(
   const score = Math.round((correct / total) * 100);
   const passed = score >= passScore;
   batch.update(aRef, {
-    submittedAt: now, correct, total, score, passed, mistakes, answers: given, timedOut,
+    submittedAt: now, correct, total, score, passed, mistakes, answers: given, timedOut, ...moved,
     ...(voidedQuestions.length ? { voidedQuestions } : {})
   });
   if (passed) {
@@ -599,10 +661,15 @@ async function commitOrRecover(batch: ReturnType<typeof writeBatch>, aRef: Retur
 
 /** Süresi geçmiş denemeleri kapatır (bkz. finalizeExpired). */
 async function closeAttempts(list: Attempt[]): Promise<number> {
-  const now = Date.now();
+  const now = serverNow();
   let closed = 0;
   for (const a of list) {
-    if (a.deadline && a.orders) {
+    if (a.deadline && a.orders && a.deadline <= now && moduleHidden(a.moduleId)) {
+      // Eğitim yayından kalktı: "süre doldu, kaldı" yerine hak yemeden geçersiz (H9;
+      // sorular silinince de böyle). Cevaplar değişmez, kural süresi geçmiş kapanışa izin verir.
+      await updateDoc(doc(db, 'attempts', a.id), { submittedAt: Math.min(now, a.deadline), voided: true }).catch(() => {});
+      closed++;
+    } else if (a.deadline && a.orders) {
       if (a.deadline <= now) {
         await submitExam(a.id, undefined, { timedOut: true }).catch(() => {});
         closed++;
@@ -624,7 +691,7 @@ async function closeAttempts(list: Attempt[]): Promise<number> {
  * baristanın suçu olmayan bir hata yüzünden hak kaybetmemesi için.
  */
 export async function finalizeExpired(baristaId: string): Promise<number> {
-  const snap = await getDocs(openAttemptsQuery(baristaId)).catch(() => null);
+  const [snap] = await Promise.all([getDocs(openAttemptsQuery(baristaId)).catch(() => null), syncServerClock()]);
   if (!snap) return 0;
   return closeAttempts(snap.docs.map(asAttempt));
 }

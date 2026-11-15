@@ -240,7 +240,7 @@ export const OverviewPage: React.FC = () => {
   const avgProgress = active.length ? Math.round(active.reduce((s, b) => s + overallPercent(modules, lessons, progress[b.id] || EMPTY, tracks), 0) / active.length) : 0;
 
   // Geçersiz görevler (hedef kalmadı / bağlı içerik silindi) gecikmiş sayılmaz.
-  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas, stores };
   const validTasks = useMemo(() => assignments.filter((a) => !taskInvalidReason(a, vctx)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [assignments, modules, lessons, tracks, baristas]);
@@ -442,7 +442,7 @@ const StaffTeamSection: React.FC = () => {
             </div>
             {editable(s) && (
               <>
-                <select className={`${t.input} h-8 w-auto text-[12px]`} value={s.role}
+                <select className={`${t.input} h-8 w-auto text-[12px]`} value={s.role} aria-label={`${s.name} rolü`}
                   onChange={async (e) => {
                     // Seçim anında kaydediliyor; telefonda kaydırırken yanlışlıkla
                     // değişen seçim kişinin bütün panelini değiştiriyordu.
@@ -554,6 +554,8 @@ export const ApronBadgesSection: React.FC = () => {
   // Önlükte olup artık hak edilmeyenler (süresi dolup şartı kaybeden ya da geri alınan).
   const lost = rows.filter(({ b, report }) => b.apronBadge
     && (!report.qualified || APRON_RANK[report.qualified.id] < APRON_RANK[b.apronBadge]));
+  // Şartları tutmayan ve süresi 14 gün içinde dolacak olanlar (H12): panelde uyarı.
+  const soon = lost.filter(({ report }) => !!report.expiresSoon).length;
   const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: resolveConfig(badgeConfig).titles[id].label, n: baristas.filter((b) => b.active && (b.apronBadge || null) === id).length }));
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
   /**
@@ -621,7 +623,7 @@ export const ApronBadgesSection: React.FC = () => {
       )}
       {lost.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-medium text-caution">Önlükteki rozeti artık hak etmeyenler · {lost.length}</span>
+          <span className="text-[12px] font-medium text-caution">Önlükteki rozeti artık hak etmeyenler · {lost.length}{soon ? ` · ${soon} kişinin süresi 14 gün içinde doluyor` : ''}</span>
           <div className={t.listGroup}>
             {lost.map(({ b, report }) => (
               <div key={b.id} className={`${t.listRowStatic} flex-wrap`}>
@@ -630,7 +632,7 @@ export const ApronBadgesSection: React.FC = () => {
                   <div className="text-[14px] font-medium truncate">{b.name}</div>
                   <div className="text-[12px] text-fg-3 truncate">
                     Önlükte: {report.titles.find((x) => x.id === b.apronBadge)?.label} · şu an hak ettiği: {report.qualified?.label || 'yok'}
-                    {report.capped ? ` · geri alındı: ${report.capped.reason}` : report.expired ? ' · süresi doldu' : ''}
+                    {report.capped ? ` · geri alındı: ${report.capped.reason}` : report.expired ? ' · süresi doldu' : report.expiresSoon ? ` · süresi ${fmtDate(report.expiresSoon)} tarihinde doluyor` : ''}
                   </div>
                 </div>
                 {canMark && (
@@ -765,17 +767,27 @@ export const StoreDetailPage: React.FC = () => {
   const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // "Telefon bağla": yeni (ek) telefon mu, yoksa verisi silinen / değişen bir telefonun yerine mi (H16).
+  const [pairAsk, setPairAsk] = useState(false);
+  const [replaces, setReplaces] = useState<string | null>(null);
 
   if (!store) return <Page wide><PageTitle title="Mağaza bulunamadı" back="/magazalar" /></Page>;
   const team = baristas.filter((b) => b.storeId === store.id);
+  const activePhones = devices.filter((d) => d.active);
 
-  const pairPhone = async () => {
+  const createCode = async (replace: string | null) => {
     setBusy(true);
     try {
-      const r = await backend.createPairingCode(store.id, store.name);
-      setCode({ ...r, title: 'Telefon eşleştirme kodu', hint: `Mağaza telefonunda 1401 Campus'u aç ve bu kodu gir. Telefon kalıcı olarak ${store.name} mağazasına bağlanır.` });
+      const r = await backend.createPairingCode(store.id, store.name, replace ? { replaces: [replace] } : {});
+      setPairAsk(false);
+      setCode({ ...r, title: 'Telefon eşleştirme kodu', hint: `Mağaza telefonunda 1401 Campus'u aç ve bu kodu gir. Telefon kalıcı olarak ${store.name} mağazasına bağlanır.${replace ? ' Eski telefonun bağlantısı kaldırıldı.' : ''}` });
     } catch (e) { toast(errorText(e), 'negative'); }
     setBusy(false);
+  };
+  const pairPhone = () => {
+    if (!activePhones.length) { void createCode(null); return; }
+    setReplaces(null);
+    setPairAsk(true);
   };
 
   return (
@@ -784,7 +796,7 @@ export const StoreDetailPage: React.FC = () => {
         action={manage ? (
           <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`}
             onClick={async () => {
-              if (store.active && !confirm(`${store.name} pasifleştirilsin mi? Mağaza listelerden ve raporlardan düşer.`)) return;
+              if (store.active && !confirm(`${store.name} pasifleştirilsin mi?\n\nMağaza listelerden ve raporlardan düşer. Mağaza telefonu ve bu mağazanın baristaları giriş yapamaz (PIN'siz reçeteler de kapanır); açık görevleri geçersiz sayılır. Yeniden aktifleştirince hepsi geri gelir.`)) return;
               try { await updateDoc(doc(db, 'stores', store.id), { active: !store.active }); toast(store.active ? 'Mağaza pasifleştirildi' : 'Mağaza aktif'); }
               catch (e) { toast(errorText(e), 'negative'); }
             }}>
@@ -824,6 +836,26 @@ export const StoreDetailPage: React.FC = () => {
 
       <AddBaristaSheet open={addOpen} onClose={() => setAddOpen(false)} storeId={store.id} onCreated={setCode} />
       <CodeSheet code={code} onClose={() => setCode(null)} />
+      <Sheet open={pairAsk} title="Telefon bağla" onClose={() => setPairAsk(false)}
+        footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} disabled={busy} onClick={() => createCode(replaces)}>{busy ? <Spinner size={14} /> : null} Kod oluştur</button>}>
+        <p className="text-[13px] text-fg-2 leading-relaxed">Bu mağazada bağlı telefon var. Yeni kod ek bir telefon için mi, yoksa uygulama verisi silinen ya da değişen bir telefonun yerine mi?</p>
+        <div className={t.listGroup} role="radiogroup" aria-label="Kod kimin için">
+          <label className={`${t.listRow} cursor-pointer`}>
+            <input type="radio" name="pair-for" checked={replaces === null} onChange={() => setReplaces(null)} />
+            <span className="flex-1 text-[14px]">Yeni, ek bir telefon</span>
+          </label>
+          {activePhones.map((d) => (
+            <label key={d.id} className={`${t.listRow} cursor-pointer`}>
+              <input type="radio" name="pair-for" checked={replaces === d.id} onChange={() => setReplaces(d.id)} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px]">Bu telefonun yerine: {d.label}</span>
+                <span className="block text-[12px] text-fg-3">Son görülme {fmtDateTime(d.lastSeenAt)}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {replaces && <p className="text-[12px] text-caution">Seçilen telefonun bağlantısı kod oluşturulunca hemen kaldırılır; o telefonda kimse giriş yapamaz.</p>}
+      </Sheet>
     </Page>
   );
 };
@@ -1001,9 +1033,9 @@ export const BaristasPage: React.FC = () => {
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[180px]">
           <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-3" />
-          <input className={`${t.input} h-9 pl-9 text-[14px]`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="İsim ara" />
+          <input className={`${t.input} h-9 pl-9 text-[14px]`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="İsim ara" aria-label="İsimle ara" />
         </div>
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} aria-label="Mağaza">
           <option value="">Tüm mağazalar</option>
           {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -1113,7 +1145,7 @@ export const BaristaDetailPage: React.FC = () => {
   const visMods = visibleModules(modules, tracks);
   const passedVisible = visMods.filter((m) => p.modules?.[m.id]).length;
   const lessonsDone = lessons.filter((l) => p.lessons?.[l.id]).length;
-  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas, stores };
   const historyReady = !!own.data && !!storeTasks.data;
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } catch (e) { toast(errorText(e), 'negative'); } setBusy(false); };
@@ -1336,7 +1368,7 @@ export const TasksPage: React.FC = () => {
   // gecikenler aşağıda kalıyordu.
   const tab: 'open' | 'done' = params.get('sekme') === 'tamamlanan' ? 'done' : 'open';
   const setTab = (x: 'open' | 'done') => setParams(x === 'done' ? { sekme: 'tamamlanan' } : {}, { replace: true });
-  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas };
+  const vctx: TaskValidityContext = { modules, lessons, tracks, baristas, stores };
   const all = assignments.filter((a) => (!storeFilter || a.storeId === storeFilter) && (!byFilter || a.createdBy === byFilter)).map((a) => {
     const targets = taskTargets(a, baristas);
     const done = targets.filter((b) => assignmentDone(a, progress[b.id]));
@@ -1404,11 +1436,11 @@ export const TasksPage: React.FC = () => {
           <button className={`${t.segmentItem} ${tab === 'open' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('open')}>Açık · {openAll.length}</button>
           <button className={`${t.segmentItem} ${tab === 'done' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('done')}>Tamamlanan · {doneAll.length}</button>
         </div>
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} aria-label="Mağaza">
           <option value="">Tüm mağazalar</option>
           {stores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
         </select>
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={byFilter} onChange={(e) => setByFilter(e.target.value)}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={byFilter} onChange={(e) => setByFilter(e.target.value)} aria-label="Atayan">
           <option value="">Atayan: herkes</option>
           {creators.map(([uid, name]) => <option key={uid} value={uid}>{uid === s.uid ? `${name} (sen)` : name}</option>)}
         </select>

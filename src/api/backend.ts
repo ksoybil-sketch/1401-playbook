@@ -19,12 +19,13 @@ import {
   EmailAuthProvider, reauthenticateWithCredential
 } from 'firebase/auth';
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch
+  arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch
 } from 'firebase/firestore';
 import { auth, db, secondaryAuth } from './firebase';
 import type { Barista, BaristaRole, StaffRole } from '../../shared/types';
-import { authorName } from '../lib/roles';
+import { authorName, isDevRole, STAFF_ROLE_LABEL, visibleStaffRoles } from '../lib/roles';
 import { localDay } from '../lib/day';
+import { serverNow, syncServerClock } from '../lib/serverTime';
 // Döngüsel içe aktarım (session.ts de bu dosyayı içe aktarır): useSession
 // yalnızca işlevlerin içinde, çalışma anında okunur; modül yüklenirken değil.
 import { useSession } from '../store/session';
@@ -107,16 +108,28 @@ export interface DeviceCreds {
   storeName: string;
 }
 
-/** [Yönetici] Telefon için yeni hesap + 30 dk geçerli eşleştirme kodu. */
-async function createPairingCode(storeId: string, storeName: string): Promise<{ code: string; expiresAt: number }> {
+/**
+ * [Yönetici] Telefon için yeni hesap + 30 dk geçerli eşleştirme kodu.
+ *
+ * Kodun ömrü SUNUCU saatiyle yazılır (kural expiresAt'i request.time + 30 dk
+ * ile denetler): yöneticinin bilgisayar saati 3 saat geriyse kod doğduğu anda
+ * geçersiz, ileriyse günlerce geçerliydi (H2).
+ *
+ * replaces: bu kod bir telefonun YERİNE (uygulama verisi silindi, telefon
+ * değişti). O telefonların hesabı aynı yazımda pasifleşir; eskiden yeni kod
+ * yeni hesap açıyor, eskisi mağazada "telefon" olarak aktif kalıyordu (H16).
+ */
+async function createPairingCode(storeId: string, storeName: string, opts: { replaces?: string[] } = {}): Promise<{ code: string; expiresAt: number }> {
   const email = `tel-${storeId}-${randomToken(6)}@${ACCOUNT_DOMAIN}`;
   const password = randomToken(28);
-  const uid = await createAccount(email, password);
+  const [uid] = await Promise.all([createAccount(email, password), syncServerClock()]);
   const code = await uniqueCode('pairingCodes');
-  const expiresAt = Date.now() + PAIRING_TTL_MS;
+  const now = serverNow();
+  const expiresAt = now + PAIRING_TTL_MS;
   const batch = writeBatch(db);
-  batch.set(doc(db, 'users', uid), { role: 'store', storeId, active: true, paired: false, label: 'Mağaza telefonu', createdAt: Date.now(), lastSeenAt: null });
+  batch.set(doc(db, 'users', uid), { role: 'store', storeId, active: true, paired: false, label: 'Mağaza telefonu', createdAt: now, lastSeenAt: null });
   batch.set(doc(db, 'pairingCodes', code), { uid, email, password, storeId, storeName, expiresAt });
+  (opts.replaces || []).forEach((old) => batch.update(doc(db, 'users', old), { active: false, revokedAt: now, replacedBy: uid }));
   await batch.commit();
   return { code, expiresAt };
 }
@@ -131,7 +144,9 @@ async function pairDevice(code: string, label: string): Promise<DeviceCreds> {
     if (isNetworkError(e)) throw new AppError(NETWORK_MSG, 'unavailable');
     p = undefined;
   }
-  if (!p || p.expiresAt < Date.now()) throw new AppError('Kod geçersiz ya da süresi dolmuş.');
+  // Süre kuralda sunucu saatiyle denetlenir (süresi dolmuş kod okunamaz); telefonun
+  // saati yanlışsa geçerli kod "süresi dolmuş" sayılmasın diye burada yeniden bakılmaz.
+  if (!p) throw new AppError('Kod geçersiz ya da süresi dolmuş.');
   await signInWithEmailAndPassword(auth, p.email, p.password);
   const creds: DeviceCreds = { uid: p.uid, email: p.email, password: p.password, storeId: p.storeId, storeName: p.storeName };
   // Oturum açıldıktan sonrası telefonun eşleşmesini engellememeli (beklenmez):
@@ -168,10 +183,11 @@ async function revokeDevice(uid: string): Promise<void> {
 
 /** Barista için yeni Auth hesabı + davet kodu hazırlar (batch'e yazar). */
 async function prepareAccount(baristaId: string, seq: number, storeId: string) {
-  const code = await uniqueCode('invites');
+  const [code] = await Promise.all([uniqueCode('invites'), syncServerClock()]);
   const email = `b-${baristaId.toLowerCase()}-${seq}@${ACCOUNT_DOMAIN}`;
   const uid = await createAccount(email, invitePassword(code));
-  const expiresAt = Date.now() + INVITE_TTL_MS;
+  // Sunucu saatiyle (kural: request.time + 7 gün ± 5 dk; H2).
+  const expiresAt = serverNow() + INVITE_TTL_MS;
   return { code, email, uid, expiresAt, invite: { baristaId, uid, email, storeId, expiresAt } };
 }
 
@@ -204,25 +220,64 @@ async function createBarista(input: { name: string; storeId: string; role: Baris
   return { baristaId: ref.id, code: acc.code, expiresAt: acc.expiresAt };
 }
 
-/** PIN sıfırlama: yeni hesap + yeni davet; eski hesap pasifleşir (eski PIN artık işe yaramaz). */
+/**
+ * PIN sıfırlama: yeni hesap + yeni davet; eski hesap pasifleşir (eski PIN artık işe yaramaz).
+ *
+ * Yeniden etkinleştirmede (b.active false) çıkarılma kaydı silinmez (H26):
+ * deactivatedAt yerinde kalır, `history`e "dönüş" eklenir. Kurul ve panel
+ * "ayrılan" sayısını yalnızca pasif baristalardan hesapladığı için dönen kişi
+ * ayrılmış sayılmaz; çıkış/dönüş izi kayıtta durur.
+ */
 async function resetBaristaPin(b: Barista, issuedBy?: string) {
   const seq = (b.accountSeq || 1) + 1;
   const acc = await prepareAccount(b.id, seq, b.storeId);
   const batch = writeBatch(db);
   await deleteInvites(b.id, batch);
+  const now = Date.now();
   if (b.uid) batch.update(doc(db, 'users', b.uid), { active: false });
-  batch.set(doc(db, 'users', acc.uid), { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: Date.now() });
-  batch.update(doc(db, 'baristas', b.id), { uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, deactivatedAt: null, inviteExpiresAt: acc.expiresAt, ...(issuedBy !== undefined ? { codeIssuedByName: signedName(issuedBy) } : {}) });
+  batch.set(doc(db, 'users', acc.uid), { role: b.role, baristaId: b.id, storeId: b.storeId, active: true, createdAt: now });
+  batch.update(doc(db, 'baristas', b.id), {
+    uid: acc.uid, authEmail: acc.email, accountSeq: seq, pinPending: true, active: true, inviteExpiresAt: acc.expiresAt,
+    ...(issuedBy !== undefined ? { codeIssuedByName: signedName(issuedBy) } : {}),
+    ...(b.active === false ? { history: arrayUnion({ kind: 'donus', at: now, byName: signedName(issuedBy) }) } : {})
+  });
   batch.set(doc(db, 'invites', acc.code), acc.invite);
   await batch.commit();
+  // Ekibim'den açılan "PIN sıfırlama" talebi: kod hazır (H20). Kod kullanılınca
+  // talep kendiliğinden kapanır (redeemInvite). Talep yazılamazsa sıfırlama bozulmaz.
+  void markPinRequests(b, issuedBy).catch(() => {});
   return { code: acc.code, expiresAt: acc.expiresAt };
+}
+
+/** "<ad> için PIN sıfırlama" başlıklı talebin adı (HomePages askPin ile aynı). */
+export const pinRequestTitle = (name: string) => `${name} için PIN sıfırlama`;
+
+/** [Yönetici] Baristanın açık PIN sıfırlama talepleri: "yeni kod verildi" notu, kişiye bağlanır. */
+async function markPinRequests(b: Barista, issuedBy?: string) {
+  const snap = await getDocs(query(collection(db, 'requests'), where('storeId', '==', b.storeId), where('category', '==', 'personel')));
+  const open = snap.docs.filter((d) => {
+    const r = d.data();
+    return !['done', 'rejected'].includes(r.status) && (r.subjectBaristaId === b.id || r.title === pinRequestTitle(b.name));
+  });
+  if (!open.length) return;
+  const s = useSession.getState().session;
+  const dev = s.kind === 'staff' && isDevRole(s.role);
+  const now = Date.now();
+  const batch = writeBatch(db);
+  open.forEach((d) => batch.update(d.ref, {
+    subjectBaristaId: b.id, status: 'in_progress', closedAt: null, updatedAt: now, lastSide: 'ops',
+    notes: arrayUnion({ at: now, by: dev || s.kind !== 'staff' ? '' : s.uid, byName: signedName(issuedBy), side: 'ops', status: 'in_progress',
+      text: `Yeni davet kodu verildi. ${b.name} kodu kullanınca talep kendiliğinden kapanır.` })
+  }));
+  await batch.commit();
 }
 
 async function setBaristaActive(b: Barista, active: boolean, issuedBy?: string): Promise<{ code?: string; expiresAt?: number }> {
   if (active) return resetBaristaPin(b, issuedBy);
   const batch = writeBatch(db);
   await deleteInvites(b.id, batch);
-  batch.update(doc(db, 'baristas', b.id), { active: false, deactivatedAt: Date.now() });
+  const now = Date.now();
+  batch.update(doc(db, 'baristas', b.id), { active: false, deactivatedAt: now, history: arrayUnion({ kind: 'cikis', at: now, byName: signedName(issuedBy) }) });
   if (b.uid) batch.update(doc(db, 'users', b.uid), { active: false });
   await batch.commit();
   return {};
@@ -280,7 +335,7 @@ async function baristaSignIn(b: Barista, pin: string): Promise<void> {
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'auth/too-many-requests') throw new AppError('Çok fazla hatalı deneme. Birkaç dakika sonra tekrar dene ya da yöneticinden PIN sıfırlamasını iste.');
-    if (code === 'auth/network-request-failed') throw new AppError('İnternet bağlantısı yok.');
+    if (code === 'auth/network-request-failed') throw new AppError('İnternet bağlantısı yok.', 'unavailable');
     throw new AppError('PIN hatalı.');
   }
 }
@@ -288,11 +343,14 @@ async function baristaSignIn(b: Barista, pin: string): Promise<void> {
 /** 1111, 1234 gibi kolay tahmin edilen PIN'ler. */
 export const weakPin = (pin: string) => /^(\d)\1{3}$/.test(pin) || ['1234', '4321', '0123', '9876'].includes(pin);
 
-/** [Telefon] Davet kodu + yeni PIN. Oturum barista olarak açık kalır. */
-async function redeemInvite(code: string, pin: string, storeId: string): Promise<void> {
-  if (weakPin(pin)) {
-    throw new AppError('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'weak-pin');
-  }
+const INVITE_BAD = 'Davet kodu geçersiz, süresi dolmuş ya da başka bir mağaza için. Kodu kontrol et ya da yöneticinden yeni kod iste.';
+
+/**
+ * [Telefon] Davet kodunu PIN sorulmadan önce doğrular (H19): yanlış kod
+ * eskiden PIN iki kez girildikten sonra söyleniyordu. Kural var olmayan,
+ * süresi dolmuş ya da başka şubenin kodunu okutmaz; hepsi aynı mesajı alır.
+ */
+async function checkInvite(code: string, storeId: string): Promise<Record<string, any>> {
   let inv: Record<string, any> | undefined;
   try {
     inv = (await getDoc(doc(db, 'invites', code))).data();
@@ -301,14 +359,42 @@ async function redeemInvite(code: string, pin: string, storeId: string): Promise
     inv = undefined;
   }
   // Kurallar başka şubenin davetini mağaza oturumuna hiç okutmaz (güvenlik
-  // raporu K-2): o durumda da buraya "kod yok" olarak düşer. Kodun var olup
-  // olmadığı ayırt edilemez; mesaj üç durumu birlikte söyler.
-  if (!inv || inv.expiresAt < Date.now()) throw new AppError('Davet kodu geçersiz, süresi dolmuş ya da başka bir mağaza için. Kodu kontrol et ya da yöneticinden yeni kod iste.');
-  if (inv.storeId !== storeId) throw new AppError('Bu davet başka bir mağaza için. Kendi mağazanın telefonunu kullan.');
+  // raporu K-2) ve süresi dolanı da okutmaz (sunucu saatiyle): ikisi de buraya
+  // "kod yok" olarak düşer. Kodun var olup olmadığı ayırt edilemez; mesaj üç
+  // durumu birlikte söyler.
+  if (!inv) throw new AppError(INVITE_BAD, 'bad-code');
+  if (inv.storeId !== storeId) throw new AppError('Bu davet başka bir mağaza için. Kendi mağazanın telefonunu kullan.', 'bad-code');
+  return inv;
+}
+
+/** [Telefon] Davet kodu + yeni PIN. Oturum barista olarak açık kalır. */
+async function redeemInvite(code: string, pin: string, storeId: string): Promise<void> {
+  if (weakPin(pin)) {
+    throw new AppError('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.', 'weak-pin');
+  }
+  const inv = await checkInvite(code, storeId);
   await signInWithEmailAndPassword(auth, inv.email, invitePassword(code));
   await updatePassword(auth.currentUser!, pinPassword(inv.baristaId, pin));
   await updateDoc(doc(db, 'baristas', inv.baristaId), { pinPending: false });
   await deleteDoc(doc(db, 'invites', code));
+  // Bu kişi için açılmış PIN sıfırlama talebi kod kullanılınca kapanır (H20).
+  void closeOwnPinRequests(inv.baristaId).catch((e) => console.warn('[pin talebi]', e));
+}
+
+/** [Barista] Kendisi için açılmış, kodu verilmiş PIN sıfırlama taleplerini "çözüldü" yapar. */
+async function closeOwnPinRequests(baristaId: string) {
+  const snap = await getDocs(query(collection(db, 'requests'), where('subjectBaristaId', '==', baristaId)));
+  const b = (await getDoc(doc(db, 'baristas', baristaId)).catch(() => null))?.data();
+  const uid = auth.currentUser?.uid || '';
+  const now = Date.now();
+  for (const d of snap.docs) {
+    const r = d.data();
+    if (r.category !== 'personel' || ['done', 'rejected'].includes(r.status)) continue;
+    await updateDoc(d.ref, {
+      status: 'done', closedAt: now, updatedAt: now, lastSide: 'store', waitReason: null,
+      notes: arrayUnion({ at: now, by: uid, byName: b?.name || '', side: 'store', status: 'done', text: 'Yeni davet koduyla giriş yapıldı; PIN belirlendi.' })
+    }).catch((e) => console.warn('[pin talebi güncelle]', e));
+  }
 }
 
 /**
@@ -360,7 +446,21 @@ async function needsBootstrap(): Promise<boolean> {
  * kendisi belirler. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
  */
 async function createStaff(name: string, email: string, role: StaffRole = 'ops'): Promise<void> {
-  const uid = await createAccount(email.trim(), randomToken(24));
+  let uid: string;
+  try {
+    uid = await createAccount(email.trim(), randomToken(24));
+  } catch (e) {
+    // Bir hesabın tek rolü var (H27): aynı e-postayla ikinci hesap açılamaz.
+    // Kişi ekipte görünüyorsa rolüyle birlikte söylenir; geliştirici hiç görünmez.
+    if ((e as { code?: string }).code === 'auth/email-already-in-use') {
+      const found = await getDocs(query(collection(db, 'users'), where('email', '==', email.trim()), where('role', 'in', visibleStaffRoles((() => { const s = useSession.getState().session; return s.kind === 'staff' ? s.role : undefined; })())))).catch(() => null);
+      const role0 = found?.docs[0]?.data().role as StaffRole | undefined;
+      throw new AppError(role0
+        ? `Bu kişi zaten ${STAFF_ROLE_LABEL[role0] || role0} olarak kayıtlı. Bir hesabın tek rolü olur; rolünü Ekip ekranından değiştirebilirsin.`
+        : 'Bu e-posta ile zaten bir hesap var. Bir hesabın tek rolü olur: kişi ekipteyse rolünü Ekip ekranından değiştir.', 'email-already-in-use');
+    }
+    throw e;
+  }
   await setDoc(doc(db, 'users', uid), { role, name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
   auth.languageCode = 'tr';
   await sendPasswordResetEmail(auth, email.trim());
@@ -368,7 +468,7 @@ async function createStaff(name: string, email: string, role: StaffRole = 'ops')
 
 export const backend = {
   createPairingCode, pairDevice, deviceSignIn, revokeDevice,
-  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, verifyPin, redeemInvite, changeOwnPin,
+  createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, verifyPin, checkInvite, redeemInvite, changeOwnPin,
   bootstrapAdmin, needsBootstrap, createStaff
 };
 

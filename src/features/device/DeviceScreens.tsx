@@ -3,7 +3,7 @@ import { BARISTA_ROLE_LABEL } from '../../lib/roles';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, USE_EMULATOR } from '../../api/firebase';
-import { backend, errorText } from '../../api/backend';
+import { backend, errorText, weakPin } from '../../api/backend';
 import { useSession } from '../../store/session';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { Icon } from '../../ui/Icon';
@@ -12,6 +12,8 @@ import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
 import { useBackHandler } from '../../lib/backButton';
 import { DemoStaffNotice, DemoPairNotice, DemoPinHint } from './DemoNotice';
+import { pruneOfflinePins } from '../../lib/offlineLogin';
+import { useOnline } from '../../hooks/useOnline';
 import type { Barista } from '../../../shared/types';
 
 const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
@@ -86,11 +88,16 @@ export const StoreHome: React.FC = () => {
   const navigate = useNavigate();
   const storeId = session.kind === 'store' ? session.storeId : '';
   const storeName = session.kind === 'store' ? session.storeName : '';
+  const held = session.kind === 'store' ? session.held : undefined;
+  const online = useOnline();
 
-  const { data: baristas, loading } = useQueryLive<Barista>(
+  const { data: baristas, loading, fromServer } = useQueryLive<Barista>(
     storeId ? query(collection(db, 'baristas'), where('storeId', '==', storeId), where('active', '==', true)) : null,
     `baristas-${storeId}`
   );
+  // Çevrimdışı giriş kayıtları: sunucudan gelen güncel listeyle temizlenir
+  // (pasif, taşınan ya da PIN'i sıfırlanan baristanın özeti silinir).
+  useEffect(() => { if (fromServer && storeId) pruneOfflinePins(storeId, baristas); }, [fromServer, storeId, baristas]);
   const ready = baristas.filter((b) => !b.pinPending).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   // Mağaza müdürü ve vardiya müdürleri üstte, ayrı bir satırda; baristalar
   // altında yan yana. Önceden hepsi aynı ızgaradaydı ve müdür kalabalıkta
@@ -186,6 +193,18 @@ export const StoreHome: React.FC = () => {
         <div>
           <h1 className="text-[22px] font-bold">Kim çalışıyor?</h1>
         </div>
+
+        {/* Çevrimdışı (H3, H17): ne yapılabildiği açıkça yazılır. */}
+        {(!online || session.kind === 'store' && session.offline) && (
+          <div role="status" className="text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5 leading-relaxed">
+            <b>Bağlantı yok.</b> Bu telefonda daha önce giriş yaptıysan PIN'inle girip derslere ve reçetelere bakabilirsin. Sınav, ders tamamlama ve talepler bağlantı gelince açılır.
+          </div>
+        )}
+        {held !== undefined && (
+          <div role="status" className="text-[13px] text-fg-2 bg-panel border border-line rounded-lg px-3 py-2.5 leading-relaxed">
+            {held ? `${held} adlı kişinin` : 'Önceki oturumun'} gönderilmemiş işleri bağlantı gelince bu telefondan kendiliğinden gönderilecek. Uygulamayı silme ve verisini temizleme.
+          </div>
+        )}
 
         <DemoPinHint />
 
@@ -304,6 +323,7 @@ export const StoreHome: React.FC = () => {
 
 export const InviteScreen: React.FC = () => {
   const redeem = useSession((s) => s.redeemInvite);
+  const session = useSession((s) => s.session);
   const navigate = useNavigate();
   const [step, setStep] = useState<'code' | 'pin' | 'confirm'>('code');
   const [code, setCode] = useState('');
@@ -350,11 +370,24 @@ export const InviteScreen: React.FC = () => {
         masked={step !== 'code'}
         busy={busy}
         errorKey={errKey}
-        onComplete={(v) => {
+        onComplete={async (v) => {
           setError(null);
-          if (step === 'code') { setCode(v); setStep('pin'); }
-          else if (step === 'pin') {
-            if (/^(\d)\1{3}$/.test(v) || ['1234', '4321', '0123', '9876'].includes(v)) return fail('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.');
+          if (step === 'code') {
+            // Kod PIN sorulmadan önce doğrulanır (H19): yanlış kod eskiden PIN
+            // iki kez girildikten sonra söyleniyordu.
+            if (session.kind !== 'store') return fail('Bu telefon bir mağazaya bağlı değil.');
+            setBusy(true);
+            try {
+              await backend.checkInvite(v, session.storeId);
+              setCode(v); setStep('pin');
+            } catch (e) {
+              fail(errorText(e));
+            } finally {
+              setBusy(false);
+            }
+          } else if (step === 'pin') {
+            // Zayıf PIN bu adımda, hemen söylenir (kod korunur).
+            if (weakPin(v)) return fail('Bu PIN çok kolay tahmin edilir, başka bir PIN seç.');
             setPin(v); setStep('confirm');
           } else finish(v);
         }}
@@ -533,6 +566,33 @@ export const OfflineScreen: React.FC = () => {
       </div>
       <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={retry}>
         <Icon name="refresh" size={16} /> Tekrar dene
+      </button>
+    </Shell>
+  );
+};
+
+/**
+ * Mağaza pasif (H7): telefon ve baristalar giriş yapamaz, PIN'siz reçeteler
+ * de kapalı. Kurallar zaten her şeyi reddeder; bu ekran nedenini söyler.
+ */
+export const ClosedScreen: React.FC<{ name: string }> = ({ name }) => {
+  const retry = useSession((s) => s.retry);
+  const navigate = useNavigate();
+  return (
+    <Shell>
+      <Brand />
+      <div className="flex flex-col items-center gap-2 text-center max-w-[320px]">
+        <Icon name="lock" size={24} className="text-caution" />
+        <h1 className="text-[17px] font-semibold">{name} şu an pasif</h1>
+        <p className="text-[13px] text-fg-3 leading-relaxed">
+          Mağaza pasifleştirildiği için bu telefonda kimse giriş yapamaz. Mağaza yeniden açılınca telefon kendiliğinden kullanılabilir; sorun olduğunu düşünüyorsan Bölge Müdürüne danış.
+        </p>
+      </div>
+      <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={retry}>
+        <Icon name="refresh" size={16} /> Tekrar dene
+      </button>
+      <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/yonetici-girisi')}>
+        <Icon name="shield" size={16} /> Kahve Operasyonu girişi
       </button>
     </Shell>
   );

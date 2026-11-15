@@ -107,7 +107,10 @@ function onPop(e: PopStateEvent) {
   if (location.hash === shownHash) return;
   const seq = seqOf();
   const floor = backFloorIdx();
-  if (floor !== null && (seq === null || seq < floor)) {
+  // Sıra numarası olmayan kayıt (adres çubuğuna elle yazılan adres, yer imi)
+  // yenidir, çıkıştan önceki bir kayıt değildir: itilmez (H15; eskiden çıkıştan
+  // sonra elle girilen #/yonetici-girisi ekranı değiştirmiyordu).
+  if (floor !== null && seq !== null && seq < floor) {
     // Çıkıştan önceki kayıt: bir ileri itilir; taban kayda varana kadar tekrarlar
     // (her adımda router'a ulaşmaz, ekran değişmez).
     e.stopImmediatePropagation();

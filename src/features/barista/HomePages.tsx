@@ -18,21 +18,23 @@ import { HUE, trackHue, type Hue } from '../../ui/palette';
 import { RECIPE_TRACK_ID } from '../../lib/search';
 import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, fmtDate, Spinner, Sheet, toast, useShowMore } from '../../ui/kit';
 import { createRequest, isClosed } from '../../api/requests';
-import { errorText } from '../../api/backend';
+import { errorText, pinRequestTitle } from '../../api/backend';
 import { useStoreRequests } from './RequestsPage';
 import * as t from '../../ui/tokens';
+import { istParts } from '../../lib/day';
 import { useBaristaSession, useMyAssignments, useMyBadgeReport, useMyBulletins, useMyProgress } from './useBaristaData';
 import { MistakeCard } from './ExamPage';
 import { useExamSize } from './useExamSize';
 import { AssignSheet } from '../shared/AssignSheet';
 import type { Assignment, Attempt, Barista, Progress } from '../../../shared/types';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /* ------------------------------------------------------------------ */
 /* Bugün                                                               */
 /* ------------------------------------------------------------------ */
 
 function greeting() {
-  const h = new Date().getHours();
+  const h = istParts().h;
   if (h < 12) return 'Günaydın';
   if (h < 18) return 'İyi günler';
   return 'İyi akşamlar';
@@ -455,7 +457,7 @@ export const TeamPage: React.FC = () => {
                   {invalid ? <Badge>Geçersiz</Badge> : !complete && a.dueAt && <Badge tone={late ? 'negative' : 'neutral'}>{late ? 'Gecikti' : relDays(a.dueAt)}</Badge>}
                   {a.createdBy === s.uid && (
                     <button className={t.iconBtn} aria-label="Görevi sil" onClick={async () => {
-                      if (!confirm(`“${a.title}” görevi silinsin mi?`)) return;
+                      if (blockedReadOnly() || !confirm(`“${a.title}” görevi silinsin mi?`)) return;
                       try { await deleteDoc(doc(db, 'assignments', a.id)); toast('Görev silindi'); } catch (e) { toast(errorText(e), 'negative'); }
                     }}><Icon name="trash" size={14} /></button>
                   )}
@@ -518,17 +520,18 @@ const MemberSheet: React.FC<{ b: Barista | null; onClose: () => void; progress?:
   const p = progress || { ...EMPTY_PROGRESS, baristaId: b?.id || '', storeId: s.storeId };
   const mods = tracks.filter((x) => x.published).flatMap((tr) => modules.filter((m) => m.trackId === tr.id && m.published));
   const scope = { modules, tracks };
-  const pinTitle = b ? `${b.name} için PIN sıfırlama` : '';
-  const pinOpen = requests.find((r) => r.category === 'personel' && r.title === pinTitle && !isClosed(r.status));
+  const pinTitle = b ? pinRequestTitle(b.name) : '';
+  const pinOpen = requests.find((r) => r.category === 'personel' && (r.subjectBaristaId === b?.id || r.title === pinTitle) && !isClosed(r.status));
 
   const askPin = async () => {
-    if (!b) return;
+    if (!b || blockedReadOnly()) return;
     if (!confirm(`${b.name} için PIN sıfırlama talebi Kahve Operasyonu'na gönderilsin mi?\n\nBölge Müdürü yeni davet kodu verir; eski PIN geçersiz olur.`)) return;
     setBusy(true);
     try {
       await createRequest({
         storeId: s.storeId, storeName: s.storeName, category: 'personel', priority: 'normal', title: pinTitle,
-        detail: `${b.name} PIN'ini unuttu. Yeni davet kodu gerekiyor.`, by: { uid: s.uid, name: s.name }
+        detail: `${b.name} PIN'ini unuttu. Yeni davet kodu gerekiyor.`, by: { uid: s.uid, name: s.name },
+        subjectBaristaId: b.id
       });
       toast('Talep gönderildi. Yanıtı Ben → Talepler\'de görürsün.', 'positive');
     } catch (e) {

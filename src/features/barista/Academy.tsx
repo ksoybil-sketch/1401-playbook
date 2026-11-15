@@ -3,14 +3,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent, publishedOnly } from '../../store/content';
-import { moduleState, trackPercent } from '../../lib/progress';
+import { isModuleVisible, moduleState, trackPercent } from '../../lib/progress';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, ProgressBar, Ring, Empty, Badge, toast, fmtDateTime } from '../../ui/kit';
+import { Page, PageTitle, Section, ProgressBar, Ring, Empty, Badge, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { HUE, trackHue } from '../../ui/palette';
 import { LessonBlocks } from '../academy/LessonBlocks';
 import { useBaristaSession, useMyAttempts, useMyProgress } from './useBaristaData';
-import { EXAMS_PER_WEEK } from '../../api/exam';
+import { EXAMS_PER_WEEK, weekWindow } from '../../api/exam';
+import { serverNow } from '../../lib/serverTime';
+import { TZ } from '../../lib/day';
 import type { Attempt, Module } from '../../../shared/types';
 import { useExamSize } from './useExamSize';
 
@@ -111,12 +113,19 @@ export const TrackPage: React.FC = () => {
  * Modül sayfası, ders sonu ve sınav sonucu aynı hesabı kullanır.
  */
 export function examSlots(attempts: Attempt[], moduleId: string) {
-  const now = Date.now();
-  const week = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt > now - 7 * 86400000);
+  // Takvim haftası (İstanbul, Pazartesi 00:00) ve sunucu saati; exam.ts ile aynı hesap (H10, H1).
+  const now = serverNow();
+  const w = weekWindow(now);
+  const week = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt >= w.from);
   const openAttempt = attempts.find((a) => a.moduleId === moduleId && !a.lessonId && !a.submittedAt && !!a.deadline && a.deadline > now);
   const left = Math.max(0, EXAMS_PER_WEEK - week.length);
-  const nextSlotAt = left === 0 && week.length ? Math.min(...week.map((a) => a.startedAt)) + 7 * 86400000 : null;
+  const nextSlotAt = left === 0 ? w.renewAt : null;
   return { left, nextSlotAt, openAttempt, canStart: left > 0 || !!openAttempt };
+}
+
+/** "Pazartesi (23 Kas)" — hakların yenilendiği gün, İstanbul takvimiyle. */
+export function renewText(at: number): string {
+  return `Pazartesi (${new Date(at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', timeZone: TZ })})`;
 }
 
 /** Bu modülün sınavı geçilince açılan, aynı yoldaki sıradaki modül. */
@@ -141,6 +150,8 @@ export const ModulePage: React.FC = () => {
   const myModuleAttempts = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && a.submittedAt && !a.voided);
 
   if (!mod) return <Page><PageTitle title="Bulunamadı" back="/akademi" /></Page>;
+  // Yayından kalkmış modül adresle de açılmaz (H24).
+  if (!isModuleVisible(mod, tracks)) return <Page><PageTitle title={mod.title} back="/akademi" /><Empty icon="book" text="Bu eğitim şu an yayında değil." /></Page>;
   const st = moduleState(mod, lessons, progress, { modules, tracks });
   const prereq = st.locked ? modules.find((m) => m.id === mod.prerequisiteId) : undefined;
   const canStart = !st.locked && (left > 0 || !!openAttempt);
@@ -190,7 +201,7 @@ export const ModulePage: React.FC = () => {
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
                 {real.empty ? 'Bu modülde şu an soru yok' : `${real.size} soru`} · Geçme notu {mod.passScore} · {left > 0
                   ? `Bu hafta ${EXAMS_PER_WEEK} hakkından ${left} tanesi kaldı`
-                  : `Haftalık ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · yenisi ${fmtDateTime(nextSlotAt)} tarihinde açılır` : ''}`}
+                  : `Bu haftaki ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · hakların ${renewText(nextSlotAt)} yenilenir` : ''}`}
               </div>
             </div>
           </div>
@@ -229,6 +240,9 @@ export const LessonPage: React.FC = () => {
 
   if (!lesson) return <Page><PageTitle title="Ders bulunamadı" back="/akademi" /></Page>;
   const mod = modules.find((m) => m.id === lesson.moduleId);
+  if (!lesson.published || !mod || !isModuleVisible(mod, tracks)) {
+    return <Page><PageTitle title={lesson.title} back="/akademi" /><Empty icon="book" text="Bu eğitim şu an yayında değil." /></Page>;
+  }
   const siblings = lessons.filter((l) => l.moduleId === lesson.moduleId && l.published);
   const idx = siblings.findIndex((l) => l.id === lesson.id);
   const next = siblings[idx + 1];
@@ -243,11 +257,17 @@ export const LessonPage: React.FC = () => {
     && examSlots(attempts, mod.id).canStart;
 
   const complete = async () => {
-    if (!done) {
-      // Çevrimdışıyken de çalışır: Firestore yazmayı kuyruğa alır.
+    if (!done && s.offline) {
+      // Çevrimdışı PIN girişi salt okunur (H17): ders bu oturumda kaydedilemez.
+      toast('Çevrimdışı moddasın: ders tamamlama kaydedilmedi. Bağlantı gelince dersi yeniden "Tamamladım" ile bitir.', 'negative');
+    } else if (!done) {
+      // Çevrimdışıyken de çalışır: Firestore yazmayı kuyruğa alır. Çıkış
+      // yapılsa da bu telefondan, bu kişinin adıyla gönderilir (session.ts logout, H3).
       updateDoc(doc(db, 'progress', s.baristaId), { [`lessons.${lesson.id}`]: Date.now(), updatedAt: Date.now() })
         .catch(() => toast('İlerleme kaydedilemedi.', 'negative'));
-      toast('Ders tamamlandı', 'positive');
+      toast(typeof navigator !== 'undefined' && navigator.onLine === false
+        ? 'Ders tamamlandı · bağlantı gelince bu telefondan gönderilecek'
+        : 'Ders tamamlandı', 'positive');
     }
     navigate(next ? `/ders/${next.id}` : toExam ? `/sinav/${lesson.moduleId}` : `/modul/${lesson.moduleId}`, { replace: true });
   };

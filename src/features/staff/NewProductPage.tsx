@@ -15,7 +15,7 @@ import type { BulletinKind, ChangeOp, LessonBlock } from '../../../shared/types'
 import { useUnsavedGuard } from '../../lib/unsaved';
 import { allowed } from '../../lib/permissions';
 import { authorName } from '../../lib/roles';
-import { localDay } from '../../lib/day';
+import { localDay, localDayStart, TZ } from '../../lib/day';
 import { useStaffData } from './staffData';
 
 /**
@@ -99,7 +99,7 @@ export const NewProductPage: React.FC = () => {
   // Mini sınav ve bülten metni, elle değiştirilmedikçe reçeteyle birlikte güncellenir.
   const auto = useMemo(() => draftQuiz(name, cup.layers, steps), [name, cup.layers, stepsText]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!quizTouched) setQuiz(auto); }, [auto, quizTouched]);
-  const dueText = due ? new Date(`${due}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '';
+  const dueText = due ? new Date((localDayStart(due) ?? Date.now()) + 12 * 3600000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', timeZone: TZ }) : '';
   useEffect(() => {
     if (bTouched) return;
     const n = name.trim() || 'Yeni ürün';

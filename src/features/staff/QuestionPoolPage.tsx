@@ -116,7 +116,7 @@ export const QuestionPoolPage: React.FC = () => {
 
       <div className="flex flex-wrap gap-2 items-center">
         <input className={`${t.input} h-9 w-64 text-[14px]`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Soru ya da şıkta ara" />
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={mod} onChange={(e) => setMod(e.target.value)}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={mod} onChange={(e) => setMod(e.target.value)} aria-label="Modül">
           {sortedMods.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
           <option value="*">Bütün modüller</option>
         </select>

@@ -5,6 +5,7 @@ import { useSession } from '../store/session';
 import { useContent } from '../store/content';
 import { allowed, domainOf } from '../lib/permissions';
 import { authorName } from '../lib/roles';
+import { serverNow } from '../lib/serverTime';
 import type { ChangeOp, Proposal, ProposalKind, StaffRole } from '../../shared/types';
 
 /**
@@ -219,7 +220,7 @@ function writeOps(wb: WriteBatch | Transaction, ops: ChangeOp[], now: number) {
 
 export async function applyOps(ops: ChangeOp[]): Promise<void> {
   const batch = writeBatch(db);
-  writeOps(batch, ops, Date.now());
+  writeOps(batch, ops, serverNow());
   await batch.commit();
 }
 
@@ -260,7 +261,7 @@ async function applyChecked(ops: ChangeOp[], base: Versions | null, extra: { ref
               ? String(d?.title || d?.prompt || o.data?.title || o.data?.prompt || '').slice(0, 60) || 'kayıt' : null;
           }).filter((x): x is string => !!x);
           if (stale.length) throw new StaleError(stale);
-          writeOps(tx, ops, Date.now());
+          writeOps(tx, ops, serverNow());
           if (extra) tx.update(extra.ref, extra.data);
         }),
         new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), TX_TIMEOUT_MS); })
@@ -279,7 +280,7 @@ async function applyChecked(ops: ChangeOp[], base: Versions | null, extra: { ref
     if (stale.length) throw new StaleError(stale);
   }
   const batch = writeBatch(db);
-  writeOps(batch, ops, Date.now());
+  writeOps(batch, ops, serverNow());
   if (extra) batch.update(extra.ref, extra.data);
   const p = batch.commit();
   queued();

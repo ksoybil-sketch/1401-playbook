@@ -113,7 +113,7 @@ export const BadgeSettingsPage: React.FC = () => {
                   <label className="flex flex-col gap-1"><span className="text-fg-3">Başarım sayısı</span>{num(x.badges, (n) => setTitle(id, { badges: n }), 0, 30)}</label>
                   <label className="flex flex-col gap-1"><span className="text-fg-3">Not ortalaması</span>{num(x.avg, (n) => setTitle(id, { avg: n }), 0, 100, '%')}</label>
                   <label className="flex flex-col gap-1"><span className="text-fg-3">Kıdem</span>{num(x.days, (n) => setTitle(id, { days: n }), 0, 3650, 'gün')}</label>
-                  <label className="flex flex-col gap-1"><span className="text-fg-3">Geçerlilik (0 = süresiz)</span>{num(x.validDays, (n) => setTitle(id, { validDays: n }), 0, 3650, 'gün')}</label>
+                  <label className="flex flex-col gap-1"><span className="text-fg-3">Geçerlilik (0 = süresiz; şartlar sağlandıkça kendiliğinden yenilenir)</span>{num(x.validDays, (n) => setTitle(id, { validDays: n }), 0, 3650, 'gün')}</label>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[12px] text-fg-3">Nasıl verilir</span>
@@ -222,7 +222,7 @@ const ThemesSettings: React.FC<{
                     </span>
                   ))}
                   {editable && (
-                    <select className={`${t.input} h-8 w-auto text-[12.5px]`} value="" onChange={(e) => e.target.value && setTheme(th.id, { modules: [...r.modules, e.target.value] })}>
+                    <select aria-label="Modül ekle" className={`${t.input} h-8 w-auto text-[12.5px]`} value="" onChange={(e) => e.target.value && setTheme(th.id, { modules: [...r.modules, e.target.value] })}>
                       <option value="">+ Modül ekle</option>
                       {sorted.filter((m) => !r.modules.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
                     </select>

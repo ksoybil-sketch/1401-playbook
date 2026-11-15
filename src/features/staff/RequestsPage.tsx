@@ -108,11 +108,11 @@ export const RequestsPage: React.FC = () => {
           <button className={`${t.segmentItem} ${tab === 'approval' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => { setTab('approval'); if (focus) setParams({}, { replace: true }); }}>Onayda · {lists.approval.length}</button>
           <button className={`${t.segmentItem} ${tab === 'closed' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => { setTab('closed'); if (focus) setParams({}, { replace: true }); }}>Kapanan · {lists.closed.length}</button>
         </div>
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={store} onChange={(e) => setStore(e.target.value)}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={store} onChange={(e) => setStore(e.target.value)} aria-label="Mağaza">
           <option value="">Tüm mağazalar</option>
           {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select className={`${t.input} h-9 w-auto text-[14px]`} value={cat} onChange={(e) => setCat(e.target.value as RequestCategory | '')}>
+        <select className={`${t.input} h-9 w-auto text-[14px]`} value={cat} onChange={(e) => setCat(e.target.value as RequestCategory | '')} aria-label="Kategori">
           <option value="">Tüm türler</option>
           {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>

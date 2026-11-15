@@ -12,7 +12,7 @@ import { useStaffData } from './staffData';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
 import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
-import { confirmLeave } from '../../lib/unsaved';
+import { confirmLeave, otherTabsDirty, OTHER_TABS_TEXT } from '../../lib/unsaved';
 
 interface NavItem { to: string; label: string; short?: string; icon: IconName; badge?: number; primary?: boolean; perm?: Perm }
 
@@ -109,7 +109,12 @@ export const StaffLayout: React.FC = () => {
     const item = ALL_PERM_PATHS.find((x) => prev.startsWith(x.to));
     if (item && !allow(s.role, item.perm)) toast('Bu ekranın yetkisi kaldırıldı.', 'negative');
   }, [pathname, allow, s.role]);
-  const doLogout = () => { if (confirmLeave()) logout(); };
+  const doLogout = async () => {
+    if (!confirmLeave()) return;
+    // Oturum sekmeler arasında ortak: öteki sekmelerdeki taslak da gider (H14).
+    if (await otherTabsDirty() && !confirm(OTHER_TABS_TEXT)) return;
+    void logout();
+  };
   const rest = NAV.filter((n) => !n.primary);
   const restBadge = rest.reduce((x, n) => x + (n.badge || 0), 0);
 

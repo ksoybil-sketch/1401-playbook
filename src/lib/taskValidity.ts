@@ -17,11 +17,12 @@ import { isModuleVisible } from './progress';
  * Barista ana sayfası, Ekibim, panel Görevler ekranı ve badges.ts aynı
  * kararı buradan alır.
  */
-export type TaskInvalidReason = 'icerik-yok' | 'hedef-yok';
+export type TaskInvalidReason = 'icerik-yok' | 'hedef-yok' | 'magaza-pasif';
 
 export const TASK_INVALID_LABEL: Record<TaskInvalidReason, string> = {
   'icerik-yok': 'Bağlı ders ya da modül artık yok',
-  'hedef-yok': 'Görevi yapacak barista kalmadı'
+  'hedef-yok': 'Görevi yapacak barista kalmadı',
+  'magaza-pasif': 'Mağaza pasif'
 };
 
 /** Görev hedefi olabilecek kişi (Barista belgesinin gereken alanları). */
@@ -37,6 +38,11 @@ export interface TaskValidityContext {
    * (ör. baristanın kendi ekranı: kendisi zaten hedef) yalnızca içerik denetlenir.
    */
   baristas?: TaskTargetLike[] | null;
+  /**
+   * Verilirse pasif mağazanın görevleri geçersiz sayılır (H7): pasif mağazada
+   * kimse giriş yapamaz, görev gecikmiş sayılmamalı.
+   */
+  stores?: { id: string; active?: boolean }[] | null;
 }
 
 /** Görevin bağlı olduğu ders/modül var ve baristaya görünüyor mu? */
@@ -61,6 +67,7 @@ export function taskTargets<T extends TaskTargetLike>(a: Assignment, baristas: T
 /** Görev geçersizse nedeni, geçerliyse null. */
 export function taskInvalidReason(a: Assignment, ctx: TaskValidityContext): TaskInvalidReason | null {
   if (!taskContentOk(a, ctx)) return 'icerik-yok';
+  if (ctx.stores && ctx.stores.find((x) => x.id === a.storeId)?.active === false) return 'magaza-pasif';
   if (ctx.baristas && taskTargets(a, ctx.baristas).length === 0) return 'hedef-yok';
   return null;
 }

@@ -1,6 +1,8 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
+import { serverNow } from '../lib/serverTime';
 import type { Lesson, LessonBlock, Module, Question, Track } from '../../shared/types';
+import { loadChunk } from '../lib/chunk';
 
 /**
  * Müfredatı panelden Firestore'a yazar.
@@ -212,7 +214,7 @@ export async function publishCurriculum(
   const labels: Record<Col, string> = {
     tracks: 'Eğitim yolları', modules: 'Modüller', lessons: 'Dersler', questions: 'Sorular'
   };
-  const now = Date.now();
+  const now = serverNow(); // updatedAt sunucu saatiyle: telefonlar dersleri bu alana göre fark olarak alır (store/content.ts)
 
   for (const col of COLLECTIONS) {
     const list = work.writes[col];
@@ -240,6 +242,6 @@ export async function publishCurriculum(
 
 /** Gömülü müfredat dosyasını yalnızca gerektiğinde indirir (ayrı paket parçası). */
 export async function loadCurriculumFile(): Promise<CurriculumFile> {
-  const mod = await import('../generated/curriculum.json');
+  const mod = await loadChunk(() => import('../generated/curriculum.json'));
   return (mod.default ?? mod) as unknown as CurriculumFile;
 }

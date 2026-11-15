@@ -10,6 +10,7 @@ import { authorName } from '../../lib/roles';
 import * as t from '../../ui/tokens';
 import type { FeedbackKind } from '../../../shared/types';
 import { APP_VERSION, bundleName } from '../../lib/version';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * "Bir sorun var / Önerim var" — uygulamanın her yerinden iki dokunuşla
@@ -48,6 +49,7 @@ export const FeedbackSheet: React.FC<{ open: boolean; onClose: () => void; prese
   const send = async () => {
     if (!who) return;
     if (text.trim().length < 5) return setError('Kısaca ne olduğunu yaz.');
+    if (blockedReadOnly()) return;
     setBusy(true);
     setError(null);
     try {

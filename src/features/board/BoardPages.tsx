@@ -13,10 +13,10 @@ import { useQueryLive } from '../../hooks/useFirestore';
 import { badgeReport, fromBarista, TITLE_IDS } from '../../lib/badges';
 import { assignmentDone, EMPTY_PROGRESS, isOverdue, overallPercent } from '../../lib/progress';
 import { taskInvalidReason, taskTargets } from '../../lib/taskValidity';
-import { localDay } from '../../lib/day';
+import { localDay, mondayOf, TZ } from '../../lib/day';
 import { closedOf, fmtDur, requestStats } from '../../lib/requestStats';
 import {
-  attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
+  attention, bestBarista, bestStore, downloadCsv, forBoard, greeting, modulePerformance, periodJustStarted, periodOf, PERIODS, previousOf, scorecard, summary, weekly,
   type BoardCtx, type Period, type PeriodId, type ScoreRow
 } from '../../lib/boardStats';
 import { catOf, isClosed, reasonLabel, STATUS } from '../../api/requests';
@@ -47,12 +47,11 @@ import { errorText } from '../../api/backend';
  */
 const WEEKS = 12;
 const DAY_MS = 86400000;
-const mondayOf = (now = Date.now()) => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime(); };
 function rangeFrom(period: Period): number {
   return dayStart(Math.min(previousOf(period).from, mondayOf() - (WEEKS - 1) * 7 * DAY_MS));
 }
 /** Dönemin üst sınırı: bugüne kadar süren dönemlerde yok (null). */
-const periodTo = (p: Period) => (p.id === 'gecen-ay' ? p.to : null);
+const periodTo = (p: Period) => (p.id === 'gecen-ay' || p.id === 'gecen-yil' ? p.to : null);
 const statsKey = (p: Period) => `board-stats:${p.id}:${dayStart(p.from)}`;
 
 function useBoardCtx(period: Period, opts: { exams?: boolean } = {}): BoardCtx & { loading: boolean; error: string | null } {
@@ -128,14 +127,28 @@ function usePeriod(): [Period, (id: PeriodId) => void] {
   return [periodOf(PERIODS.some((x) => x.id === id) ? id : '30'), set];
 }
 
-const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }> = ({ value, onChange }) => (
-  <div className={`${t.segment} ${t.scrollX} max-w-full print:hidden`}>
-    {PERIODS.map((p) => (
-      <button key={p.id} onClick={() => onChange(p.id)}
-        className={`${t.segmentItem} whitespace-nowrap ${value.id === p.id ? t.segmentItemOn : t.segmentItemOff}`}>{p.label}</button>
-    ))}
-  </div>
-);
+const PeriodPicker: React.FC<{ value: Period; onChange: (id: PeriodId) => void }> = ({ value, onChange }) => {
+  // Yılın/ayın ilk haftası: "Bu yıl" birkaç günlük veri gösterir; geçen döneme bakmayı öner (H11).
+  const hint = periodJustStarted(value);
+  return (
+    <>
+      <div className={`${t.segment} ${t.scrollX} max-w-full print:hidden`}>
+        {PERIODS.map((p) => (
+          <button key={p.id} onClick={() => onChange(p.id)}
+            className={`${t.segmentItem} whitespace-nowrap ${value.id === p.id ? t.segmentItemOn : t.segmentItemOff}`}>{p.label}</button>
+        ))}
+      </div>
+      {hint && (
+        <p className="text-[12px] text-fg-3 print:hidden">
+          {value.id === 'yil' ? 'Yıl yeni başladı; bu dönemde henüz az veri var.' : 'Ay yeni başladı; bu dönemde henüz az veri var.'}{' '}
+          <button type="button" onClick={() => onChange(hint)} className="underline font-semibold text-fg-2">
+            {hint === 'gecen-yil' ? 'Geçen yıla bak' : 'Geçen aya bak'}
+          </button>
+        </p>
+      )}
+    </>
+  );
+};
 
 /** "Sor" düğmesi: konuyu Kahve Operasyonu'na soru olarak açar. */
 const AskBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Sor' }) => {
@@ -249,7 +262,7 @@ const WeekBars: React.FC<{ weeks: number[]; series: BarSeries[]; tip: (i: number
                 })}
                 {(i % 2 === weeks.length % 2 || weeks.length <= 8) && (
                   <text x={pad.l + i * slot + slot / 2} y={Hh - 6} textAnchor="middle" className="fill-fg-4 text-[9px]">
-                    {new Date(w).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                    {new Date(w).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', timeZone: TZ })}
                   </text>
                 )}
               </g>
@@ -347,7 +360,7 @@ export const BoardOverviewPage: React.FC = () => {
       <div className={`${t.card} p-5 sm:p-6 flex flex-col gap-4`}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[26px] sm:text-[30px] font-bold text-crema leading-tight">{greeting(me.name)}</h1>
-          <span className="text-[14px] text-fg-3">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          <span className="text-[14px] text-fg-3">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ })}</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-fg-3">{period.label} · kısa özet</span>
@@ -673,7 +686,7 @@ export const BoardWorkPage: React.FC = () => {
     .sort((a, b) => (b.closedAt || b.updatedAt) - (a.closedAt || a.updatedAt));
   const pending = ctx.proposals.filter((p) => p.status === 'pending');
   const approvalReqs = open.filter((r) => r.status === 'approval');
-  const tasks = useMemo(() => ctx.assignments.filter((a) => !taskInvalidReason(a, { modules: ctx.modules, lessons: ctx.lessons, tracks: ctx.tracks, baristas: ctx.baristas })).map((a) => {
+  const tasks = useMemo(() => ctx.assignments.filter((a) => !taskInvalidReason(a, { modules: ctx.modules, lessons: ctx.lessons, tracks: ctx.tracks, baristas: ctx.baristas, stores: ctx.stores })).map((a) => {
     const team = taskTargets(a, ctx.baristas);
     const done = team.filter((b) => assignmentDone(a, ctx.progress[b.id])).length;
     const overdue = team.filter((b) => isOverdue(a, assignmentDone(a, ctx.progress[b.id]))).length;

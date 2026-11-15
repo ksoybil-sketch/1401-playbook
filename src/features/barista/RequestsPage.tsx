@@ -11,6 +11,7 @@ import { Icon } from '../../ui/Icon';
 import { Page, PageTitle, Section, Sheet, Empty, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT, MAX, CharCount } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { RequestCategory, RequestPriority, StoreRequest } from '../../../shared/types';
+import { blockedReadOnly } from '../../lib/readOnly';
 
 /**
  * Talepler — mağaza / vardiya müdürünün Kahve Operasyonu'na açtığı işler.
@@ -117,6 +118,7 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
     setError(null);
     if (title.trim().length < 3) return setError('Kısaca ne olduğunu yaz: "Espresso makinesi 2. grup su kaçırıyor".');
     if (category === 'ariza' && !equipment) return setError('Hangi ekipman arızalı?');
+    if (blockedReadOnly()) return;
     setBusy(true);
     try {
       // Çevrimdışıyken yazım yerel kuyruğa alınır; pencere sonsuza kadar

@@ -72,3 +72,48 @@ export function useUnsavedGuard(dirty: boolean) {
 export function useBrowserBackConfirm(active: boolean, text: string) {
   useGuardEntry(active, text, false);
 }
+
+/* ------------------------------------------------------------------ */
+/* Sekmeler arası (H14)                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Oturum bütün sekmelerde ortak: bir sekmeden çıkış, öteki sekmelerdeki
+ * kaydedilmemiş işi uyarısız siliyordu (ör. Rozetler'de değiştirilmiş bir
+ * değer). Çıkıştan önce öteki sekmelere BroadcastChannel ile sorulur; içinde
+ * kaydedilmemiş değişiklik ya da yazılmış ama gönderilmemiş bir pencere olan
+ * sekme "evet" der.
+ */
+const dirtySheets = new Set<object>();
+/** Alt sayfa (Sheet) yazılmış ama gönderilmemiş bir şey taşıyor (bkz. kit.tsx Sheet). */
+export function useDirtySheet(active: boolean) {
+  const token = useRef({});
+  useEffect(() => {
+    const t = token.current;
+    if (active) dirtySheets.add(t); else dirtySheets.delete(t);
+    return () => { dirtySheets.delete(t); };
+  }, [active]);
+}
+const localDirty = () => dirtySheets.size > 0 || [...guards].some((g) => g.current);
+
+const channel: BroadcastChannel | null = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('campus-unsaved') : null;
+const replies = new Map<string, (dirty: boolean) => void>();
+if (channel) {
+  channel.onmessage = (e: MessageEvent) => {
+    const m = e.data as { t?: string; id?: string; dirty?: boolean };
+    if (m?.t === 'ask' && m.id) channel.postMessage({ t: 'reply', id: m.id, dirty: localDirty() });
+    else if (m?.t === 'reply' && m.id) replies.get(m.id)?.(!!m.dirty);
+  };
+}
+
+/** Öteki sekmelerden kaçında kaydedilmemiş iş var (ms içinde yanıt verenler). */
+export function otherTabsDirty(ms = 400): Promise<number> {
+  if (!channel) return Promise.resolve(0);
+  const id = Math.random().toString(36).slice(2);
+  let n = 0;
+  replies.set(id, (d) => { if (d) n++; });
+  channel.postMessage({ t: 'ask', id });
+  return new Promise((res) => setTimeout(() => { replies.delete(id); res(n); }, ms));
+}
+
+export const OTHER_TABS_TEXT = 'Başka bir sekmede kaydedilmemiş değişiklik var. Çıkış yaparsan oturum bütün sekmelerde kapanır ve o değişiklikler silinir. Yine de çıkılsın mı?';
