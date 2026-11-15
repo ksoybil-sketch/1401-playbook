@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import * as t from './tokens';
 import { useBackHandler } from '../lib/backButton';
 import { confirmLeave } from '../lib/unsaved';
+import { registerSheet } from '../lib/webHistory';
 import { whenPrepared } from '../lib/writeGate';
 
 /* ------------------------------------------------------------------ */
@@ -92,8 +93,10 @@ export const Ring: React.FC<{ value: number; size?: number; label?: string; colo
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        {/* İz temanın çizgi rengiyle (açık temada beyaz iz görünmüyordu); renk
+            style ile: CSS değişkeni (var(--hue-…)) SVG özniteliğinde çalışmaz. */}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-line" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" style={{ stroke: color }} strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c - (v / 100) * c} className="transition-[stroke-dashoffset] duration-700" />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tnum">{label ?? `${Math.round(v)}%`}</span>
@@ -143,12 +146,45 @@ export const Stat: React.FC<{
   return <div className={cls}>{body}</div>;
 };
 
+/**
+ * Metin alanı sınırları. Eskiden yoktu: 500 karakterlik ad kabul ediliyor,
+ * geri bildirim sessizce 2.000'de kesiliyordu. Güvenlik kurallarındaki
+ * sınırların altında tutulur (ad ≤ 80, başlık ≤ 200, uzun metin ≤ 4000).
+ */
+export const MAX = { name: 60, title: 120, text: 2000, long: 4000 } as const;
+
+/** Sınırlı alanın altında: sınıra yaklaşınca kaç karakter yazıldığı. */
+export const CharCount: React.FC<{ value: string; max: number }> = ({ value, max }) =>
+  value.length >= max * 0.8 ? (
+    <span className={`text-[11px] tnum self-end -mt-1 ${value.length >= max ? 'text-caution' : 'text-fg-3'}`} aria-live="polite">
+      {value.length >= max ? `En çok ${max} karakter` : `${value.length}/${max}`}
+    </span>
+  ) : null;
+
 export const ErrorText: React.FC<{ children?: React.ReactNode }> = ({ children }) =>
   children ? (
     <div className="flex gap-2 items-start text-[13px] text-negative bg-negative-bg border border-negative-line rounded-lg px-3 py-2.5 leading-relaxed">
       <Icon name="alert" size={16} className="mt-0.5" />
       <span>{children}</span>
     </div>
+  ) : null;
+
+/**
+ * Uzun liste: ilk `step` satır çizilir, gerisi "Daha fazla göster" ile.
+ * 300 görevli mağazada liste 20.000 px'i geçiyordu. `reset` değişince
+ * (süzgeç, sekme) baştan başlar.
+ */
+export function useShowMore(step = 30, reset?: unknown) {
+  const [n, setN] = useState(step);
+  useEffect(() => { setN(step); }, [reset, step]);
+  return { limit: n, more: () => setN((x) => x + step) };
+}
+
+export const ShowMore: React.FC<{ shown: number; total: number; onMore: () => void; className?: string }> = ({ shown, total, onMore, className = '' }) =>
+  total > shown ? (
+    <button type="button" onClick={onMore} className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-center ${className}`}>
+      Daha fazla göster · {total - shown} kaldı
+    </button>
   ) : null;
 
 /* ------------------------------------------------------------------ */
@@ -172,6 +208,16 @@ export const Sheet: React.FC<{ open: boolean; title: string; onClose: () => void
   }, [open]);
   // Android geri tuşu önce alt sayfayı kapatır.
   useBackHandler(open, () => { closeRef.current(); return true; });
+  // Web: tarayıcının geri düğmesi de önce pencereyi kapatır (geçmişe kayıt eklenir).
+  useEffect(() => (open ? registerSheet(() => closeRef.current()) : undefined), [open]);
+  // Yazılmış ama gönderilmemiş bir şey varken sayfa yenilenirse (F5) ya da
+  // sekme kapanırsa tarayıcı sorar.
+  useEffect(() => {
+    if (!open || !dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [open, dirty]);
   if (!open) return null;
   return (
     <div className={t.modalOverlay} onClick={close}>

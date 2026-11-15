@@ -14,7 +14,7 @@ import { taskInvalidReason, taskTargets, TASK_INVALID_LABEL, type TaskValidityCo
 import { localDay } from '../../lib/day';
 import { norm } from '../../lib/search';
 import { Icon } from '../../ui/Icon';
-import { Page, PageTitle, Section, Stat, Empty, Badge, Avatar, ProgressBar, Sheet, ErrorText, Spinner, toast, fmtDate, fmtDateTime, relDays } from '../../ui/kit';
+import { Page, PageTitle, Section, Stat, Empty, Badge, Avatar, ProgressBar, Sheet, ErrorText, Spinner, toast, fmtDate, fmtDateTime, relDays, useShowMore, ShowMore, MAX } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { AssignSheet } from '../shared/AssignSheet';
 import { AttemptRow } from '../barista/HomePages';
@@ -36,7 +36,25 @@ const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, 
 /* Davet kodu gösterimi                                                */
 /* ------------------------------------------------------------------ */
 
-export const CodeSheet: React.FC<{ code: { code: string; expiresAt: number; title: string; hint: string } | null; onClose: () => void }> = ({ code, onClose }) => (
+export const CodeSheet: React.FC<{ code: { code: string; expiresAt: number; title: string; hint: string } | null; onClose: () => void }> = ({ code, onClose }) => {
+  // Pano izni yoksa (http, bazı WebView'ler) kopyalama hata veriyor ama
+  // "Kopyalandı" deniyordu: hata yakalanır, kod seçili bir kutuda gösterilir.
+  const [copyFailed, setCopyFailed] = useState(false);
+  const boxRef = React.useRef<HTMLInputElement>(null);
+  useEffect(() => { setCopyFailed(false); }, [code?.code]);
+  useEffect(() => { if (copyFailed) boxRef.current?.select(); }, [copyFailed]);
+  const copy = async () => {
+    if (!code) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('pano yok');
+      await navigator.clipboard.writeText(code.code);
+      toast('Kopyalandı', 'positive');
+    } catch {
+      setCopyFailed(true);
+      toast('Kopyalanamadı. Kodu seçip kendin kopyala.', 'negative');
+    }
+  };
+  return (
   <Sheet open={!!code} title={code?.title || ''} onClose={onClose}
     footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={onClose}>Tamam</button>}>
     {code && (
@@ -46,18 +64,22 @@ export const CodeSheet: React.FC<{ code: { code: string; expiresAt: number; titl
             <span key={i} className="w-11 h-14 rounded-lg border border-line-2 bg-panel-2 flex items-center justify-center text-[28px] font-bold tnum">{d}</span>
           ))}
         </div>
-        <button
-          className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-center`}
-          onClick={() => { navigator.clipboard?.writeText(code.code); toast('Kopyalandı'); }}
-        >
+        <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd} self-center`} onClick={copy}>
           <Icon name="copy" size={14} /> Kopyala
         </button>
+        {copyFailed && (
+          <label className={t.field}>
+            <span className={t.label}>Kodu seçip kopyala</span>
+            <input ref={boxRef} readOnly value={code.code} onFocus={(e) => e.currentTarget.select()} className={`${t.input} text-center tnum font-semibold tracking-[0.2em]`} />
+          </label>
+        )}
         <p className="text-[13px] text-fg-2 leading-relaxed">{code.hint}</p>
         <p className="text-[12px] text-fg-3">Geçerlilik: {fmtDateTime(code.expiresAt)}. Kod tek kullanımlıktır.</p>
       </>
     )}
   </Sheet>
-);
+  );
+};
 
 const inviteHint = (name: string) =>
   `${name}, mağaza telefonunda "Yeni misin?" seçeneğine dokunup bu kodu girecek ve kendi 4 haneli PIN'ini belirleyecek. Kodu WhatsApp veya SMS ile kendisine iletebilirsin.`;
@@ -462,10 +484,10 @@ const StaffTeamSection: React.FC = () => {
           )}
         </div>
       )}
-      <Sheet open={open} title="Kahve Operasyonu ekibine ekle" onClose={() => setOpen(false)}
+      <Sheet open={open} title="Kahve Operasyonu ekibine ekle" onClose={() => setOpen(false)} dirty={!busy && !!(name.trim() || email.trim())}
         footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={add} disabled={busy}>{busy ? <Spinner size={14} /> : 'Ekle'}</button>}>
-        <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
-        <label className={t.field}><span className={t.label}>E-posta</span><input className={t.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} maxLength={MAX.name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+        <label className={t.field}><span className={t.label}>E-posta</span><input className={t.input} type="email" value={email} maxLength={120} onChange={(e) => setEmail(e.target.value)} /></label>
         <div className={t.field}>
           <span className={t.label}>Rol</span>
           <div className="flex flex-col gap-1.5">
@@ -717,10 +739,10 @@ export const StoresPage: React.FC = () => {
           </Link>
         ))}
       </div>
-      <Sheet open={open} title="Yeni mağaza" onClose={() => setOpen(false)}
+      <Sheet open={open} title="Yeni mağaza" onClose={() => setOpen(false)} dirty={!busy && (!!name.trim() || city.trim() !== 'İstanbul')}
         footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={add} disabled={busy}>Ekle</button>}>
-        <label className={t.field}><span className={t.label}>Mağaza adı</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ör. Moda Cadde" /></label>
-        <label className={t.field}><span className={t.label}>Şehir</span><input className={t.input} value={city} onChange={(e) => setCity(e.target.value)} /></label>
+        <label className={t.field}><span className={t.label}>Mağaza adı</span><input className={t.input} value={name} maxLength={MAX.name} onChange={(e) => setName(e.target.value)} placeholder="Ör. Moda Cadde" /></label>
+        <label className={t.field}><span className={t.label}>Şehir</span><input className={t.input} value={city} maxLength={40} onChange={(e) => setCity(e.target.value)} /></label>
       </Sheet>
     </Page>
   );
@@ -877,9 +899,9 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
   };
 
   return (
-    <Sheet open={open} title="Barista ekle" onClose={onClose}
+    <Sheet open={open} title="Barista ekle" onClose={onClose} dirty={!busy && !!(name.trim() || phone.trim())}
       footer={<><button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={onClose}>Vazgeç</button><button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={busy}>{busy ? <Spinner size={14} /> : 'Ekle ve kod oluştur'}</button></>}>
-      <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+      <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} maxLength={MAX.name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
       {!fixed && (
         <label className={t.field}><span className={t.label}>Mağaza</span>
           <select className={t.input} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
@@ -892,7 +914,7 @@ const AddBaristaSheet: React.FC<{ open: boolean; onClose: () => void; storeId?: 
         <input className={t.input} type="date" value={startedAt} max={localDay()} onChange={(e) => setStartedAt(e.target.value)} />
         <span className="text-[11px] text-fg-3">1401'de çalışmaya başladığı gün. Kıdem rozetleri (6 ay, 1 yıl) ve Pro önlük rozeti buna göre hesaplanır.</span>
       </label>
-      <label className={t.field}><span className={t.label}>Telefon (isteğe bağlı — kodu iletmek için)</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="05xx xxx xx xx" /></label>
+      <label className={t.field}><span className={t.label}>Telefon (isteğe bağlı — kodu iletmek için)</span><input className={t.input} value={phone} maxLength={20} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="05xx xxx xx xx" /></label>
       <div className={t.field}>
         <span className={t.label}>Rol</span>
         <div className={t.segment}>
@@ -1079,6 +1101,7 @@ export const BaristaDetailPage: React.FC = () => {
   const [openAttempt, setOpenAttempt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [badgeEdit, setBadgeEdit] = useState(false);
+  const taskPage = useShowMore(30);
 
   if (!b) return <Page wide><PageTitle title="Barista bulunamadı" back="/baristalar" /></Page>;
   const p = progress[b.id] || EMPTY;
@@ -1180,8 +1203,9 @@ export const BaristaDetailPage: React.FC = () => {
           )}
           <Section label="Görevler">
             {!storeTasks.data ? <div className="py-4 flex justify-center"><Spinner /></div> : tasks.length === 0 ? <Empty icon="flag" text="Atanmış görev yok." /> : (
+              <>
               <div className={t.listGroup}>
-                {tasks.map((a) => {
+                {tasks.slice(0, taskPage.limit).map((a) => {
                   const done = assignmentDone(a, p);
                   const invalid = !done && taskInvalidReason(a, vctx);
                   return (
@@ -1197,6 +1221,8 @@ export const BaristaDetailPage: React.FC = () => {
                   );
                 })}
               </div>
+              <ShowMore shown={taskPage.limit} total={tasks.length} onMore={taskPage.more} />
+              </>
             )}
           </Section>
           <div id="b-sinavlar" className="scroll-mt-20 flex flex-col">
@@ -1231,13 +1257,18 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
   // Her açılışta güncel bilgiyle başla: vazgeçilen düzenleme bir sonraki
   // açılışta duruyor ve fark edilmeden kaydedilebiliyordu.
   const initialStart = b.startedAt || localDay(b.createdAt);
+  // Pencerenin hangi barista için açıldığı: sayfa başka baristaya geçerse
+  // (tarayıcı geri) Kaydet o baristanın kaydını ezmesin.
+  const openedFor = React.useRef(b.id);
   useEffect(() => {
     if (!open) return;
+    openedFor.current = b.id;
     setName(b.name); setStoreId(b.storeId); setRole(b.role); setPhone(b.phone || ''); setStartedAt(initialStart); setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const dirty = name !== b.name || storeId !== b.storeId || role !== b.role || phone !== (b.phone || '') || startedAt !== initialStart;
   const save = async () => {
+    if (openedFor.current !== b.id) { setError('Sayfa başka bir baristaya geçti. Pencereyi kapatıp yeniden aç.'); return; }
     setBusy(true); setError(null);
     try {
       await backend.updateBarista(b, { name, storeId, role, phone, ...(startedAt !== b.startedAt ? { startedAt } : {}) });
@@ -1249,14 +1280,14 @@ const EditBaristaSheet: React.FC<{ open: boolean; onClose: () => void; b: Barist
   return (
     <Sheet open={open} title="Baristayı düzenle" onClose={onClose} dirty={!busy && dirty}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={save} disabled={busy}>Kaydet</button>}>
-      <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label className={t.field}><span className={t.label}>Ad soyad</span><input className={t.input} value={name} maxLength={MAX.name} onChange={(e) => setName(e.target.value)} /></label>
       <label className={t.field}><span className={t.label}>Mağaza</span>
         <select className={t.input} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
           {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {storeId !== b.storeId && <span className="text-[11px] text-caution">Mağaza değişince barista yeni mağazanın telefonunda görünür.</span>}
       </label>
-      <label className={t.field}><span className={t.label}>Telefon</span><input className={t.input} value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+      <label className={t.field}><span className={t.label}>Telefon</span><input className={t.input} value={phone} maxLength={20} inputMode="tel" onChange={(e) => setPhone(e.target.value)} /></label>
       <label className={t.field}><span className={t.label}>İşe başlama tarihi</span>
         <input className={t.input} type="date" value={startedAt} max={localDay()} onChange={(e) => setStartedAt(e.target.value)} />
         <span className="text-[11px] text-fg-3">Kıdem rozetleri buna göre hesaplanır.</span>
@@ -1325,6 +1356,9 @@ export const TasksPage: React.FC = () => {
     : [...openAll].sort((x, y) => (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt)
   ).filter(({ a, complete }) => tab === 'done' || !onlyOverdue || (!complete && !!a.dueAt && a.dueAt < Date.now()));
   const shownInvalid = tab === 'open' && !onlyOverdue ? invalidAll : [];
+  // Uzun liste parça parça çizilir (300 görevde sayfa 34.000 px oluyordu).
+  const page = useShowMore(30, `${tab}|${storeFilter}|${byFilter}|${onlyOverdue}`);
+  const pageInvalid = useShowMore(30, `${storeFilter}|${byFilter}`);
 
   const remove = async (a: Assignment) => {
     if (!confirm('Görev silinsin mi?')) return;
@@ -1386,11 +1420,13 @@ export const TasksPage: React.FC = () => {
       </div>
       {rows.length === 0 && shownInvalid.length === 0 ? <Empty icon="flag" text={tab === 'done' ? 'Tamamlanan görev yok.' : onlyOverdue ? 'Gecikmiş görev yok.' : all.length ? 'Açık görev yok, hepsi tamamlandı.' : 'Henüz görev atanmadı.'} /> : (
         <>
-          {rows.length > 0 && <div className={t.listGroup}>{rows.map((r) => <Row key={r.a.id} r={r} />)}</div>}
+          {rows.length > 0 && <div className={t.listGroup}>{rows.slice(0, page.limit).map((r) => <Row key={r.a.id} r={r} />)}</div>}
+          <ShowMore shown={page.limit} total={rows.length} onMore={page.more} />
           {shownInvalid.length > 0 && (
             <Section label={`Geçersiz · ${shownInvalid.length}`}>
               <p className="text-[12px] text-fg-3 -mt-1">Hiç tamamlanamayacak görevler: gecikmiş sayılmaz. İstersen silebilirsin.</p>
-              <div className={t.listGroup}>{shownInvalid.map((r) => <Row key={r.a.id} r={r} />)}</div>
+              <div className={t.listGroup}>{shownInvalid.slice(0, pageInvalid.limit).map((r) => <Row key={r.a.id} r={r} />)}</div>
+              <ShowMore shown={pageInvalid.limit} total={shownInvalid.length} onMore={pageInvalid.more} />
             </Section>
           )}
         </>

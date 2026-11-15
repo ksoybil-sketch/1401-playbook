@@ -37,7 +37,9 @@
   --color-crema: #F2EDE7;
   --color-crema-dim: #E2DAD1;
   --color-fg-2: #A9A19A;
-  --color-fg-3: #6E6863;
+  /* fg-3: ikincil yazı (açıklama, tarih, ipucu). Kart ve pencere zemininde
+     WCAG AA (≥4.5:1) için #6E6863'ten bir ton açıldı (eskiden 3.2:1). */
+  --color-fg-3: #8C857F;
   --color-fg-4: #4A4541;
 
   --color-positive: #6F9E7C;
@@ -58,6 +60,32 @@
 }
 
 /*
+ * Barista bölüm renkleri (src/ui/palette.ts). Koyu temalarda aynı; açık
+ * Gün Işığı temasında yazı ve kum rengi koyulaşır: eskiden alt menüde seçili
+ * sekme (1.3-1.9:1) ve Oryantasyon kartı açık zeminde kayboluyordu.
+ */
+:root {
+  --hue-amber: #D9A066; --hue-amber-text: #E8B47E;
+  --hue-rose: #E07A6E; --hue-rose-text: #EE9C91;
+  --hue-sky: #6FA8DC; --hue-sky-text: #93BFE6;
+  --hue-mint: #72C094; --hue-mint-text: #95D3AF;
+  --hue-violet: #A98BDB; --hue-violet-text: #C2ABE8;
+  --hue-sand: #E2DAD1; --hue-sand-text: #E2DAD1; --hue-sand-ink: #1A1512;
+  --hue-sand-from: rgba(226, 218, 209, 0.14); --hue-sand-to: rgba(226, 218, 209, 0.03); --hue-sand-line: rgba(226, 218, 209, 0.2);
+}
+:root[data-theme="gunisigi"] {
+  --hue-amber-text: #805E3C;
+  --hue-rose-text: #8F4E46;
+  --hue-sky-text: #446686;
+  --hue-mint-text: #426F56;
+  --hue-violet-text: #6C598C;
+  --hue-sand: #8A7660; --hue-sand-text: #5E5246; --hue-sand-ink: #FFF8EC;
+  --hue-sand-from: rgba(120, 90, 50, 0.13); --hue-sand-to: rgba(120, 90, 50, 0.04); --hue-sand-line: rgba(120, 90, 50, 0.28);
+}
+/* Açık temada beyaz ilerleme izi görünmüyordu. */
+:root[data-theme="gunisigi"] .bg-white\/10 { background-color: rgba(120, 70, 10, 0.1); }
+
+/*
  * Kahve Operasyonu temaları (bkz. src/features/staff/theme.ts).
  * @theme değişkenleri :root'ta tanımlı; <html data-theme> onları ezer,
  * tüm yardımcı sınıflar (bg-espresso, text-crema…) kendiliğinden uyar.
@@ -73,8 +101,10 @@
   --color-line-2: rgba(70, 45, 20, 0.2);
   --color-crema: #2B211A;
   --color-crema-dim: #3D3027;
-  --color-fg-2: #64564B;
-  --color-fg-3: #8A7A6D;
+  /* fg-3 AA için koyulaştı (eskiden 3.3:1); fg-2 de bir ton koyulaştı ki
+     iki seviye birbirinden ayrılsın. */
+  --color-fg-2: #55483E;
+  --color-fg-3: #6D5E53;
   --color-fg-4: #B3A493;
   --color-positive: #3F7A51;
   --color-positive-bg: rgba(63, 122, 81, 0.11);
@@ -102,7 +132,7 @@
   --color-crema: #E9F0E8;
   --color-crema-dim: #D6E2D5;
   --color-fg-2: #9AAA9D;
-  --color-fg-3: #66766A;
+  --color-fg-3: #7D8D80; /* AA için açıldı (eskiden #66766A, 3.6:1) */
   --color-fg-4: #45524A;
   --color-positive: #7DB38B;
   --color-positive-bg: rgba(125, 179, 139, 0.13);
@@ -269,7 +299,8 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 3px 12px rgba(233, 196, 106, 0.35);
 }
 /* Kartlardaki renkli yazılar altına döner (tek renk, premium). */
-:root[data-theme="altin"] .tile [class*="text-[#"] { color: #E9C46A !important; }
+:root[data-theme="altin"] .tile [class*="text-[#"],
+:root[data-theme="altin"] .tile [class*="text-(--hue"] { color: #E9C46A !important; }
 :root[data-theme="altin"] header,
 :root[data-theme="altin"] nav {
   background: rgba(14, 12, 8, 0.55) !important;

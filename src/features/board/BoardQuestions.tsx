@@ -5,7 +5,7 @@ import { db } from '../../api/firebase';
 import { errorText } from '../../api/backend';
 import { askBoardQuestion, closeBoardQuestion, replyBoardQuestion, TO_LABEL, TOPIC_LABEL, topicLink } from '../../api/board';
 import { useQueryLive } from '../../hooks/useFirestore';
-import { Avatar, Badge, Empty, ErrorText, Page, PageTitle, Section, Sheet, Spinner, toast, fmtDateTime } from '../../ui/kit';
+import { Avatar, Badge, Empty, ErrorText, Page, PageTitle, Section, Sheet, Spinner, toast, fmtDateTime, MAX, CharCount } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
 import { useStaffData } from '../staff/staffData';
@@ -94,7 +94,7 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
   const choice = (on: boolean) => `w-full text-left rounded-xl border px-4 py-3 transition-colors ${on ? 'border-crema bg-panel-3 ring-1 ring-crema/40' : 'border-line bg-panel hover:bg-panel-2'}`;
 
   return (
-    <Sheet open={!!topic} title={picking ? 'Yeni soru' : 'Bu konuyu sor'} onClose={onClose}
+    <Sheet open={!!topic} title={picking ? 'Yeni soru' : 'Bu konuyu sor'} onClose={onClose} dirty={!busy && !!(text.trim() || own.trim())}
       footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={send} disabled={busy}>{busy ? <Spinner size={16} /> : <><Icon name="send" size={16} /> Gönder</>}</button>}>
       {topic && !picking && (
         <div className={`${t.panel} px-4 py-3`}>
@@ -122,7 +122,7 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
             </button>
           </div>
           {picked === 'diger' && (
-            <input className={`${t.input} h-11 text-[15px]`} value={own} onChange={(e) => setOwn(e.target.value)} autoFocus
+            <input className={`${t.input} h-11 text-[15px]`} value={own} maxLength={MAX.title} onChange={(e) => setOwn(e.target.value)} autoFocus
               placeholder="Konu: ör. Pendik'in eğitim ilerlemesi" />
           )}
         </div>
@@ -140,8 +140,9 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
       </div>
       <label className="flex flex-col gap-2">
         <span className="text-[14px] font-semibold text-fg-2">Sorunuz</span>
-        <textarea className={`${t.textarea} text-[15px] min-h-28`} value={text} onChange={(e) => setText(e.target.value)} autoFocus={!picking}
+        <textarea className={`${t.textarea} text-[15px] min-h-28`} value={text} maxLength={MAX.text} onChange={(e) => setText(e.target.value)} autoFocus={!picking}
           placeholder="Bu konu ne oldu? Ne zaman çözülür? Neye ihtiyaç var?" />
+        <CharCount value={text} max={MAX.text} />
       </label>
       <p className="text-[13px] text-fg-3 leading-relaxed">Soru, yazışmasıyla birlikte kayıt olarak kalır; kurulun diğer üyeleri de görür.</p>
       <ErrorText>{error}</ErrorText>
@@ -196,7 +197,7 @@ export const QuestionThread: React.FC<{ q: BoardQuestion; side: 'board' | 'ops';
         ))}
       </div>
       {canReply ? <>
-      <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
+      <textarea className={`${t.textarea} min-h-20`} value={text} maxLength={MAX.text} onChange={(e) => setText(e.target.value)}
         placeholder={side === 'ops' ? 'Kurula yanıt: durum, sonraki adım, tarih…' : q.status === 'closed' ? 'Soru kapandı. Yeniden sormak için yaz…' : 'Ek soru ya da not yaz…'} />
       <div className="flex flex-wrap gap-2 justify-end">
         {side === 'board' && q.status === 'answered' && (

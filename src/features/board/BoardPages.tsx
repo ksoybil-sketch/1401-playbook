@@ -155,15 +155,17 @@ function useAsk() {
   const me = useStaffSession();
   const [topic, setTopic] = useState<BoardTopic | null>(null);
   const sheet = <AskSheet topic={topic} me={{ uid: me.uid, name: me.name }} onClose={() => setTopic(null)} />;
-  return { ask: setTopic, sheet };
+  return { ask: setTopic, sheet, asking: !!topic };
 }
 
 /**
  * Mağaza ve talep ayrıntısı, açıldığı sayfanın üstünde pencere olarak
  * açılır (?magaza= / ?talep=); kapatınca aynı sayfada kalınır. Mağaza
- * penceresinden bir talep açılırsa talep üstte açılır, kapanınca mağazaya dönülür.
+ * penceresinden bir talep açılırsa talep onun yerine açılır, kapanınca
+ * mağazaya dönülür. Aynı anda tek pencere görünür: eskiden mağaza, talep ve
+ * "Bu konuyu sor" üst üste biniyordu (asking: soru penceresi açık).
  */
-function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
+function useDetailSheets(period: Period, ask: (t: BoardTopic) => void, asking = false) {
   const me = useStaffSession();
   const [params, setParams] = useSearchParams();
   // Sınav göstergeleri yalnızca mağaza penceresi açıkken (Gidişat ve Mağazalar zaten okumuştur).
@@ -177,10 +179,10 @@ function useDetailSheets(period: Period, ask: (t: BoardTopic) => void) {
   const req = ctx.requests.find((r) => r.id === params.get('talep')) || null;
   const sheets = (
     <>
-      <Sheet open={!!store} title={store?.store.name || ''} onClose={() => set('magaza', null)}>
+      <Sheet open={!!store && !req && !asking} title={store?.store.name || ''} onClose={() => set('magaza', null)}>
         {store && <StoreDetail row={store} period={period} onOpenReq={(id) => set('talep', id)} onAsk={() => ask({ kind: 'store', id: store.store.id, title: store.store.name })} />}
       </Sheet>
-      <Sheet open={!!req} title={req ? `${req.storeName} · ${STATUS[req.status].label}` : ''} onClose={() => set('talep', null)}>
+      <Sheet open={!!req && !asking} title={req ? `${req.storeName} · ${STATUS[req.status].label}` : ''} onClose={() => set('talep', null)}>
         {req && (
           <>
             <RequestSummary r={req} showStore />
@@ -284,7 +286,7 @@ export const BoardOverviewPage: React.FC = () => {
   const go = (perm: Parameters<typeof allowFn>[1], to: string) => (allowFn(meB.role, perm) ? to : undefined);
   const { tracks } = useContent();
   const badgeConfig = useBadgeConfig((x) => x.config);
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const navigate = useNavigate();
   const trend = useExamTrend(period);
   const s = useMemo(() => summary(ctx, period), [ctx, period]);
@@ -320,7 +322,7 @@ export const BoardOverviewPage: React.FC = () => {
   const totalLevels = levels ? levels.reduce((x, l) => x + l.n, 0) : 0;
 
   const me = useStaffSession();
-  const { openStore, openReq, sheets } = useDetailSheets(period, ask);
+  const { openStore, openReq, sheets } = useDetailSheets(period, ask, asking);
   const card = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const best = useMemo(() => bestStore(card), [card]);
   const star = useMemo(() => bestBarista(ctx, period), [ctx, period]);
@@ -495,14 +497,14 @@ export const BoardStoresPage: React.FC = () => {
   const [period, setPeriod] = usePeriod();
   const ctx = useBoardCtx(period, { exams: true });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'progress', dir: -1 });
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const rows = useMemo(() => scorecard(ctx, period), [ctx, period]);
   const sorted = useMemo(() => [...rows].sort((a, b) => {
     if (sort.key === 'name') return a.store.name.localeCompare(b.store.name, 'tr') * sort.dir;
     const va = a[sort.key] ?? -1, vb = b[sort.key] ?? -1;
     return ((va as number) - (vb as number)) * sort.dir;
   }), [rows, sort]);
-  const { openStore, sheets } = useDetailSheets(period, ask);
+  const { openStore, sheets } = useDetailSheets(period, ask, asking);
 
   const cols: { key: SortKey; label: string }[] = [
     { key: 'name', label: 'Mağaza' }, { key: 'progress', label: 'İlerleme' }, { key: 'passRate', label: 'Sınav başarısı' },
@@ -660,7 +662,7 @@ export const BoardWorkPage: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('sekme') || 'talep') as WorkTab;
   const setTab = (x: WorkTab) => setParams(x === 'talep' ? {} : { sekme: x }, { replace: true });
-  const { ask, sheet } = useAsk();
+  const { ask, sheet, asking } = useAsk();
   const people = useOpsPeople();
   const { data: bulletins } = useQueryLive<Bulletin>(query(collection(db, 'bulletins'), orderBy('createdAt', 'desc'), limit(30)), 'board-bulletins');
   const now = Date.now();
@@ -680,7 +682,7 @@ export const BoardWorkPage: React.FC = () => {
     .sort((x, y) => y.overdue - x.overdue || (x.a.dueAt || Infinity) - (y.a.dueAt || Infinity)), [ctx]);
   const live = bulletins.filter((b) => b.published && (!b.expiresAt || b.expiresAt > now));
 
-  const { openReq, sheets } = useDetailSheets(periodOf('30'), ask);
+  const { openReq, sheets } = useDetailSheets(periodOf('30'), ask, asking);
   const storeName = (id: string) => ctx.stores.find((s) => s.id === id)?.name || '';
 
   const TABS: { id: WorkTab; label: string; n: number }[] = [

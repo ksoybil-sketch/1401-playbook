@@ -12,7 +12,7 @@ import { useStaffSession } from './StaffLayout';
 import { RichText } from '../academy/LessonBlocks';
 import { MediaInput } from './MediaInput';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Page, PageTitle, Section, Sheet, Empty, Badge, ErrorText, toast, fmtDate, Avatar, sendOrQueue, QUEUED_TEXT } from '../../ui/kit';
+import { Page, PageTitle, Section, Sheet, Empty, Badge, ErrorText, toast, fmtDate, Avatar, sendOrQueue, QUEUED_TEXT, MAX, CharCount } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { Barista, Bulletin, BulletinKind } from '../../../shared/types';
 
@@ -349,15 +349,16 @@ export const BulletinSheet: React.FC<{
 
         <div className={t.field}>
           <span className={t.label}>Başlık</span>
-          <input className={t.input} value={d.title || ''} onChange={(e) => setD({ ...d, title: e.target.value })}
+          <input className={t.input} value={d.title || ''} maxLength={MAX.title} onChange={(e) => setD({ ...d, title: e.target.value })}
                  placeholder={isBoard ? 'Ekim ayında en çok Black Latte satanlar' : isPromo ? 'Kasım terfileri' : 'Yeni kampanya: Chestnut Latte'} />
         </div>
 
         <div className={t.field}>
           <span className={t.label}>Metin{isLeader ? ' (isteğe bağlı)' : ''}</span>
-          <textarea className={`${t.textarea} min-h-28`} value={d.body || ''}
+          <textarea className={`${t.textarea} min-h-28`} value={d.body || ''} maxLength={MAX.long}
                     onChange={(e) => setD({ ...d, body: e.target.value })}
                     placeholder="**kalın** yazmak için iki yıldız; madde için satıra &quot;- &quot; ile başla." />
+          <CharCount value={d.body || ''} max={MAX.long} />
         </div>
 
         <div className={t.field}>
@@ -384,7 +385,7 @@ export const BulletinSheet: React.FC<{
                          onChange={(e) => setRow(i, { label: e.target.value })} />
                   <input className={`${t.input} max-w-28`} value={r.value} placeholder="42 adet"
                          onChange={(e) => setRow(i, { value: e.target.value })} />
-                  <button className={t.iconBtn} onClick={() => setD({ ...d, rows: rows.filter((_, j) => j !== i) })}>
+                  <button className={t.iconBtn} aria-label="Satırı sil" onClick={() => setD({ ...d, rows: rows.filter((_, j) => j !== i) })}>
                     <Icon name="minus" size={13} />
                   </button>
                 </div>
@@ -412,7 +413,7 @@ export const BulletinSheet: React.FC<{
                       <option value="">Listeden seç ya da adı yaz</option>
                       {baristas.map((x) => <option key={x.id} value={x.id}>{x.name} · {stores.find((st) => st.id === x.storeId)?.name || ''}</option>)}
                     </select>
-                    <button className={t.iconBtn} onClick={() => setD({ ...d, people: people.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
+                    <button className={t.iconBtn} aria-label="Kişiyi sil" onClick={() => setD({ ...d, people: people.filter((_, j) => j !== i) })}><Icon name="minus" size={13} /></button>
                   </div>
                   {!p.baristaId && (
                     <input className={t.input} value={p.name} placeholder="Ad Soyad" onChange={(e) => setPerson(i, { name: e.target.value })} />

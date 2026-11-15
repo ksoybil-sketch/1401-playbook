@@ -5,6 +5,7 @@ import { App } from './App';
 import './styles.css';
 import { watchForUpdates } from './lib/updateCheck';
 import { installBackButton } from './lib/backButton';
+import { installWebHistory } from './lib/webHistory';
 import { installErrorLog } from './lib/errorLog';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 
@@ -16,6 +17,11 @@ installErrorLog();
 
 // Android geri tuşu: alt sayfa → sınav onayı → önceki ekran → arka plana al.
 installBackButton();
+
+// Web: tarayıcının geri/ileri düğmesi önce açık pencereyi kapatır, kaydedilmemiş
+// değişikliği sorar, çıkıştan sonra önceki kişinin adresine dönmez. Router'dan
+// önce kurulmalı (popstate dinleyici sırası).
+installWebHistory();
 
 // Çevrimdışı kabuk (public/sw.js): Wi-Fi gidince de uygulama açılsın.
 // Geliştirmede ve Android uygulamasında (dosyalar zaten cihazda) yok.

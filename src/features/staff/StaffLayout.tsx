@@ -125,14 +125,15 @@ export const StaffLayout: React.FC = () => {
       <IdleWarning left={idle.warnLeft} onStay={idle.stay} />
       {/* Masaüstü yan menü */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-line bg-bean/60 sticky top-0 h-[100dvh]">
-        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
+        <div className="shrink-0 flex items-center gap-2.5 px-5 h-16 border-b border-line">
           <img src="/icons/logo.svg" alt="" className="w-7 h-7 opacity-90 logo-mark" />
           <div className="leading-tight">
             <div className="text-[14px] font-semibold">1401 Campus</div>
             <div className="text-[11px] text-fg-3">Kahve Operasyonu</div>
           </div>
         </div>
-        <nav className="flex-1 p-3 flex flex-col gap-0.5 overflow-y-auto">
+        {/* Kısa ekranda (dizüstü, yatay telefon) satırlar ezilmesin: menü kayar. */}
+        <nav className="flex-1 min-h-0 p-3 flex flex-col gap-0.5 overflow-y-auto overscroll-contain">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
@@ -140,7 +141,7 @@ export const StaffLayout: React.FC = () => {
               onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}
               end={n.to === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 h-10 px-3 rounded-lg text-[14px] font-medium transition-colors ${isActive ? 'bg-panel-3 text-crema' : 'text-fg-2 hover:bg-panel-2 hover:text-crema'}`
+                `shrink-0 flex items-center gap-3 h-10 px-3 rounded-lg text-[14px] font-medium transition-colors ${isActive ? 'bg-panel-3 text-crema' : 'text-fg-2 hover:bg-panel-2 hover:text-crema'}`
               }
             >
               <Icon name={n.icon} size={18} /> {n.label}
@@ -148,8 +149,8 @@ export const StaffLayout: React.FC = () => {
             </NavLink>
           ))}
         </nav>
-        <div className="px-3 pb-2"><ThemePicker compact /></div>
-        <div className="p-3 border-t border-line flex items-center gap-2.5">
+        <div className="shrink-0 px-3 pb-2"><ThemePicker compact /></div>
+        <div className="shrink-0 p-3 border-t border-line flex items-center gap-2.5">
           <Avatar name={s.name} size={32} />
           <div className="flex-1 min-w-0 leading-tight">
             <div className="text-[13px] font-medium truncate">{s.name}</div>
@@ -211,7 +212,12 @@ export const StaffLayout: React.FC = () => {
       <Sheet open={more} title="Menü" onClose={() => setMore(false)}>
         <div className={t.listGroup}>
           {rest.map((n) => (
-            <NavLink key={n.to} to={n.to} className={t.listRow} onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}>
+            <NavLink key={n.to} to={n.to} className={t.listRow} onClick={(e) => {
+              if (!confirmLeave()) { e.preventDefault(); return; }
+              // Bulunulan ekrana dokununca menü kapanır (eskiden açık kalıyordu).
+              if (pathname === n.to) e.preventDefault();
+              setMore(false);
+            }}>
               <span className={t.iconChip('neutral')}><Icon name={n.icon} size={16} /></span>
               <span className="text-[14px] font-medium flex-1">{n.label}</span>
               <Badge n={n.badge} />

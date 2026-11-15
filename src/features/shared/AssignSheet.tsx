@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useContent, publishedOnly } from '../../store/content';
@@ -35,6 +35,19 @@ export const AssignSheet: React.FC<{
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Her açılışta hedef güncel kayıttan (preset) kurulur: eskiden ilk açılıştaki
+  // barista/mağaza kalıyor, başka baristanın sayfasında "Kime: önceki kişi" geliyordu.
+  // Vazgeçilen seçim de bir sonraki açılışa taşınmaz.
+  useEffect(() => {
+    if (!open) return;
+    setStoreId(fixedStoreId || preset?.storeId || '');
+    setBaristaId(preset?.baristaId || '');
+    setKind('module'); setTargetId(''); setNote(''); setError(null);
+    setDue(localDay(Date.now() + 7 * 86400000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  // Seçilmiş ama atanmamış bir şey varken dışarı dokunma/Esc/geri sorar.
+  const dirty = !busy && (!!targetId || !!note.trim());
 
   // Panelde "Tüm aktif mağazalar": her mağaza için ayrı bir görev yazılır.
   const ALL = '__hepsi__';
@@ -130,6 +143,7 @@ export const AssignSheet: React.FC<{
       open={open}
       title="Görev ata"
       onClose={onClose}
+      dirty={dirty}
       footer={
         <>
           <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={onClose}>Vazgeç</button>

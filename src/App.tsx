@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { useWebHistoryTracker } from './lib/webHistory';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
 import { can, isBoard, isManager } from './lib/roles';
@@ -41,6 +42,7 @@ export const App: React.FC = () => {
   const contentReady = useContent((s) => s.ready);
 
   useEffect(() => boot(), [boot]);
+  useWebHistoryTracker();
 
   const signedIn = session.kind === 'store' || session.kind === 'barista' || session.kind === 'staff';
   const sessionKey = session.kind === 'barista' ? session.baristaId : session.kind === 'staff' ? session.uid : session.kind;
@@ -73,6 +75,17 @@ export const App: React.FC = () => {
       <ToastHost />
     </>
   );
+};
+
+/**
+ * Adres parametresi değişince ekran baştan kurulur. Aynı rota kaldığı için
+ * (ör. /baristalar/a → geri → /baristalar/b) ekran ve açık pencereleri eski
+ * kaydın bilgisini taşıyordu: "Baristayı düzenle" başka baristanın kaydını
+ * eziyor, "Görev ata" önceki baristayı hedefliyordu.
+ */
+const KeyBy: React.FC<{ param: string; children: React.ReactNode }> = ({ param, children }) => {
+  const id = useParams()[param];
+  return <React.Fragment key={id}>{children}</React.Fragment>;
 };
 
 const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['session']; contentReady: boolean }> = ({ session, contentReady }) => {
@@ -118,7 +131,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="akademi/:trackId" element={<TrackPage />} />
             <Route path="modul/:moduleId" element={<ModulePage />} />
             <Route path="ders/:lessonId" element={<LessonPage />} />
-            <Route path="sinav/:moduleId" element={<ExamPage />} />
+            <Route path="sinav/:moduleId" element={<KeyBy param="moduleId"><ExamPage /></KeyBy>} />
             <Route path="sonuclarim" element={<ResultsPage />} />
             {isManager(session.role) && <Route path="ekip" element={<TeamPage />} />}
             {isManager(session.role) && <Route path="talepler" element={<StoreRequestsPage />} />}
@@ -149,9 +162,9 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route index element={<OverviewPage />} />
             {/* Her ekran Yetkiler ayarına bağlı: kapalıysa menüde de yok, adresle de açılmaz. */}
             {allow(session.role, 'ekran.magazalar') && <Route path="magazalar" element={<StoresPage />} />}
-            {allow(session.role, 'ekran.magazalar') && <Route path="magazalar/:storeId" element={<StoreDetailPage />} />}
+            {allow(session.role, 'ekran.magazalar') && <Route path="magazalar/:storeId" element={<KeyBy param="storeId"><StoreDetailPage /></KeyBy>} />}
             {allow(session.role, 'ekran.baristalar') && <Route path="baristalar" element={<BaristasPage />} />}
-            {allow(session.role, 'ekran.baristalar') && <Route path="baristalar/:baristaId" element={<BaristaDetailPage />} />}
+            {allow(session.role, 'ekran.baristalar') && <Route path="baristalar/:baristaId" element={<KeyBy param="baristaId"><BaristaDetailPage /></KeyBy>} />}
             {allow(session.role, 'ekran.gorevler') && <Route path="gorevler" element={<TasksPage />} />}
             {allow(session.role, 'ekran.talepler') && <Route path="talepler" element={<RequestsPage />} />}
             {allow(session.role, 'ekran.talepler') && <Route path="talepler/istatistik" element={<RequestStatsPage />} />}
@@ -165,8 +178,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             {allow(session.role, 'ekran.kurulSorulari') && <Route path="kurul-sorulari" element={<BoardQuestionsPage side="ops" me={session} />} />}
             {allow(session.role, 'ekran.bildirimler') && <Route path="bildirimler" element={<NotificationsPage />} />}
             {can(session.role, 'manageTeam') && <Route path="yetkiler" element={<PermissionsPage />} />}
-            {allow(session.role, 'ekran.akademi') && <Route path="icerik/modul/:moduleId" element={<ModuleEditorPage />} />}
-            {allow(session.role, 'ekran.akademi') && <Route path="icerik/ders/:lessonId" element={<LessonEditorPage />} />}
+            {allow(session.role, 'ekran.akademi') && <Route path="icerik/modul/:moduleId" element={<KeyBy param="moduleId"><ModuleEditorPage /></KeyBy>} />}
+            {allow(session.role, 'ekran.akademi') && <Route path="icerik/ders/:lessonId" element={<KeyBy param="lessonId"><LessonEditorPage /></KeyBy>} />}
             {ACTIVITY_LOG && can(session.role, 'manageAi') && <Route path="demo-kaydi" element={<DemoLogPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

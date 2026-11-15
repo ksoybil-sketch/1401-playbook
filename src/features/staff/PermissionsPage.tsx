@@ -57,8 +57,9 @@ export const PermissionsPage: React.FC = () => {
     runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
       const cur = (snap.data() as PermConfig | undefined) || {};
-      const line = { at: Date.now(), byName, text, ...(dev ? { dev: true } : {}) };
-      tx.set(ref, { ...patch(cur), updatedAt: Date.now(), updatedByName: byName, log: [...(cur.log || []), line].slice(-60) }, { merge: true });
+      // Uygulama geliştiricisinin değişikliği günlüğe hiç yazılmaz (iz bırakmaz).
+      const log = dev ? (cur.log || []) : [...(cur.log || []), { at: Date.now(), byName, text }].slice(-60);
+      tx.set(ref, { ...patch(cur), updatedAt: Date.now(), updatedByName: byName, log }, { merge: true });
     });
 
   const toggle = async (r: Role, p: PermDef) => {
@@ -102,7 +103,8 @@ export const PermissionsPage: React.FC = () => {
               {EDITABLE_ROLES.map((r) => (
                 <th key={r} className="align-bottom pb-3 px-1 text-center">
                   <div className="text-[13px] font-semibold text-crema leading-tight">{SHORT[r]}</div>
-                  <div className="text-[11px] text-fg-3 font-normal leading-snug mt-0.5 min-h-[2.4em]">{names(r).join(', ') || '—'}</div>
+                  {/* Boşluksuz uzun ad sütunu genişletmesin: kırılır, en çok üç satır. */}
+                  <div className="text-[11px] text-fg-3 font-normal leading-snug mt-0.5 min-h-[2.4em] max-w-[9rem] mx-auto [overflow-wrap:anywhere] line-clamp-3">{names(r).join(', ') || '—'}</div>
                   {changedCount(r) > 0 && (
                     <button onClick={() => reset(r)} className="text-[11px] text-caution underline underline-offset-2 mt-1">{changedCount(r)} değişiklik · sıfırla</button>
                   )}

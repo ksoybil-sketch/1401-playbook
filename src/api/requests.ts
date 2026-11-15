@@ -90,7 +90,8 @@ export async function addNote(req: StoreRequest, note: {
 }) {
   const statusChange = note.status && note.status !== req.status ? note.status : undefined;
   const n: RequestNote = {
-    at: Date.now(), by: note.by.uid, byName: note.side === 'ops' ? opsName(note.by.name) : note.by.name, side: note.side, text: note.text.trim(),
+    // Uygulama geliştiricisi iz bırakmaz: adı gibi kimliği de boş yazılır.
+    at: Date.now(), by: note.side === 'ops' && devSession() ? '' : note.by.uid, byName: note.side === 'ops' ? opsName(note.by.name) : note.by.name, side: note.side, text: note.text.trim(),
     ...(statusChange ? { status: statusChange } : {}),
     ...(note.reason ? { reason: note.reason } : {})
   };

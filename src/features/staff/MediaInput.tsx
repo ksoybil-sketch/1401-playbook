@@ -8,7 +8,8 @@ import * as t from '../../ui/tokens';
  * Görsel/video alanı. Hem ders blokları hem bülten kullanır.
  *
  * Spark planında Storage olmadığı için görseller küçültülüp data URL olarak
- * belgenin içine gömülür (bkz. src/lib/media.ts). Video yüklenemez, yalnızca
+ * belgenin içine gömülür (bkz. src/lib/media.ts). Görsel bağlantısı verilemez
+ * (kurallar yalnızca data:image/… kabul ediyor). Video yüklenemez, yalnızca
  * dış bağlantı verilebilir.
  */
 export const MediaInput: React.FC<{
@@ -54,15 +55,11 @@ export const MediaInput: React.FC<{
           </button>
         </div>
       )}
-      <div className="flex gap-2">
-        <input
-          className={t.input}
-          value={url.startsWith('data:') ? '' : url}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? 'Görsel bağlantısı ya da dosya yükle'}
-        />
+      {/* Bağlantı kutusu kaldırıldı: sunucu kuralları yalnızca yüklenen görseli
+          (data:image/…) kabul ediyor; yapıştırılan bağlantı kayıtta reddediliyordu. */}
+      <div className="flex gap-2 items-center">
         <label className={`${t.btn} ${t.btnSecondary} ${t.btnLg} cursor-pointer`} title="Dosyadan yükle">
-          {busy ? <Spinner size={14} /> : <Icon name="upload" size={15} />}
+          {busy ? <Spinner size={14} /> : <Icon name="upload" size={15} />} {url ? 'Değiştir' : 'Görsel yükle'}
           <input
             type="file"
             accept="image/*"
@@ -74,6 +71,7 @@ export const MediaInput: React.FC<{
             }}
           />
         </label>
+        {!url && placeholder && <span className="text-[12px] text-fg-3">{placeholder}</span>}
       </div>
     </div>
   );

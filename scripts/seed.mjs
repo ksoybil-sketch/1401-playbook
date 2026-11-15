@@ -348,7 +348,8 @@ if (EMULATOR) {
     await setDoc(`users/${adminUid}`, {
       role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: Date.now()
     });
-    await setDoc('config/bootstrap', { uid: adminUid, at: Date.now() }).catch(() => {});
+    // Kimlik yazılmaz: belge yalnızca "kurulum yapıldı" işaretidir (güvenlik raporu K-3).
+    await setDoc('config/bootstrap', { at: Date.now() }).catch(() => {});
     console.log('Demo yöneticisi yetkilendirildi.');
   }
 }
@@ -397,7 +398,7 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
   await setDoc(`users/${staff.uid}`, { role: TEST.staff.role, name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
   // Kurallar config/bootstrap'ın üzerine yazılmasına izin vermez; demo
   // yeniden kurulduğunda belge zaten yerindedir, hata yutulur.
-  await setDoc('config/bootstrap', { uid: staff.uid, at: now }).catch(() => {});
+  await setDoc('config/bootstrap', { at: now }).catch(() => {});
 
   // Her yöneticinin kendi hesabı ve gerçek rolü var: Cenk Bey yayınlar ve
   // onaylar, Uğur Bey'in içerik/bülten değişiklikleri onaya düşer.

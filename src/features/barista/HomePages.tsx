@@ -16,7 +16,7 @@ import { isTaskValid, taskInvalidReason, TASK_INVALID_LABEL } from '../../lib/ta
 import { Icon, type IconName } from '../../ui/Icon';
 import { HUE, trackHue, type Hue } from '../../ui/palette';
 import { RECIPE_TRACK_ID } from '../../lib/search';
-import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, fmtDate, Spinner, Sheet, toast } from '../../ui/kit';
+import { Page, PageTitle, Section, Ring, Empty, Badge, Avatar, ProgressBar, relDays, fmtDateTime, fmtDate, Spinner, Sheet, toast, useShowMore } from '../../ui/kit';
 import { createRequest, isClosed } from '../../api/requests';
 import { errorText } from '../../api/backend';
 import { useStoreRequests } from './RequestsPage';
@@ -171,7 +171,7 @@ export const HomePage: React.FC = () => {
         </Section>
       )}
 
-      <Section label={`Başarımların · ${earned.length}/${report.badges.length}`} action={<Link to="/sonuclarim" className="text-[12px] text-fg-2">Tümü</Link>}>
+      <Section label={`Başarımların · ${earned.length}/${report.badges.length}`} action={<Link to="/sonuclarim" className="text-[12px] text-fg-2 inline-flex items-center min-h-11 -my-3 px-2 -mx-2">Tümü</Link>}>
         <Link to="/sonuclarim" className={`${t.card} p-3.5 flex flex-col gap-3`}>
           {earned.length > 0 ? (
             <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
@@ -385,6 +385,8 @@ export const TeamPage: React.FC = () => {
     return { a, targets, done, invalid, complete: !invalid && targets.length > 0 && done.length === targets.length };
   }).sort((x, y) => Number(x.complete || !!x.invalid) - Number(y.complete || !!y.invalid) || (x.a.dueAt ?? Infinity) - (y.a.dueAt ?? Infinity) || y.a.createdAt - x.a.createdAt);
   const [showDoneTasks, setShowDoneTasks] = useState(false);
+  // Uzun görev listesi parça parça (300 görevde Ekibim 22.000 px oluyordu).
+  const taskPage = useShowMore(30, showDoneTasks);
   const openTaskRows = taskRows.filter((r) => !r.complete && !r.invalid);
   const doneTaskRows = taskRows.filter((r) => r.complete || r.invalid);
   const validTask = (a: Assignment) => isTaskValid(a, { modules, lessons, tracks });
@@ -434,7 +436,7 @@ export const TeamPage: React.FC = () => {
         ) : (
           <div className={t.listGroup}>
             {openTaskRows.length === 0 && <div className={`${t.listRowStatic} text-[13px] text-fg-3`}>Açık görev yok, hepsi tamamlandı.</div>}
-            {[...openTaskRows, ...(showDoneTasks ? doneTaskRows : [])].map(({ a, targets, done, complete, invalid }) => {
+            {[...openTaskRows, ...(showDoneTasks ? doneTaskRows : [])].slice(0, taskPage.limit).map(({ a, targets, done, complete, invalid }) => {
               const late = !complete && !invalid && !!a.dueAt && a.dueAt < Date.now();
               const waiting = targets.filter((b) => !done.includes(b));
               return (
@@ -460,6 +462,11 @@ export const TeamPage: React.FC = () => {
                 </div>
               );
             })}
+            {openTaskRows.length + (showDoneTasks ? doneTaskRows.length : 0) > taskPage.limit && (
+              <button onClick={taskPage.more} className={`${t.listRow} justify-center text-[13px] text-fg-2`}>
+                Daha fazla göster · {openTaskRows.length + (showDoneTasks ? doneTaskRows.length : 0) - taskPage.limit} kaldı
+              </button>
+            )}
             {doneTaskRows.length > 0 && (
               <button onClick={() => setShowDoneTasks((v) => !v)} className={`${t.listRow} justify-center text-[13px] text-fg-2`}>
                 {showDoneTasks ? 'Kapananları gizle' : `Tamamlanan ve geçersizleri göster · ${doneTaskRows.length}`}

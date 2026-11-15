@@ -75,13 +75,19 @@ export const btnDanger = 'bg-negative-bg text-negative border border-negative-li
 /** Çerçevesiz eylem. */
 export const btnGhost = 'bg-transparent text-fg-2 hover:text-crema hover:bg-panel-2';
 
-export const btnLg = 'h-11 px-5 text-[15px]';
-export const btnMd = 'h-9 px-3.5 text-[13px]';
-export const btnSm = 'h-8 px-3 text-[12px]';
+/**
+ * Dokunmatik ekranda görünmez dokunma payı: düğme aynı boyda görünür, parmak
+ * için alan üstten ve alttan 6 px büyür (44 px). Fareyle kullanımda yok.
+ */
+export const touchY = "relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5 pointer-coarse:after:content-['']";
 
-/** Kare ikon butonu. */
+export const btnLg = 'h-11 px-5 text-[15px]';
+export const btnMd = `h-9 px-3.5 text-[13px] relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1 pointer-coarse:after:content-['']`;
+export const btnSm = `h-8 px-3 text-[12px] ${touchY}`;
+
+/** Kare ikon butonu (telefonda 40 px; dokunmatikte görünmez payla 44 px). */
 export const iconBtn =
-  'inline-flex items-center justify-center w-10 h-10 md:w-8 md:h-8 shrink-0 rounded-lg bg-panel-2 border border-line text-fg-2 cursor-pointer transition-colors duration-150 hover:bg-panel-3 hover:text-crema active:opacity-80 disabled:opacity-40';
+  "relative inline-flex items-center justify-center w-10 h-10 md:w-8 md:h-8 shrink-0 rounded-lg bg-panel-2 border border-line text-fg-2 cursor-pointer transition-colors duration-150 hover:bg-panel-3 hover:text-crema active:opacity-80 disabled:opacity-40 pointer-coarse:after:absolute pointer-coarse:after:-inset-0.5 md:pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
 
 /* ---------------------------------------------------------------
    FORM ELEMANLARI
@@ -108,7 +114,7 @@ export const segmentItemOff = 'text-fg-3 hover:text-fg-2';
 
 /** Yatay kaydırılabilir filtre şeridi (çip). */
 export const chip =
-  'px-3 h-8 inline-flex items-center rounded-md text-[12px] font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 border';
+  `px-3 h-8 inline-flex items-center rounded-md text-[12px] font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 border ${touchY}`;
 export const chipOn = 'bg-crema text-espresso border-crema';
 export const chipOff = 'bg-panel text-fg-2 border-line hover:bg-panel-2 hover:text-crema';
 
@@ -132,7 +138,11 @@ export const modalGrabber = 'w-9 h-1 shrink-0 rounded-full bg-line-2 mx-auto mt-
 export const modalHeader =
   'shrink-0 flex items-center justify-between gap-3 px-5 pt-4 pb-3.5 border-b border-line';
 
-export const modalTitle = 'text-[17px] font-semibold text-crema';
+/**
+ * Uzun, boşluksuz başlık (bağlantı, seri no) pencereyi yana taşırıyor, Kapat
+ * ekran dışına çıkıyordu: başlık kırılır, en çok iki satır.
+ */
+export const modalTitle = 'min-w-0 flex-1 text-[17px] font-semibold text-crema break-words [overflow-wrap:anywhere] line-clamp-2';
 
 /** Yalnızca gövde kayar: başlık (Kapat) ve alttaki düğmeler hep görünür. */
 export const modalBody = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5';

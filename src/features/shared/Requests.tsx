@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { addNote, catOf, isClosed, reasonLabel, REJECT_REASONS, STATUS, WAIT_REASONS } from '../../api/requests';
 import { errorText } from '../../api/backend';
 import { Icon } from '../../ui/Icon';
-import { Avatar, Badge, Spinner, toast, fmtDateTime } from '../../ui/kit';
+import { Avatar, Badge, Spinner, toast, fmtDateTime, MAX, CharCount } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { RequestRejectReason, RequestStatus, RequestWaitReason, StoreRequest } from '../../../shared/types';
 
@@ -58,7 +58,7 @@ export const RequestSummary: React.FC<{ r: StoreRequest; showStore?: boolean; un
           {unread && <Badge tone="caution">Yeni yanıt</Badge>}
           <WaitBadge r={r} />
         </div>
-        <div className="text-[15px] font-semibold leading-snug mt-1 break-words">{r.title}</div>
+        <div className="text-[15px] font-semibold leading-snug mt-1 break-words [overflow-wrap:anywhere]">{r.title}</div>
         <div className="text-[12px] text-fg-3 mt-0.5">
           {showStore ? `${r.storeName} · ` : ''}{r.createdByName ? `${r.createdByName} · ` : ''}{fmtDateTime(r.createdAt)}
           {r.notes.length ? ` · ${r.notes.filter((n) => n.text).length} mesaj` : ''}
@@ -141,7 +141,7 @@ export const RequestThread: React.FC<{
 
   return (
     <div className="flex flex-col gap-3">
-      {r.detail && <p className="text-[14px] text-fg-2 leading-relaxed whitespace-pre-wrap">{r.detail}</p>}
+      {r.detail && <p className="text-[14px] text-fg-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{r.detail}</p>}
       {r.imageUrl && <img src={r.imageUrl} alt="" className="w-full max-h-72 object-contain rounded-xl border border-line bg-panel" loading="lazy" />}
 
       {notes.length > 0 && (
@@ -150,7 +150,7 @@ export const RequestThread: React.FC<{
             n.text ? (
               <div key={i} className={`flex gap-2 ${n.side === side ? 'flex-row-reverse text-right' : ''}`}>
                 {n.byName ? <Avatar name={n.byName} size={26} /> : <span className="w-[26px] shrink-0" />}
-                <div className={`max-w-[80%] rounded-xl px-3 py-2 ${n.side === 'ops' ? 'bg-panel-3' : 'bg-panel'} border border-line`}>
+                <div className={`max-w-[80%] min-w-0 [overflow-wrap:anywhere] rounded-xl px-3 py-2 ${n.side === 'ops' ? 'bg-panel-3' : 'bg-panel'} border border-line`}>
                   <div className="text-[11px] text-fg-3">{n.byName ? `${n.byName} · ` : n.side === 'ops' ? 'Kahve Operasyonu · ' : ''}{fmtDateTime(n.at)}{n.status ? ` · ${STATUS[n.status].label}` : ''}{n.reason ? ` · ${reasonLabel(n.reason)}` : ''}</div>
                   <div className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-left">{n.text}</div>
                 </div>
@@ -188,8 +188,9 @@ export const RequestThread: React.FC<{
         <p className="text-[13px] text-fg-3 bg-panel border border-line rounded-lg px-3 py-2.5">Bu talep kapandı. Yeni bir konu için yeni talep aç.</p>
       )}
       {canWrite && <div className="flex flex-col gap-2">
-        <textarea className={`${t.textarea} min-h-20`} value={text} onChange={(e) => setText(e.target.value)}
+        <textarea className={`${t.textarea} min-h-20`} value={text} maxLength={MAX.text} onChange={(e) => setText(e.target.value)}
           placeholder={side === 'ops' ? 'Mağazaya yanıt: servis yarın 10:00\'da geliyor…' : 'Ek bilgi yaz…'} />
+        <CharCount value={text} max={MAX.text} />
         <div className="flex flex-wrap gap-2 justify-end">
           {/* Onay bekleyen talep: onay yetkisi olmayan yalnızca mesaj yazar
               (eskiden "İşleme al" ile onayı atlayabiliyordu). Onaylayıcıda

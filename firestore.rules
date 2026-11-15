@@ -50,12 +50,17 @@ service cloud.firestore {
     // yoksa her yetkinin yanında yazan varsayılan rol listesi geçerlidir
     // (permissions.ts DEFAULTS ile aynı — ikisi birlikte değişmeli).
     // Geliştirici ayarlardan etkilenmez.
+    // Yönetim Kurulu yalnızca "kurul.*" yetkilerini alabilir (kurul ekranları,
+    // kurul sorusu sormak): Yetkiler belgesine kurul için başka bir yetki
+    // yazılsa da (ör. roles.board.icerikYayin) kural onu yok sayar. Kurul
+    // salt okunur ilkesi ayarla delinmesin (güvenlik raporu K-8).
     function permDoc() { return /databases/$(database)/documents/config/permissions; }
     function perm(cap, defaults) {
       let r = myRole();
       let o = exists(permDoc()) ? get(permDoc()).data.get('roles', {}) : {};
       return r in ['developer', 'admin']
-        || ((r in o && cap in o[r]) ? o[r][cap] == true : r in defaults);
+        || ((r != 'board' || cap.matches('kurul[.].*'))
+            && ((r in o && cap in o[r]) ? o[r][cap] == true : r in defaults));
     }
     /** Rolün içerik alanı: izinli eğitim yolları; null = her yer. */
     function domainLimit() {
@@ -73,6 +78,49 @@ service cloud.firestore {
     function inModule(mid) { let lim = domainLimit(); return lim == null || trackOf(mid) in lim; }
     /** Yazılan belge: silmede eski hâli. */
     function docData() { return request.resource != null ? request.resource.data : resource.data; }
+
+    // --- Boyut ve içerik sınırları (güvenlik raporu K-5) -------------------
+    // Spark planında sunucu doğrulaması yok: tek bir hesabın belgeleri 1 MiB'a
+    // kadar şişirip kotayı tüketmesini ve yöneticinin ekranına dış adresli
+    // izleme pikseli koymasını kurallar keser. Sınırlar arayüzdeki gerçek
+    // kullanımın birkaç katı; mevcut kayıtları kırmaz.
+    /** Alan yoksa ya da n karakteri aşmayan metinse. */
+    function strMax(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
+    /** Alan yoksa ya da n öğeyi aşmayan listeyse. */
+    function listMax(d, k, n) { return !(k in d) || (d[k] is list && d[k].size() <= n); }
+    /**
+     * Görsel: yok, boş ya da uygulamanın kendi yüklediği data URL'i
+     * (src/lib/media.ts compressImage). Dış http(s) adresi reddedilir.
+     */
+    function imgOk(d) {
+      return !('imageUrl' in d) || d.imageUrl == null
+        || (d.imageUrl is string && (d.imageUrl == '' || d.imageUrl.matches('data:image/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]*')));
+    }
+    /** Güncellemede görsel değişmediyse eski kayıt olduğu gibi kalır (eski kayıtlar kırılmasın). */
+    function imgWriteOk() {
+      return request.resource == null
+        || (resource != null && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['imageUrl']))
+        || imgOk(request.resource.data);
+    }
+    /** Silmede sınır yok; yazımda d (yazım sonrası hâl) denetlenir. */
+    function onWrite() { return request.resource != null; }
+    /**
+     * Yalnızca sona ekleme: yeni liste eskisinin aynısı + tek öğe; eklenen
+     * öğe bu tarafın (side) ve oturum sahibinin. Eski öğeler aynen korunur
+     * (güvenlik raporu K-4: talep geçmişine sahte not).
+     */
+    function appended(newL, oldL, side, maxText) {
+      return newL is list && newL.size() == oldL.size() + 1
+        && (oldL.size() == 0 || newL[0:oldL.size()] == oldL)
+        && newL[oldL.size()].side == side
+        && newL[oldL.size()].by == request.auth.uid
+        && newL[oldL.size()].text is string && newL[oldL.size()].text.size() <= maxText
+        && strMax(newL[oldL.size()], 'byName', 120);
+    }
+    /** YYYYAAGG (UTC) — hata kaydı kimliği için. */
+    function ymd(t) {
+      return string(t.year()) + (t.month() < 10 ? '0' : '') + string(t.month()) + (t.day() < 10 ? '0' : '') + string(t.day());
+    }
 
     // Varsayılan rol listeleri (yetki → kimde açık)
     function canPublish() { return perm('icerikYayin', ['director', 'opsmanager']); }
@@ -121,32 +169,50 @@ service cloud.firestore {
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
       // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
-      allow create: if (signedIn() && request.auth.uid == uid && request.resource.data.role == 'admin'
+      allow create: if userTextOk() && ((signedIn() && request.auth.uid == uid && request.resource.data.role == 'admin'
                           && !exists(/databases/$(database)/documents/config/bootstrap))
                       || (isDirector() && request.resource.data.role in teamRolesFor())
-                      || (canManageBaristas() && request.resource.data.role in storeRoles());
+                      || (canManageBaristas() && request.resource.data.role in storeRoles()));
       // Cihaz/barista hesapları kendi "son görülme" zamanını her girişte;
       // mağaza telefonu ayrıca eşleştirme kodunu kullandığında kendi
       // paired/label alanlarını günceller (bkz. backend.ts pairDevice).
+      // Kendi belgesinde: label kısa metin, paired evet/hayır, lastSeenAt sayı
+      // (rapor: barista kendi label'ına 200 KB yazabiliyordu).
       allow update: if isAdmin()
-                      || (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
+                      || (userTextOk() && (
+                         (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
                       || (canManageBaristas() && resource.data.role in storeRoles() && request.resource.data.role in storeRoles())
                       || (signedIn() && request.auth.uid == uid && resource.data.get('active', false) == true
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label']));
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label'])
+                          && request.resource.data.get('paired', false) is bool
+                          && (request.resource.data.get('lastSeenAt', null) == null || request.resource.data.lastSeenAt is number))));
       allow delete: if false;
+      function userTextOk() {
+        return strMax(request.resource.data, 'name', 120) && strMax(request.resource.data, 'label', 80)
+          && strMax(request.resource.data, 'email', 200);
+      }
     }
 
+    // İlk kurulum işareti. Herkes okur ("kurulum yapıldı mı"), içinde kimlik
+    // yok: yalnızca { at }. Eskiden geliştiricinin uid'ini taşıyordu ve
+    // oturumsuz okunabiliyordu (güvenlik raporu K-3). Belge yoksa bir kez,
+    // aynı toplu yazımda kendini admin yapan hesap oluşturur; sonra değişmez.
     match /config/bootstrap {
       allow get: if true;
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && !exists(/databases/$(database)/documents/config/bootstrap);
+      allow create: if signedIn() && !exists(/databases/$(database)/documents/config/bootstrap)
+        && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at is number
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'developer'];
       allow update, delete: if false;
     }
 
     // Yapay zekâ anahtarı (dosyadan ders üretimi, bkz. src/lib/aiLesson.ts).
     // Barista ve mağaza oturumları hiç okuyamaz.
     match /config/ai {
-      // Kahve Operasyonu (ops) da dosyadan ders hazırladığı için okur (14.11.2026 kararı).
-      allow get: if isDirector() || myRole() in ['opsmanager', 'regional', 'ops'];
+      // Yalnızca Kahve Operasyon Direktörü (ve geliştirici) okur: anahtar
+      // istemciye düz iner, okuyan herkes onu dışarı taşıyabilir (güvenlik
+      // raporu K-7, 15.11.2026 kararı; 14.11'deki ops/regional/opsmanager
+      // okuması geri alındı).
+      allow get: if isDirector();
       // Anahtarı yalnızca uygulama geliştiricisi yazar.
       allow write: if isAdmin();
     }
@@ -196,23 +262,46 @@ service cloud.firestore {
     // operasyon) kendi adına gönderir; geliştirici, direktör ve bölge müdürü
     // okur, durumunu değiştirir. Silinmez: neyin bildirildiği kayıttır.
     match /feedback/{id} {
+      // Alanlar src/features/shared/Feedback.tsx ile aynı; görsel yalnızca yüklenen data URL.
       allow create: if isActive() && request.resource.data.by == request.auth.uid
         && request.resource.data.status == 'yeni'
-        && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
+        && request.resource.data.text is string && request.resource.data.text.size() <= 2000
+        && request.resource.data.keys().hasOnly(['kind', 'text', 'imageUrl', 'lessonId', 'lessonTitle', 'questionId', 'questionPrompt',
+             'path', 'version', 'device', 'by', 'byName', 'role', 'storeName', 'status', 'createdAt'])
+        && imgOk(request.resource.data)
+        && strMax(request.resource.data, 'kind', 30) && strMax(request.resource.data, 'lessonId', 128)
+        && strMax(request.resource.data, 'lessonTitle', 300) && strMax(request.resource.data, 'questionId', 128)
+        && strMax(request.resource.data, 'questionPrompt', 300) && strMax(request.resource.data, 'path', 300)
+        && strMax(request.resource.data, 'version', 120) && strMax(request.resource.data, 'device', 120)
+        && strMax(request.resource.data, 'byName', 120) && strMax(request.resource.data, 'role', 30)
+        && strMax(request.resource.data, 'storeName', 120);
       allow read: if canFeedback();
       allow update: if canFeedback()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'updatedAt'])
+        && strMax(request.resource.data, 'note', 2000);
       allow delete: if false;
     }
 
     // Otomatik hata kaydı (src/lib/errorLog.ts): her oturum kendi adına
     // yazar, yalnızca uygulama geliştiricisi okur. Değiştirilmez; geliştirici
     // ele alınmış kayıtları temizleyebilir.
+    //
+    // Kota koruması (güvenlik raporu K-5): belge kimliği belirlenimci,
+    // `<uid>_<YYYYAAGG>_<0..19>` (gün UTC; saat farkına karşı dün/bugün/yarın
+    // kabul). Kayıt değiştirilemediği için aynı kimlik ikinci kez yazılamaz:
+    // bir hesap bir günde en fazla 20 hata kaydı bırakabilir (bkz. errorLog.ts).
     match /hatalar/{id} {
       allow create: if signedIn() && request.resource.data.by == request.auth.uid
+        && id.matches(request.auth.uid + '_(' + ymd(request.time) + '|' + ymd(request.time - duration.value(1, 'd'))
+                      + '|' + ymd(request.time + duration.value(1, 'd')) + ')_([0-9]|1[0-9])')
         && request.resource.data.message is string && request.resource.data.message.size() <= 500
         && request.resource.data.stack is string && request.resource.data.stack.size() <= 2000
-        && request.resource.data.keys().hasOnly(['kind', 'message', 'stack', 'extra', 'path', 'version', 'bundle', 'device', 'by', 'byName', 'role', 'storeName', 'createdAt']);
+        && request.resource.data.keys().hasOnly(['kind', 'message', 'stack', 'extra', 'path', 'version', 'bundle', 'device', 'by', 'byName', 'role', 'storeName', 'createdAt'])
+        && strMax(request.resource.data, 'kind', 10) && strMax(request.resource.data, 'extra', 1000)
+        && strMax(request.resource.data, 'path', 200) && strMax(request.resource.data, 'version', 100)
+        && strMax(request.resource.data, 'bundle', 100) && strMax(request.resource.data, 'device', 120)
+        && strMax(request.resource.data, 'byName', 120) && strMax(request.resource.data, 'role', 30)
+        && strMax(request.resource.data, 'storeName', 120);
       allow read, delete: if isAdmin();
       allow update: if false;
     }
@@ -240,37 +329,65 @@ service cloud.firestore {
     // Alan sınırı: Operasyon Müdürü yalnızca kendi eğitim yollarına yazar
     // (kahve dışı); diğer yollardaki değişikliği öneri olarak gönderir.
     // Eğitim yolu (track) eklemek/silmek alan sınırı olmayanlara açıktır.
+    //
+    // Alan denetimi hem yazım sonrası hâle hem (varsa) eski hâle bakar: alan
+    // dışı bir dersi kendi modülüne "taşıyarak" değiştirmek de alan dışıdır.
     match /tracks/{id} {
       allow read: if isActive();
-      allow write: if isAdmin() || (canPublish() && domainLimit() == null);
+      allow write: if (isAdmin() || (canPublish() && domainLimit() == null)) && trackTextOk();
     }
     match /modules/{id} {
       allow read: if isActive();
-      allow write: if isAdmin() || (canPublish() && inTrack(docData().trackId));
+      allow write: if (isAdmin() || (canPublish() && inTrack(docData().trackId) && (resource == null || inTrack(resource.data.trackId))))
+        && trackTextOk();
     }
+    /** Yol ve modül: başlık ve açıklama. */
+    function trackTextOk() {
+      return !onWrite() || (strMax(request.resource.data, 'title', 200) && strMax(request.resource.data, 'description', 2000));
+    }
+    // Ders gövdesi blok listesidir (görseller data URL olarak içinde); blok
+    // sayısı sınırlanır, toplam boyutu Firestore'un 1 MiB belge sınırı keser.
     match /lessons/{id} {
       allow read: if isActive();
-      allow write: if isAdmin() || (canPublish() && inModule(docData().moduleId));
+      allow write: if (isAdmin() || (canPublish() && inModule(docData().moduleId) && (resource == null || inModule(resource.data.moduleId))))
+        && (!onWrite() || (strMax(request.resource.data, 'title', 300) && listMax(request.resource.data, 'blocks', 300)));
     }
     // Soru bankası: sunucu olmadığı için sınav telefonda puanlanır, bu
     // yüzden mağaza oturumları da okuyabilmek zorunda (cevap anahtarı dahil).
     match /questions/{id} {
       allow read: if isStaff() || isStoreSession();
-      allow write: if isAdmin() || ((canPublish() || canFixQuestions()) && inModule(docData().moduleId));
+      allow write: if (isAdmin() || ((canPublish() || canFixQuestions()) && inModule(docData().moduleId) && (resource == null || inModule(resource.data.moduleId))))
+        && imgWriteOk()
+        && (!onWrite() || (strMax(request.resource.data, 'prompt', 1000) && strMax(request.resource.data, 'explanation', 3000)
+            && listMax(request.resource.data, 'options', 12)));
     }
 
     // --- Onay bekleyen değişiklikler ------------------------------------
+    //
+    // Önerinin `ops` listesindeki koleksiyonlar burada DENETLENEMİYOR: kurallar
+    // dilinde döngü yok, liste öğe öğe açık yazılarak denetlenebilir; ölçümde
+    // öğe başına ~16 ifade gidiyor ve istek başına 1000 ifade sınırı ~50 öğede
+    // doluyor. Meşru öneriler bundan uzun olabilir (yeni ürün: mağaza başına
+    // bir görev; dosyadan ders: onlarca soru). Koruma, onayın yürüdüğü yerde:
+    // src/api/changes.ts yalnızca içerik koleksiyonlarını (beyaz liste)
+    // yazar, tanımadığı işlemi içeren öneriyi yayınlamaz (güvenlik raporu K-1).
     match /proposals/{id} {
       allow read: if canRead();
-      allow create: if (isStaff() && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'pending') || isAdmin();
+      allow create: if ((isStaff() && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending') || isAdmin()) && proposalTextOk();
       // Müdür onaylar/reddeder (ve düzeltip yayınlarken ops'u günceller).
       // Öneri sahibi, bekleyen önerisini düzenler ya da geri çeker.
-      allow update: if canApproveProposals()
+      allow update: if (canApproveProposals()
         || (isStaff() && resource.data.createdBy == request.auth.uid && resource.data.status == 'pending'
             && request.resource.data.status in ['pending', 'withdrawn']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status', 'baseUpdatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ops', 'title', 'summary', 'updatedAt', 'status', 'baseUpdatedAt'])))
+        && proposalTextOk();
       allow delete: if isAdmin();
+      function proposalTextOk() {
+        return request.resource.data.get('ops', []) is list
+          && strMax(request.resource.data, 'title', 300) && strMax(request.resource.data, 'summary', 500)
+          && strMax(request.resource.data, 'reviewNote', 2000) && strMax(request.resource.data, 'createdByName', 120);
+      }
     }
 
     // --- Mağaza talepleri ----------------------------------------------
@@ -278,22 +395,35 @@ service cloud.firestore {
     // Müdürü durumunu değiştirir. Silinmez: "sözlü talep geçersiz", kayıt kalır.
     match /requests/{id} {
       allow read: if canRead() || (isLead() && resource.data.storeId == myStoreId());
-      allow create: if (isLead() && request.resource.data.storeId == myStoreId()
+      // Talep boş geçmişle açılır; başlık/ayrıntı sınırlı, görsel yalnızca yüklenen data URL (K-5).
+      allow create: if ((isLead() && request.resource.data.storeId == myStoreId()
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'open' && request.resource.data.lastSide == 'store')
-        || isAdmin();
+        && request.resource.data.status == 'open' && request.resource.data.lastSide == 'store'
+        && request.resource.data.get('notes', []) == [])
+        || isAdmin()) && requestTextOk();
       // Servis onayı bekleyen talebi yalnızca onay yetkisi olan bu durumdan
       // çıkarır; yanıt yetkisi olan "İşleme al" ile onayı atlayamaz (mesaj yazabilir).
-      allow update: if (canHandleRequests()
+      allow update: if requestTextOk() && ((canHandleRequests()
             && (resource.data.status != 'approval' || request.resource.data.status == 'approval' || canApproveService()))
         // Mağaza tarafı kapanmış (çözüldü/reddedildi) talebe yazamaz: talep
         // kapalı kaldığı için mesaj panelde "Açık" listesine düşmüyor, gözden
         // kaçıyordu. Yeni konu için yeni talep açılır (14.11.2026 kararı).
+        // Mağaza notları yalnızca SONA eklenir: eski notlar (operasyonun
+        // yanıtları dahil) aynen kalır, eklenen not mağazanın ve yazanın
+        // kendisinin (K-4: notes dizisini baştan yazıp sahte "ops" yanıtı).
         || (isLead() && resource.data.storeId == myStoreId()
             && !(resource.data.status in ['done', 'rejected'])
             && request.resource.data.lastSide == 'store'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'updatedAt', 'lastSide'])
+            && appended(request.resource.data.notes, resource.data.get('notes', []), 'store', 3000)
+            && request.resource.data.notes[resource.data.get('notes', []).size()].keys().hasOnly(['at', 'by', 'byName', 'side', 'text'])));
       allow delete: if isAdmin();
+      function requestTextOk() {
+        return strMax(request.resource.data, 'title', 300) && strMax(request.resource.data, 'detail', 5000)
+          && strMax(request.resource.data, 'equipment', 100) && strMax(request.resource.data, 'storeName', 120)
+          && strMax(request.resource.data, 'createdByName', 120) && listMax(request.resource.data, 'notes', 500)
+          && imgWriteOk();
+      }
     }
 
     // --- Sonuçlar ----------------------------------------------------
@@ -305,8 +435,15 @@ service cloud.firestore {
       // olup olmadığına bakar: aynı barista + modül için iki cihazdan aynı
       // anda "Başla" iki deneme açmasın. Var olmayan belgeyi okumak bir şey sızdırmaz.
       allow get: if isBarista() && resource == null;
+      // Kimlik baristanın kendi ad alanında olmalı (`<baristaId>_<modül>_…`,
+      // bkz. exam.ts startExam): başkası kurbanın belirlenimci kimliklerini
+      // önceden kapıp onun sınav başlatmasını kilitleyemesin (güvenlik raporu
+      // K-10). Şube kendi şubesi; puan alanları açılışta yazılamaz.
       allow create: if (isBarista() && request.resource.data.baristaId == myBaristaId()
-        && request.resource.data.submittedAt == null)
+        && id.split('_')[0] == myBaristaId()
+        && request.resource.data.storeId == myStoreId()
+        && request.resource.data.submittedAt == null
+        && !request.resource.data.keys().hasAny(['score', 'passed', 'correct', 'mistakes', 'voided', 'timedOut', 'regradedAt', 'voidedQuestions']))
         // Geliştirici: demo ortamına örnek sınav geçmişi yazmak için.
         || isAdmin();
       // Puanlama telefonda. Deneme açıkken (submittedAt == null) barista
@@ -355,28 +492,50 @@ service cloud.firestore {
     // arayüzde uygulanıyor.
     match /bulletins/{id} {
       allow read: if canRead() || isStoreSession();
-      allow create, update: if canPublishBulletin() && request.resource.data.createdBy is string;
+      allow create, update: if canPublishBulletin() && request.resource.data.createdBy is string
+        && strMax(request.resource.data, 'title', 300) && strMax(request.resource.data, 'body', 10000)
+        && strMax(request.resource.data, 'createdByName', 120) && imgWriteOk();
       allow delete: if canPublishBulletin();
     }
 
     // --- Görevler ------------------------------------------------------
     match /assignments/{id} {
       allow read: if canRead() || inStore(resource.data.storeId);
-      allow create: if (((isStaff() && canAssign()) || (isLead() && request.resource.data.storeId == myStoreId()))
-        && request.resource.data.createdBy == request.auth.uid) || isAdmin();
+      // Belirli bir baristaya atanan görev o baristanın şubesine açılır
+      // (müdür başka şubenin baristasına görev yazamaz).
+      allow create: if ((((isStaff() && canAssign()) || (isLead() && request.resource.data.storeId == myStoreId()))
+        && request.resource.data.createdBy == request.auth.uid
+        && (request.resource.data.get('baristaId', null) == null
+            || get(/databases/$(database)/documents/baristas/$(request.resource.data.baristaId)).data.storeId == request.resource.data.storeId))
+        || isAdmin()) && assignmentTextOk();
       // Görevi atayan değiştirir/siler; Kahve Operasyon Direktörü herkesinkini.
-      allow update, delete: if isDirector()
+      // Görevin şubesi ve baristası sonradan değişmez (güvenlik raporu K-4:
+      // müdür kendi görevini başka şubeye taşıyıp oraya metin sokuyordu).
+      // Uygulamada görev düzenleme yok; şube değişecekse görev silinip yeniden atanır.
+      allow update: if (isDirector()
+          || (isStaff() && resource.data.createdBy == request.auth.uid)
+          || (isLead() && resource.data.storeId == myStoreId() && resource.data.createdBy == request.auth.uid))
+        && request.resource.data.storeId == resource.data.storeId
+        && request.resource.data.get('baristaId', null) == resource.data.get('baristaId', null)
+        && assignmentTextOk();
+      allow delete: if isDirector()
         || (isStaff() && resource.data.createdBy == request.auth.uid)
         || (isLead() && resource.data.storeId == myStoreId() && resource.data.createdBy == request.auth.uid);
+      function assignmentTextOk() {
+        return strMax(request.resource.data, 'title', 300) && strMax(request.resource.data, 'note', 1000)
+          && strMax(request.resource.data, 'createdByName', 120);
+      }
     }
 
     // --- Telefon eşleştirme (tek kullanımlık, kısa ömürlü) --------------
     // Kod, telefon henüz oturum açmadan önce okunur — düz metin şifre
     // taşıdığı için 30 dk'lık ömrü ve tek kullanımlık doğası tek korumadır.
     match /pairingCodes/{code} {
-      // resource == null: kod üretirken çakışma kontrolü (henüz var olmayan
-      // bir koda bakılıyor) — bu durumda okumanın bir sakıncası yok.
-      allow get: if resource == null || resource.data.expiresAt > request.time.toMillis();
+      // Var olmayan kod reddedilir: oturumsuz biri "bu kod var mı" diye
+      // deneme yapamasın (güvenlik raporu K-6, 15.11.2026 kararı). Kod
+      // üretirken çakışma denetimini (backend.ts uniqueCode) barista yönetimi
+      // yetkisi olan yapar; ona var olmayan kod da okunur.
+      allow get: if canManageBaristas() || (resource != null && resource.data.expiresAt > request.time.toMillis());
       allow create: if canManageBaristas();
       // Kodu yalnızca onunla eşleşen telefon (kullanınca) ya da Bölge Müdürü siler.
       allow delete: if (isActive() && resource.data.uid == request.auth.uid) || canManageBaristas();
@@ -385,7 +544,13 @@ service cloud.firestore {
 
     // --- Barista daveti (7 gün, tek kullanımlık) ------------------------
     match /invites/{code} {
-      allow get: if isStoreSession() || isStaff();
+      // Davet (e-posta + geçici şifrenin türetildiği kod) yalnızca kendi
+      // şubesinin oturumuna (telefon, kodu kullanırken) ve barista yönetimi
+      // yetkisi olana görünür. Eskiden her mağaza oturumu başka şubenin
+      // davetini okuyup o baristanın hesabını devralabiliyordu (K-2).
+      // Var olmayan kod mağaza oturumuna da reddedilir (kahin olmasın);
+      // yeni kod üretirken çakışma denetimini barista yöneticisi yapar.
+      allow get: if canManageBaristas() || (isStoreSession() && resource.data.storeId == myStoreId());
       // Eski davetleri temizlerken (PIN sıfırlama, işten çıkarma) sorgulanır.
       allow list: if canManageBaristas();
       allow create: if canManageBaristas();
@@ -403,15 +568,23 @@ service cloud.firestore {
       allow create: if isBoard() && perm('kurul.sorular', ['board']) && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'open' && request.resource.data.lastSide == 'board'
         && request.resource.data.to in ['director', 'opsmanager', 'regional', 'all']
-        && request.resource.data.messages.size() == 1;
-      // Kurul: ek soru yazar ya da "tamam" deyip kapatır.
+        && request.resource.data.messages.size() == 1
+        && appended(request.resource.data.messages, [], 'board', 3000)
+        && strMax(request.resource.data, 'createdByName', 120)
+        && (!('topic' in request.resource.data) || strMax(request.resource.data.topic, 'title', 200));
+      // Yazışma yalnızca sona eklenir; eski mesajlar (karşı tarafın yanıtı
+      // dahil) değiştirilemez. Kurul: ek soru yazar ya da "tamam" deyip kapatır
+      // (kapatırken mesaj eklenmez).
       allow update: if (isBoard() && request.resource.data.lastSide == 'board'
             && request.resource.data.status in ['open', 'closed']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt'])
+            && (request.resource.data.messages == resource.data.messages
+                || appended(request.resource.data.messages, resource.data.messages, 'board', 3000)))
         // Operasyon: yanıtlar (soru "yanıtlandı" olur).
         || (answersBoard() && request.resource.data.lastSide == 'ops'
             && request.resource.data.status == 'answered'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status', 'lastSide', 'updatedAt'])
+            && appended(request.resource.data.messages, resource.data.messages, 'ops', 3000));
       allow delete: if false;
     }
 

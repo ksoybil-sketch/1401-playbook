@@ -11,6 +11,7 @@ import { useExamSize } from './useExamSize';
 import { moduleState } from '../../lib/progress';
 import { Icon } from '../../ui/Icon';
 import { useBackHandler } from '../../lib/backButton';
+import { useBrowserBackConfirm } from '../../lib/unsaved';
 import { Page, ProgressBar, Ring, Spinner, ErrorText, fmtDateTime } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import type { AttemptReviewItem, ExamQuestion } from '../../../shared/types';
@@ -135,6 +136,8 @@ export const ExamPage: React.FC = () => {
     else navigate(back, { replace: true });
     return true;
   });
+  // Web'de tarayıcının geri düğmesi de aynı onayı sorar (eskiden onaysız çıkılıyordu).
+  useBrowserBackConfirm(phase.k === 'run', EXIT_CONFIRM);
 
   // Sınav sırasında yanlışlıkla geri tuşuna basılırsa uyar.
   useEffect(() => {

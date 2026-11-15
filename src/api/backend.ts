@@ -300,7 +300,10 @@ async function redeemInvite(code: string, pin: string, storeId: string): Promise
     if (isNetworkError(e)) throw new AppError(NETWORK_MSG, 'unavailable');
     inv = undefined;
   }
-  if (!inv || inv.expiresAt < Date.now()) throw new AppError('Davet kodu geçersiz ya da süresi dolmuş. Yöneticinden yeni kod iste.');
+  // Kurallar başka şubenin davetini mağaza oturumuna hiç okutmaz (güvenlik
+  // raporu K-2): o durumda da buraya "kod yok" olarak düşer. Kodun var olup
+  // olmadığı ayırt edilemez; mesaj üç durumu birlikte söyler.
+  if (!inv || inv.expiresAt < Date.now()) throw new AppError('Davet kodu geçersiz, süresi dolmuş ya da başka bir mağaza için. Kodu kontrol et ya da yöneticinden yeni kod iste.');
   if (inv.storeId !== storeId) throw new AppError('Bu davet başka bir mağaza için. Kendi mağazanın telefonunu kullan.');
   await signInWithEmailAndPassword(auth, inv.email, invitePassword(code));
   await updatePassword(auth.currentUser!, pinPassword(inv.baristaId, pin));
@@ -332,12 +335,18 @@ async function changeOwnPin(baristaId: string, oldPin: string, newPin: string): 
 /* Yöneticiler                                                         */
 /* ------------------------------------------------------------------ */
 
-/** İlk kurulum: hiç yönetici yoksa ilk hesabı admin olarak açar. */
+/**
+ * İlk kurulum: hiç yönetici yoksa ilk hesabı admin olarak açar.
+ * config/bootstrap herkese açık bir "kurulum yapıldı" işaretidir; içine kimlik
+ * yazılmaz (eskiden geliştiricinin uid'i duruyordu, güvenlik raporu K-3).
+ * Kurallar işareti yalnızca aynı toplu yazımda kendini admin yapan hesaba,
+ * belge yokken bir kez yazdırır.
+ */
 async function bootstrapAdmin(name: string, email: string, password: string): Promise<void> {
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
   const batch = writeBatch(db);
   batch.set(doc(db, 'users', cred.user.uid), { role: 'admin', name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
-  batch.set(doc(db, 'config', 'bootstrap'), { uid: cred.user.uid, at: Date.now() });
+  batch.set(doc(db, 'config', 'bootstrap'), { at: Date.now() });
   await batch.commit();
 }
 

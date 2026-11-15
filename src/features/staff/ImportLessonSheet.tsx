@@ -36,8 +36,8 @@ const ASK_RANGE_OVER = 20;
 const RANGE_MAX = 40;
 
 const AI_OFF: Record<Exclude<AiKeyStatus['reason'], 'ok'>, string> = {
-  none: 'Yapay zekâ anahtarı tanımlı değil. Uygulama geliştiricisi Akademi → "Yapay zekâ" düğmesinden anahtarı girince PDF ve görseller Claude ile okunur.',
-  denied: 'Yapay zekâ bu hesabın rolünde kapalı.',
+  none: 'Yapay zekâ anahtarı henüz girilmedi; dosya yapay zekâsız okunur.',
+  denied: 'Yapay zekâ ile okuma yalnızca Kahve Operasyon Direktörü\'nde açık; dosya yapay zekâsız okundu.',
   offline: 'Yapay zekâ anahtarı okunamadı (bağlantı sorunu). Sayfayı yenileyip tekrar dene.'
 };
 
