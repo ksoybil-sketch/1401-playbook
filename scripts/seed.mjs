@@ -524,13 +524,14 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
     await setDoc(`assignments/${id}`, {
       kind, targetId, title, note, storeId, baristaId,
       dueAt: now + days * 86400000, createdAt: now - 86400000 * 4,
-      createdBy: staff.uid, createdByName: TEST.staff.name
+      // Örnek görevleri direktör atar; geliştirici kayıtlarda iz bırakmaz.
+      createdBy: (staffUid.director || staff).uid, createdByName: staffUid.director?.name || ''
     });
   }
 
   // --- Mağaza talepleri ----------------------------------------------------
-  const regional = staffUid.regional || { uid: staff.uid, name: TEST.staff.name };
-  const director = staffUid.director || { uid: staff.uid, name: TEST.staff.name };
+  const regional = staffUid.regional || { uid: staff.uid, name: '' };
+  const director = staffUid.director || { uid: staff.uid, name: '' };
   const H = 3600000;
   const requests = [
     ['req-1', 'moda-cadde', 'Moda Cadde', 'demo-ayse', 'ariza', 'urgent', 'Espresso makinesi', '2. grup su kaçırıyor', 'Sabah açılışta fark ettik, shot süresi 18 saniyeye düştü. Grubu kapattık, tek grupla çalışıyoruz.', 'in_progress', 30,

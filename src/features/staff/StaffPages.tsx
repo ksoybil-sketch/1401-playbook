@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { badgeReport, fromBarista } from '../../lib/badges';
+import { badgeReport, fromBarista, resolveConfig } from '../../lib/badges';
 import { useBadgeConfig } from '../../store/badgeConfig';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { BadgeOverridesSheet } from './BadgeOverridesSheet';
@@ -532,7 +532,7 @@ export const ApronBadgesSection: React.FC = () => {
   // Önlükte olup artık hak edilmeyenler (süresi dolup şartı kaybeden ya da geri alınan).
   const lost = rows.filter(({ b, report }) => b.apronBadge
     && (!report.qualified || APRON_RANK[report.qualified.id] < APRON_RANK[b.apronBadge]));
-  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: rows[0]?.report.titles.find((x) => x.id === id)?.label || id, n: baristas.filter((b) => b.active && (b.apronBadge || null) === id).length }));
+  const counts = (['rookie', 'specialist', 'senior', 'pro'] as const).map((id) => ({ id, label: resolveConfig(badgeConfig).titles[id].label, n: baristas.filter((b) => b.active && (b.apronBadge || null) === id).length }));
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
   /**
    * Önlüğe dokunan karar yazılmadan önce o baristanın güncel bütün geçmişiyle

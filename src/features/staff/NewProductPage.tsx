@@ -265,8 +265,14 @@ export const NewProductPage: React.FC = () => {
       </Section>
 
       <ErrorText>{error}</ErrorText>
-      <div className={`${t.card} ${t.cardPad} flex items-center gap-3 sticky bottom-20 md:bottom-4`}>
-        <div className="flex-1 text-[13px] text-fg-2">
+      {/* Eylem çubuğu ekranın altına sabit, opak ve tam genişlikte. Eskiden
+          formun içinde yarı saydam "sticky" bir karttı: alanların üstünde
+          yüzüyor, kaydırınca arkasından form görünüyordu. Boşluk, son alanın
+          çubuğun altında kalmaması için. */}
+      <div className="h-20 md:h-12" aria-hidden />
+      <div className="fixed inset-x-0 md:left-60 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 z-30 bg-bean/95 backdrop-blur-xl border-t border-line">
+       <div className="mx-auto w-full max-w-[560px] px-4 py-3 flex items-center gap-3">
+        <div className="flex-1 min-w-0 text-[13px] text-fg-2">
           1 reçete · {quiz.length} soru{withBulletin ? ' · 1 bülten' : ''}{withTask ? ` · ${taskStores.length} görev` : ''}
           {!publishNow && <div className="text-[12px] text-fg-3">Kahve Operasyon Direktörü onaylayınca yayına girer.</div>}
           {/* Hata sayfanın en altında kalıyordu; düğmeye formun ortasında basan görmüyordu. */}
@@ -275,6 +281,7 @@ export const NewProductPage: React.FC = () => {
         <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} disabled={busy} onClick={save}>
           {busy ? <Spinner size={16} /> : publishNow ? 'Yayınla' : 'Onaya gönder'}
         </button>
+       </div>
       </div>
     </Page>
   );
