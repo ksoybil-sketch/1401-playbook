@@ -879,8 +879,24 @@ export const BoardReportsPage: React.FC = () => {
 };
 
 /** Yazdırılabilir yönetim raporu. Tarayıcının "Yazdır → PDF olarak kaydet"i ile dosyaya dönüşür. */
+/**
+ * window.print() bazı yerlerde sessizce hiçbir şey yapmıyor (tarayıcı ayarı,
+ * eklenti, gömülü tarayıcı). Yazdırma penceresi açılınca tarayıcı
+ * "beforeprint" olayını yollar; 1,2 sn içinde gelmezse kullanıcıya ne
+ * yapacağını söyleriz.
+ */
+function printOrExplain(setBlocked: (b: boolean) => void) {
+  let opened = false;
+  const mark = () => { opened = true; };
+  window.addEventListener('beforeprint', mark, { once: true });
+  setBlocked(false);
+  try { window.print(); } catch { /* aşağıdaki denetim yakalar */ }
+  setTimeout(() => { window.removeEventListener('beforeprint', mark); if (!opened) setBlocked(true); }, 1200);
+}
+
 export const BoardPrintReport: React.FC = () => {
   const [period] = usePeriod();
+  const [printBlocked, setPrintBlocked] = useState(false);
   const ctx = useBoardCtx(period, { exams: true });
   const me = useStaffSession();
   const trend = useExamTrend(period);
@@ -901,8 +917,15 @@ export const BoardPrintReport: React.FC = () => {
     <div className="print-report max-w-[860px] mx-auto px-5 py-6 flex flex-col gap-6">
       <div className="flex items-center gap-2 print:hidden">
         <Link to={`/raporlar${period.id !== '30' ? `?donem=${period.id}` : ''}`} className={`${t.btn} ${t.btnGhost} ${t.btnSm}`}><Icon name="chevronLeft" size={14} /> Raporlar</Link>
-        {!IS_ANDROID_APP && <button onClick={() => window.print()} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>}
+        {!IS_ANDROID_APP && <button onClick={() => printOrExplain(setPrintBlocked)} className={`${t.btn} ${t.btnPrimary} ${t.btnMd} ml-auto`}><Icon name="download" size={14} /> Yazdır / PDF kaydet</button>}
       </div>
+      {printBlocked && (
+        <div className="print:hidden rounded-xl border border-caution-line bg-caution-bg px-4 py-3 text-[13px] text-fg-2 leading-relaxed">
+          <b className="text-caution">Yazdırma penceresi açılmadı.</b> Tarayıcı bu sayfadan yazdırmayı engellemiş olabilir.
+          Klavyeden <b>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ + P' : 'Ctrl + P'}</b>'ye bas; açılan pencerede hedef olarak <b>PDF olarak kaydet</b>'i seç.
+          {' '}Olmazsa raporu <a className="underline" href={window.location.href} target="_blank" rel="noreferrer">yeni sekmede aç</a> ve orada dene.
+        </div>
+      )}
       <header className="flex flex-col gap-1 border-b border-line pb-4">
         <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-fg-3">1401 Coffee · Yönetim Kurulu</div>
         <h1 className="text-[24px] font-bold">Kahve Operasyonu raporu · {period.label}</h1>
