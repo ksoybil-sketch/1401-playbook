@@ -17,7 +17,7 @@
  *   boardQuestions/{id}           Yönetim Kurulu'nun Kahve Operasyonu'na soruları
  *
  *   users/{uid}                   Her hesabın rolü (bkz. Profile)
- *   pairingCodes/{code}           Telefon eşleştirme (30 dk, tek kullanım)
+ *   pairingCodes/{code}           Telefon eşleştirme (7 gün, tek kullanım)
  *   invites/{code}                Barista davet kodu (7 gün, tek kullanım)
  *   media/{id}                    Ders fotoğrafları (küçültülmüş JPEG, base64)
  *   config/bootstrap              İlk yönetici oluşturuldu mu

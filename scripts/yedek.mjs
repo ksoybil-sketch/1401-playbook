@@ -136,5 +136,7 @@ const day = new Date().toISOString().slice(0, 10);
 let file = `yedekler/${day}-${label}.json`;
 for (let i = 2; existsSync(file); i++) file = `yedekler/${day}-${label}-${i}.json`;
 writeFileSync(file, JSON.stringify(result));
+// Paneldeki "Yedek alma zamanı" hatırlatması için son yedek zamanı.
+await fetch(`${FS}/config/backup`, { method: 'PATCH', headers: H, body: JSON.stringify({ fields: { at: { integerValue: String(Date.now()) } } }) }).catch(() => {});
 console.log(`\n✓ ${total} kayıt → ${file}`);
 console.log('Dosyayı ara sıra OneDrive → "1401 Playbook Yedek" klasörüne de kopyala.');

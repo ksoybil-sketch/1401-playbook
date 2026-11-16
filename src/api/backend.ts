@@ -37,7 +37,8 @@ import { useSession } from '../store/session';
 /** Hesaplar için sentetik e-posta alanı — bu adreslere hiç e-posta gönderilmez. */
 const ACCOUNT_DOMAIN = 'hesap.playbook1401.app';
 const INVITE_TTL_MS = 7 * 86400000;
-const PAIRING_TTL_MS = 30 * 60000;
+/** Mağaza telefonu kodu: davet gibi 7 gün (kodlar mağazalara yazılı iletilebilsin; 16.11.2026). */
+const PAIRING_TTL_MS = 7 * 86400000;
 
 /**
  * Demo ortamı (playbook-demo-1401). Yalnızca `.env.demo` ile derlenen pakette
@@ -120,10 +121,10 @@ export interface DeviceCreds {
 }
 
 /**
- * [Yönetici] Telefon için yeni hesap + 30 dk geçerli eşleştirme kodu.
+ * [Yönetici] Telefon için yeni hesap + 7 gün geçerli, tek kullanımlık eşleştirme kodu.
  *
- * Kodun ömrü SUNUCU saatiyle yazılır (kural expiresAt'i request.time + 30 dk
- * ile denetler): yöneticinin bilgisayar saati 3 saat geriyse kod doğduğu anda
+ * Kodun ömrü SUNUCU saatiyle yazılır (kural expiresAt'i request.time + en çok
+ * 7 gün ile denetler): yöneticinin bilgisayar saati 3 saat geriyse kod doğduğu anda
  * geçersiz, ileriyse günlerce geçerliydi (H2).
  *
  * replaces: bu kod bir telefonun YERİNE (uygulama verisi silindi, telefon
@@ -168,7 +169,7 @@ async function pairDevice(code: string, label: string): Promise<DeviceCreds> {
   // Canlıda kod tek kullanımlıktır: kullanıldığı anda silinir.
   // Demoda sabit kod (140114) ekranda yazılıdır ve birden fazla kişi kendi
   // tarayıcısında denemek ister; silinirse ilk denemeden sonra demo kilitlenir.
-  // Silinemezse 30 dakikada kendiliğinden geçersizleşir.
+  // Silinemezse 7 günde kendiliğinden geçersizleşir.
   if (!DEMO) deleteDoc(doc(db, 'pairingCodes', code)).catch(() => {});
   return creds;
 }

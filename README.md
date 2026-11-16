@@ -47,6 +47,7 @@ npm run seed:emu && npm run dev:emu
 |---|---|
 | `npm run curriculum` | Müfredatı derler ve denetler |
 | `npm run deploy:demo` | Demoya dağıtır |
+| `node scripts/toplu-barista.mjs` | Listeden toplu barista ekler, süresi dolan davete yeni kod, mağaza telefonu kodları (önce kuru deneme; `--uygula` ile yazar) |
 | `npm run durum` | Canlı, demo, GitHub ve yerel kopya aynı kodda mı |
 | `npm run apk` | Android uygulamasını üretir |
 
