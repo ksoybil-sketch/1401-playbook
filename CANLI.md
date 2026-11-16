@@ -4,7 +4,7 @@
 |---|---|
 | **Canlı adres** | https://1401-campus.web.app (eski `playbook-1401.web.app` de aynı yayını açar) |
 | **Kurulum yönergesi** | https://1401-campus.web.app/indir/ |
-| **Android uygulaması** | `apk/1401-campus-1.1.apk`: mesajla gönder. Canlı adresi açar. |
+| **Android uygulaması** | `apk/1401-campus-1.2.apk`: mesajla gönder. Canlı adresi açar. Herkese açık son sürüm: github.com/ksoybil-sketch/1401-campus-indir (releases/latest). |
 | **iPhone** | Telefonu kabloyla bağla, `npm run iphone`. Ücretsiz Apple hesabında 7 günde bir yenilenir. |
 | **Demo (deneme alanı)** | https://playbook-demo-1401.web.app |
 
