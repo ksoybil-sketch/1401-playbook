@@ -1,6 +1,6 @@
 # 1401 Campus: yayın günü kontrol listesi
 
-> **Yayın 14.11.2026'da yapıldı.** Güncel durum ve günlük kullanım için tek sayfa: [CANLI.md](CANLI.md). Canlı adres artık **https://1401-campus.web.app**; eski `playbook-1401.web.app` de aynı yayını açar. Bu dosya yayının nasıl yapıldığının kaydıdır.
+> **Yayın 14.11.2026'da yapıldı.** Güncel durum ve günlük kullanım için tek sayfa: [CANLI.md](../CANLI.md). Canlı adres artık **https://1401-campus.web.app**; eski `playbook-1401.web.app` de aynı yayını açar. Bu dosya yayının nasıl yapıldığının kaydıdır.
 
 Yayın: **16.11.2026 Pazartesi**. Canlı site: `playbook-1401.web.app`, bugün 7 Kasım sürümünde. Demo: `playbook-demo-1401.web.app`.
 
