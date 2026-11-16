@@ -28,10 +28,25 @@ const projectId = env.VITE_FB_PROJECT_ID;
 if (projectId !== (DEMO ? 'playbook-demo-1401' : 'playbook-1401')) { console.error('Beklenmeyen proje:', projectId); process.exit(1); }
 
 function ask(question, hidden = false) {
+  if (hidden && process.stdin.isTTY) {
+    // Şifre: tuşlar ekrana hiç yazılmaz (readline'ın yankısı Node 24'te gizlenemiyordu).
+    return new Promise((resolve) => {
+      process.stdout.write(question);
+      const stdin = process.stdin; let buf = '';
+      stdin.setRawMode(true); stdin.resume(); stdin.setEncoding('utf8');
+      const onData = (ch) => {
+        for (const c of ch) {
+          if (c === '\r' || c === '\n') { stdin.setRawMode(false); stdin.pause(); stdin.off('data', onData); process.stdout.write('\n'); resolve(buf.trim()); return; }
+          if (c === '\u0003') { process.stdout.write('\n'); process.exit(1); }
+          if (c === '\u007f' || c === '\b') buf = buf.slice(0, -1); else buf += c;
+        }
+      };
+      stdin.on('data', onData);
+    });
+  }
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (hidden) rl._writeToOutput = (s) => { if (s.includes(question)) rl.output.write(s); };
-    rl.question(question, (a) => { rl.close(); if (hidden) process.stdout.write('\n'); resolve(a.trim()); });
+    rl.question(question, (a) => { rl.close(); resolve(a.trim()); });
   });
 }
 
