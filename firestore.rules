@@ -200,7 +200,10 @@ service cloud.firestore {
                          (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
                       || (canManageBaristas() && resource.data.role in storeRoles() && request.resource.data.role in storeRoles())
                       || (signedIn() && request.auth.uid == uid && resource.data.get('active', false) == true
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label'])
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label', 'mustChangePassword'])
+                          // Geçici şifre bayrağını yalnızca kapatabilir (açamaz).
+                          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['mustChangePassword'])
+                              || request.resource.data.mustChangePassword == false)
                           && request.resource.data.get('paired', false) is bool
                           && (request.resource.data.get('lastSeenAt', null) == null || request.resource.data.lastSeenAt is number))));
       allow delete: if false;

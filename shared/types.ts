@@ -51,6 +51,8 @@ export interface Profile {
   label?: string;
   createdAt: number;
   lastSeenAt?: number | null;
+  /** Ekip: direktörün verdiği geçici şifreyle açıldı; ilk girişte şifresini değiştirir. */
+  mustChangePassword?: boolean;
 }
 
 /** Önlüğe takılan fiziksel rozet. */

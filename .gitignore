@@ -37,3 +37,4 @@ ios/build/
 scripts/yuk-testi/out/
 # Zorlu senaryo çıktıları
 scripts/zorlu/**/out/
+yedekler/

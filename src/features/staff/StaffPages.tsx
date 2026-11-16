@@ -6,7 +6,7 @@ import { BadgeOverridesSheet } from './BadgeOverridesSheet';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addDoc, collection, deleteDoc, doc, getDoc, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
-import { backend, errorText } from '../../api/backend';
+import { backend, errorText, tempPassword } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { assignmentDone, assignmentDoneAt, isOverdue, overallPercent, moduleState, visibleModules } from '../../lib/progress';
@@ -396,6 +396,9 @@ const StaffTeamSection: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<StaffRole>('regional');
+  const [pw, setPw] = useState('');
+  // Eklendikten sonra bir kez gösterilen giriş bilgisi (geçici şifre).
+  const [created, setCreated] = useState<{ name: string; email: string; pw: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rank = (r: StaffRole) => ['board', 'developer', 'director', 'opsmanager', 'regional'].indexOf(r);
@@ -404,12 +407,13 @@ const StaffTeamSection: React.FC = () => {
     setError(null);
     if (name.trim().length < 2) return setError('Ad soyad gir.');
     if (!email.includes('@')) return setError('Geçerli bir e-posta gir.');
+    if (pw.trim().length < 8) return setError('Geçici şifre en az 8 karakter olmalı.');
     const gone = staff.find((x) => !x.active && (x.email || '').toLowerCase() === email.trim().toLowerCase());
     if (gone) return setError(`${gone.name} daha önce kaldırılmış. "Kaldırılanlar" listesinden yeniden etkinleştir.`);
     setBusy(true);
     try {
-      await backend.createStaff(name, email, role);
-      toast(`${name.trim()} eklendi. Şifre belirleme bağlantısı e-postasına gönderildi.`, 'positive');
+      await backend.createStaff(name, email, role, pw.trim());
+      setCreated({ name: name.trim(), email: email.trim(), pw: pw.trim() });
       setOpen(false);
       setName(''); setEmail('');
     } catch (e) { setError(errorText(e)); }
@@ -431,7 +435,7 @@ const StaffTeamSection: React.FC = () => {
 
   return (
     <Section label={`Kahve Operasyonu ekibi · ${staff.filter((s) => s.active).length}`}
-      action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => { setRole(roles.includes('regional') ? 'regional' : roles[0]); setOpen(true); }}><Icon name="plus" size={14} /> Ekle</button> : undefined}>
+      action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => { setRole(roles.includes('regional') ? 'regional' : roles[0]); setPw(tempPassword()); setOpen(true); }}><Icon name="plus" size={14} /> Ekle</button> : undefined}>
       <div className={t.listGroup}>
         {staff.filter((s) => s.active).sort((a, b) => rank(a.role) - rank(b.role) || a.name.localeCompare(b.name, 'tr')).map((s) => (
           <div key={s.id} className={`${t.listRowStatic} flex-wrap`}>
@@ -499,8 +503,28 @@ const StaffTeamSection: React.FC = () => {
             ))}
           </div>
         </div>
-        <p className="text-[12px] text-fg-3 leading-relaxed">Şifresini kendisi belirleyecek: e-postasına bir bağlantı gönderilir.</p>
+        <div className={t.field}>
+          <span className={t.label}>Geçici şifre</span>
+          <div className="flex gap-2">
+            <input className={`${t.input} flex-1 font-mono`} value={pw} maxLength={64} onChange={(e) => setPw(e.target.value)} autoComplete="off" spellCheck={false} />
+            <button type="button" className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setPw(tempPassword())} title="Yeni şifre üret"><Icon name="refresh" size={14} /></button>
+          </div>
+        </div>
+        <p className="text-[12px] text-fg-3 leading-relaxed">E-posta gönderilmez. Geçici şifreyi kişiye sen ilet; ilk girişte kendi şifresini belirleyecek.</p>
         <ErrorText>{error}</ErrorText>
+      </Sheet>
+      <Sheet open={!!created} title="Kişi eklendi" onClose={() => setCreated(null)}
+        footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setCreated(null)}>Tamam</button>}>
+        {created && <>
+          <p className="text-[14px] leading-relaxed">Bu bilgileri <strong>{created.name}</strong> kişisine ilet. Şifre bir daha gösterilmez; ilk girişte kendi şifresini belirleyecek.</p>
+          <div className={`${t.panel} px-4 py-3 font-mono text-[14px] leading-relaxed select-all`}>
+            Adres: {location.origin}<br />E-posta: {created.email}<br />Geçici şifre: {created.pw}
+          </div>
+          <button type="button" className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => {
+            navigator.clipboard.writeText(`1401 Campus\nAdres: ${location.origin}\nE-posta: ${created.email}\nGeçici şifre: ${created.pw}`)
+              .then(() => toast('Kopyalandı'), () => toast('Kopyalanamadı; metni seçip kopyala.', 'negative'));
+          }}><Icon name="copy" size={14} /> Kopyala</button>
+        </>}
       </Sheet>
     </Section>
   );
