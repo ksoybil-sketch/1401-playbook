@@ -1,4 +1,5 @@
-import { app, auth, USE_EMULATOR } from '../api/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { app, auth, db, USE_EMULATOR } from '../api/firebase';
 
 /**
  * [Uygulama geliştiricisi] Panelden yedek: scripts/yedek.mjs ile aynı içerik
@@ -53,5 +54,13 @@ export async function downloadBackup(onStep?: (text: string) => void): Promise<{
   a.href = url; a.download = file;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  await setDoc(doc(db, 'config', 'backup'), { at: Date.now() }).catch(() => {});
   return { total, file };
+}
+
+/** Son yedekten bu yana geçen gün (hiç yedek yoksa null). Yalnızca geliştirici okuyabilir. */
+export async function daysSinceBackup(): Promise<number | null> {
+  const snap = await getDoc(doc(db, 'config', 'backup')).catch(() => null);
+  const at = snap?.data()?.at as number | undefined;
+  return at ? Math.floor((Date.now() - at) / 86400000) : null;
 }

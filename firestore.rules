@@ -250,6 +250,13 @@ service cloud.firestore {
       allow write: if isDirector();
     }
 
+    // Son yedek zamanı (src/lib/backup.ts, scripts/yedek.mjs): yalnızca
+    // uygulama geliştiricisi okur ve yazar; içinde yalnızca { at } var.
+    match /config/backup {
+      allow get: if isAdmin();
+      allow write: if isAdmin() && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at is number;
+    }
+
     // Demo kaydı (src/demo/log.ts). Yalnızca config/demo olan projede (demo,
     // emülatör) yazılır; canlı projede o belge yok, kimse yazamaz. Kayıtları
     // yalnızca uygulama geliştiricisi okur, kimse değiştirip silemez.

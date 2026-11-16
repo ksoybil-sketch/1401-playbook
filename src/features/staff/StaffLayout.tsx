@@ -124,12 +124,21 @@ export const StaffLayout: React.FC = () => {
   const toBoard = () => { if (!confirmLeave()) return; setBoardView(true); navigate('/'); };
   // Geliştirici: bütün kayıtların yedeği bilgisayara iner (src/lib/backup.ts).
   const [backingUp, setBackingUp] = useState<string | null>(null);
+  // 7 günden eski yedek (ya da hiç yedek yok): düğmenin altında hatırlatma.
+  const [backupAge, setBackupAge] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!isDevRole(s.role)) return;
+    void import('../../lib/backup').then((m) => m.daysSinceBackup()).then(setBackupAge).catch(() => {});
+  }, [s.role]);
+  const backupDue = backupAge === null || (typeof backupAge === 'number' && backupAge >= 7);
+  const backupNote = backupAge === null ? 'Henüz yedek alınmadı' : `Son yedek ${backupAge} gün önce`;
   const backup = async () => {
     setBackingUp('Hazırlanıyor…');
     try {
       const { downloadBackup } = await import('../../lib/backup');
       const r = await downloadBackup((x) => setBackingUp(x));
       toast(`Yedek indirildi: ${r.total} kayıt (${r.file})`, 'positive');
+      setBackupAge(0);
     } catch (e) { toast(`Yedek alınamadı: ${(e as Error).message}`, 'negative'); }
     setBackingUp(null);
   };
@@ -178,6 +187,7 @@ export const StaffLayout: React.FC = () => {
             <button onClick={backup} disabled={!!backingUp} className={`${t.btn} ${t.btnSecondary} ${t.btnSm} w-full mt-1.5`}>
               {backingUp ? <><Spinner size={13} /> {backingUp}</> : <><Icon name="download" size={14} /> Yedek al</>}
             </button>
+            {backupDue && !backingUp && <div className="mt-1 text-[11.5px] text-caution text-center">{backupNote} · yedek alma zamanı</div>}
           </div>
         )}
         <div className="shrink-0 px-3 pb-2"><ThemePicker compact /></div>
@@ -265,7 +275,7 @@ export const StaffLayout: React.FC = () => {
           {isDevRole(s.role) && (
             <button type="button" className={`${t.listRow} w-full text-left`} disabled={!!backingUp} onClick={() => { void backup(); }}>
               <span className={t.iconChip('neutral')}>{backingUp ? <Spinner size={14} /> : <Icon name="download" size={16} />}</span>
-              <span className="text-[14px] font-medium flex-1">{backingUp || 'Yedek al'}</span>
+              <span className="text-[14px] font-medium flex-1">{backingUp || 'Yedek al'}{backupDue && !backingUp && <span className="block text-[12px] text-caution font-normal">{backupNote}</span>}</span>
             </button>
           )}
         </div>
