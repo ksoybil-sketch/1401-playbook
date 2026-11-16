@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
-import { Avatar, Sheet, toast } from '../../ui/kit';
+import { Avatar, Sheet, Spinner, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 import { can, isDevRole, STAFF_ROLE_LABEL } from '../../lib/roles';
 import { useBoardView } from '../../lib/boardView';
@@ -122,6 +122,17 @@ export const StaffLayout: React.FC = () => {
   const navigate = useNavigate();
   const setBoardView = useBoardView((x) => x.set);
   const toBoard = () => { if (!confirmLeave()) return; setBoardView(true); navigate('/'); };
+  // Geliştirici: bütün kayıtların yedeği bilgisayara iner (src/lib/backup.ts).
+  const [backingUp, setBackingUp] = useState<string | null>(null);
+  const backup = async () => {
+    setBackingUp('Hazırlanıyor…');
+    try {
+      const { downloadBackup } = await import('../../lib/backup');
+      const r = await downloadBackup((x) => setBackingUp(x));
+      toast(`Yedek indirildi: ${r.total} kayıt (${r.file})`, 'positive');
+    } catch (e) { toast(`Yedek alınamadı: ${(e as Error).message}`, 'negative'); }
+    setBackingUp(null);
+  };
   const rest = NAV.filter((n) => !n.primary);
   const restBadge = rest.reduce((x, n) => x + (n.badge || 0), 0);
 
@@ -164,6 +175,9 @@ export const StaffLayout: React.FC = () => {
         {isDevRole(s.role) && (
           <div className="shrink-0 px-3 pb-2">
             <button onClick={toBoard} className={`${t.btn} ${t.btnSecondary} ${t.btnSm} w-full`}><Icon name="award" size={14} /> Kurul ekranı</button>
+            <button onClick={backup} disabled={!!backingUp} className={`${t.btn} ${t.btnSecondary} ${t.btnSm} w-full mt-1.5`}>
+              {backingUp ? <><Spinner size={13} /> {backingUp}</> : <><Icon name="download" size={14} /> Yedek al</>}
+            </button>
           </div>
         )}
         <div className="shrink-0 px-3 pb-2"><ThemePicker compact /></div>
@@ -248,6 +262,12 @@ export const StaffLayout: React.FC = () => {
             <span className="text-[14px] font-medium flex-1">Şifremi değiştir</span>
             <Icon name="chevronRight" size={16} className={t.rowChevron} />
           </button>
+          {isDevRole(s.role) && (
+            <button type="button" className={`${t.listRow} w-full text-left`} disabled={!!backingUp} onClick={() => { void backup(); }}>
+              <span className={t.iconChip('neutral')}>{backingUp ? <Spinner size={14} /> : <Icon name="download" size={16} />}</span>
+              <span className="text-[14px] font-medium flex-1">{backingUp || 'Yedek al'}</span>
+            </button>
+          )}
         </div>
         <ThemePicker />
       </Sheet>

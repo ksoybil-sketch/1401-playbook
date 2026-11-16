@@ -43,7 +43,7 @@ Kişi ilk girişte kendi şifresini belirlemeden panele geçemez. Herkes şifres
 
 ## Yedek
 
-Spark planında otomatik yedek yok. **Haftada bir** çalıştır (şifreni sorar, şifre ekranda görünmez):
+Spark planında otomatik yedek yok. **Haftada bir** al: panelde sol altta **Yedek al** (yalnızca geliştiricide görünür) dosyayı İndirilenler klasörüne indirir. Aynısı komutla da alınır (şifreni sorar, şifre ekranda görünmez):
 
 ```bash
 npm run yedek
