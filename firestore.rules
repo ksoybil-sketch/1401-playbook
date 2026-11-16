@@ -601,9 +601,14 @@ service cloud.firestore {
       // üretirken çakışma denetimini (backend.ts uniqueCode) barista yönetimi
       // yetkisi olan yapar; ona var olmayan kod da okunur.
       allow get: if canManageBaristas() || (resource != null && resource.data.expiresAt > request.time.toMillis());
-      // Ömür sunucu saatiyle 30 dk (H2): yöneticinin saati yanlışsa kod doğduğu
-      // anda geçersiz ya da günlerce geçerli oluyordu (kod düz metin şifre taşır).
-      allow create: if canManageBaristas() && nearNow(request.resource.data.expiresAt - 1800000, 300000);
+      // Ömür sunucu saatiyle EN ÇOK 7 gün (H2; 16.11.2026'ya kadar 30 dk). Kodlar
+      // mağazalara yazılı iletilebilsin diye uzatıldı; tek kullanımlık (telefon
+      // kullanınca siler). Kod düz metin şifre taşır: yanlış ele geçen kod
+      // panelden telefon kaldırılarak geçersizleşir. Alt sınır 25 dk: eski
+      // (30 dk yazan) panel de çalışmayı sürdürür.
+      allow create: if canManageBaristas() && request.resource.data.expiresAt is number
+        && request.resource.data.expiresAt >= request.time.toMillis() + 1500000
+        && request.resource.data.expiresAt <= request.time.toMillis() + 604800000 + 300000;
       // Kodu yalnızca onunla eşleşen telefon (kullanınca) ya da Bölge Müdürü siler.
       allow delete: if (isActive() && resource.data.uid == request.auth.uid) || canManageBaristas();
       allow update: if false;
