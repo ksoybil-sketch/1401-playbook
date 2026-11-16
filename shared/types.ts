@@ -26,7 +26,7 @@
 /** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
 /** board: Yönetim Kurulu üyesi — her şeyi okur, hiçbir şeyi değiştirmez; Kahve Operasyonu'na soru sorar. */
 /** opsmanager: Operasyon Müdürü — rütbece direktörle eş, alanı kahve dışı (bkz. src/lib/permissions.ts). */
-export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'ops' | 'admin' | 'board';
+export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'board';
 /** lead: mağaza müdürü · shift: vardiya müdürü. */
 export type BaristaRole = 'barista' | 'lead' | 'shift';
 export type Role = StaffRole | BaristaRole | 'store';

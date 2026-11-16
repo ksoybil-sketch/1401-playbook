@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar, Sheet } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { STAFF_ROLE_LABEL } from '../../lib/roles';
+import { isDevRole, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { useBoardView } from '../../lib/boardView';
 import { useStaffData } from '../staff/staffData';
 import { useStaffSession } from '../staff/StaffLayout';
 import { ThemePicker, useStaffTheme } from '../staff/theme';
@@ -31,6 +32,11 @@ export const BoardLayout: React.FC = () => {
   const subscribe = useStaffData((x) => x.subscribe);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
+  // Geliştiricinin kurul görünümü: panele dönüş düğmesi.
+  const dev = isDevRole(s.role);
+  const navigate = useNavigate();
+  const setBoardView = useBoardView((x) => x.set);
+  const toPanel = () => { setBoardView(false); navigate('/'); };
   useStaffTheme();
   // Panelle aynı küçük canlı veri (baristalar, ilerleme, açık talepler, bekleyen
   // öneriler). Dönem sınavları ve talepleri sayfada, seçilen dönem için tek
@@ -79,6 +85,11 @@ export const BoardLayout: React.FC = () => {
             </NavLink>
           ))}
         </nav>
+        {dev && (
+          <div className="px-3 pb-2">
+            <button onClick={toPanel} className={`${t.btn} ${t.btnSecondary} ${t.btnSm} w-full`}><Icon name="chevronLeft" size={14} /> Panele dön</button>
+          </div>
+        )}
         <div className="px-3 pb-2"><ThemePicker compact /></div>
         <div className="p-3 border-t border-line flex items-center gap-2.5">
           <Avatar name={s.name} size={32} />
@@ -99,6 +110,7 @@ export const BoardLayout: React.FC = () => {
             <div className="text-[14px] font-semibold">Yönetim Kurulu</div>
             <div className="text-[11px] text-fg-3 truncate">{s.name}</div>
           </div>
+          {dev && <button onClick={toPanel} className={t.iconBtn} aria-label="Panele dön" title="Panele dön"><Icon name="chevronLeft" size={16} /></button>}
           <button onClick={() => setMore(true)} className={t.iconBtn} aria-label="Tema"><Icon name="palette" size={16} /></button>
           <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}><Icon name="logout" size={14} /> Çıkış</button>
         </div>

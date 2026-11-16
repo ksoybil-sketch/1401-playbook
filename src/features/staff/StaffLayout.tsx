@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from '../../store/session';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Avatar, Sheet, toast } from '../../ui/kit';
 import * as t from '../../ui/tokens';
-import { can, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { can, isDevRole, STAFF_ROLE_LABEL } from '../../lib/roles';
+import { useBoardView } from '../../lib/boardView';
 import { useAllow, type Perm } from '../../lib/permissions';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { isClosed } from '../../api/requests';
@@ -115,6 +116,10 @@ export const StaffLayout: React.FC = () => {
     if (await otherTabsDirty() && !confirm(OTHER_TABS_TEXT)) return;
     void logout();
   };
+  // Geliştirici: Yönetim Kurulu'nun gördüğü ekranlara geçer (src/lib/boardView.ts).
+  const navigate = useNavigate();
+  const setBoardView = useBoardView((x) => x.set);
+  const toBoard = () => { if (!confirmLeave()) return; setBoardView(true); navigate('/'); };
   const rest = NAV.filter((n) => !n.primary);
   const restBadge = rest.reduce((x, n) => x + (n.badge || 0), 0);
 
@@ -154,6 +159,11 @@ export const StaffLayout: React.FC = () => {
             </NavLink>
           ))}
         </nav>
+        {isDevRole(s.role) && (
+          <div className="shrink-0 px-3 pb-2">
+            <button onClick={toBoard} className={`${t.btn} ${t.btnSecondary} ${t.btnSm} w-full`}><Icon name="award" size={14} /> Kurul ekranı</button>
+          </div>
+        )}
         <div className="shrink-0 px-3 pb-2"><ThemePicker compact /></div>
         <div className="shrink-0 p-3 border-t border-line flex items-center gap-2.5">
           <Avatar name={s.name} size={32} />
@@ -176,6 +186,7 @@ export const StaffLayout: React.FC = () => {
             <div className="text-[14px] font-semibold">Kahve Operasyonu</div>
             <div className="text-[11px] text-fg-3 truncate">{s.name} · {STAFF_ROLE_LABEL[s.role]}</div>
           </div>
+          {isDevRole(s.role) && <button onClick={toBoard} className={t.iconBtn} aria-label="Kurul ekranı" title="Kurul ekranı"><Icon name="award" size={16} /></button>}
           <button onClick={doLogout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}><Icon name="logout" size={14} /> Çıkış</button>
         </div>
       </header>

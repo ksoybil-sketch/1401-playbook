@@ -15,6 +15,7 @@ import { catOf, STATUS } from '../../api/requests';
 import type { BoardQuestion, BoardTopic, StaffRole } from '../../../shared/types';
 import { useAllow } from '../../lib/permissions';
 import { useSession } from '../../store/session';
+import { isDevRole } from '../../lib/roles';
 
 /**
  * Yönetim Kurulu soruları — iki taraf aynı bileşeni kullanır:
@@ -31,7 +32,7 @@ export function useBoardQuestions(enabled = true) {
 
 /** Soru bana mı soruldu (operasyon tarafı rozet ve süzgeç için). */
 export const askedTo = (q: BoardQuestion, role: StaffRole) =>
-  q.to === 'all' || q.to === 'both' || role === 'developer' || role === 'admin' || q.to === role;
+  q.to === 'all' || q.to === 'both' || role === 'developer' || q.to === role;
 
 export const STATUS_LABEL: Record<BoardQuestion['status'], { label: string; tone: 'caution' | 'positive' | 'neutral' }> = {
   open: { label: 'Yanıt bekliyor', tone: 'caution' },
@@ -57,6 +58,8 @@ export function useOpsPeople(): OpsPeople {
 export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; name: string }; onClose: () => void; onSent?: () => void }> = ({ topic, me, onClose, onSent }) => {
   const people = useOpsPeople();
   const requests = useStaffData((x) => x.requests);
+  // Geliştiricinin kurul görünümü: soru penceresi görünür, gönderilemez.
+  const viewOnly = useSession((x) => x.session.kind === 'staff' && isDevRole(x.session.role));
   const open = useMemo(() => requests.filter((r) => forBoard(r) && !closedOf(r))
     .sort((a, b) => (a.priority === 'urgent' ? 0 : 1) - (b.priority === 'urgent' ? 0 : 1) || a.createdAt - b.createdAt), [requests]);
   const picking = !!topic && topic.kind === 'general' && !topic.title;
@@ -95,7 +98,7 @@ export const AskSheet: React.FC<{ topic: BoardTopic | null; me: { uid: string; n
 
   return (
     <Sheet open={!!topic} title={picking ? 'Yeni soru' : 'Bu konuyu sor'} onClose={onClose} dirty={!busy && !!(text.trim() || own.trim())}
-      footer={<button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={send} disabled={busy}>{busy ? <Spinner size={16} /> : <><Icon name="send" size={16} /> Gönder</>}</button>}>
+      footer={viewOnly ? <p className="text-[13px] text-fg-3 leading-relaxed">Kurul görünümündesin. Kurul adına soru gönderilemez.</p> : <button className={`${t.btn} ${t.btnPrimary} ${t.btnLg}`} onClick={send} disabled={busy}>{busy ? <Spinner size={16} /> : <><Icon name="send" size={16} /> Gönder</>}</button>}>
       {topic && !picking && (
         <div className={`${t.panel} px-4 py-3`}>
           <div className="text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3">{TOPIC_LABEL[topic.kind]}</div>
@@ -160,7 +163,8 @@ export const QuestionThread: React.FC<{ q: BoardQuestion; side: 'board' | 'ops';
   // açık ama "Kurul sorularını yanıtla" kapalıysa gönderim reddediliyordu.
   const allow = useAllow();
   const role = useSession((x) => (x.session.kind === 'staff' ? x.session.role : undefined));
-  const canReply = side === 'board' || allow(role, 'kurulYanit');
+  // Geliştiricinin kurul görünümü: kurul adına yazılamaz (kurallar yalnızca kurula izin verir).
+  const canReply = side === 'board' ? !isDevRole(role) : allow(role, 'kurulYanit');
 
   const reply = async () => {
     if (!text.trim()) return;
@@ -268,7 +272,7 @@ export const BoardQuestionsPage: React.FC<{ side: 'board' | 'ops'; me: { uid: st
           <button className={`${t.segmentItem} ${tab === 'all' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('all')}>Hepsi · {scoped.length}</button>
           <button className={`${t.segmentItem} ${tab === 'closed' ? t.segmentItemOn : t.segmentItemOff}`} onClick={() => setTab('closed')}>Kapanan</button>
         </div>
-        {side === 'ops' && me.role !== 'developer' && me.role !== 'admin' && (
+        {side === 'ops' && me.role !== 'developer' && (
           <label className="flex items-center gap-2 text-[13px] text-fg-2 cursor-pointer">
             <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Yalnızca bana sorulanlar
           </label>

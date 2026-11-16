@@ -3,7 +3,8 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useWebHistoryTracker } from './lib/webHistory';
 import { useSession } from './store/session';
 import { useContent } from './store/content';
-import { can, isBoard, isManager } from './lib/roles';
+import { can, isBoard, isDevRole, isManager } from './lib/roles';
+import { useBoardView } from './lib/boardView';
 import { useAllow, usePermStore } from './lib/permissions';
 import { PermissionsPage } from './features/staff/PermissionsPage';
 import { useBadgeConfig } from './store/badgeConfig';
@@ -92,6 +93,7 @@ const KeyBy: React.FC<{ param: string; children: React.ReactNode }> = ({ param, 
 const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['session']; contentReady: boolean }> = ({ session, contentReady }) => {
   const allow = useAllow();
   const permReady = usePermStore((s) => s.ready);
+  const boardView = useBoardView((s) => s.on);
   switch (session.kind) {
     case 'loading':
       return <FullLoader />;
@@ -151,7 +153,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
       // Yetki ayarı gelmeden ekranlar çizilmez (açık bir ekran yanlışlıkla ana sayfaya yönlenmesin).
       if (!contentReady || !permReady) return <FullLoader />;
       // Yönetim Kurulu: ayrı, salt okunur ekran (src/features/board).
-      if (isBoard(session.role)) return (
+      if (isBoard(session.role) || (isDevRole(session.role) && boardView)) return (
         <Routes>
           <Route element={<BoardLayout />}>
             <Route index element={<BoardOverviewPage />} />

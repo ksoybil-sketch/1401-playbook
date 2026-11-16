@@ -17,11 +17,9 @@ import { allowed, type Perm } from './permissions';
  *   regional   Uğur Can Gürbüz — Bölge Müdürü. Barista/mağaza/kod işleri
  *              onda. İçerik ve bülten değişiklikleri doğrudan yayına
  *              girmez, Cenk Bey'in "Bekleyen onaylar" listesine düşer.
- *   ops        Kahve Operasyonu ekibi — öneri yapar, görev atar.
  *   board      Yönetim Kurulu üyesi — gidişatı, raporları ve süren işleri
  *              okur; hiçbir şeyi değiştirmez. Kendi ekranı var (src/features/board);
  *              Kahve Operasyonu yöneticilerine soru sorar.
- *   admin      Eski sürümden kalan tam yetkili rol (developer gibi davranır).
  */
 export type Capability =
   | 'publish'          // içeriği doğrudan yayınla        → yetki: icerikYayin
@@ -41,10 +39,10 @@ const MAP: Partial<Record<Capability, Perm>> = {
   publish: 'icerikYayin', approve: 'oneriOnay', manageBaristas: 'baristaYonetim', handleRequests: 'talepYanit'
 };
 const FIXED: Partial<Record<Capability, StaffRole[]>> = {
-  manageTeam: ['developer', 'admin', 'director'],
-  publishCurriculum: ['developer', 'admin', 'director'],
-  deleteRecords: ['developer', 'admin'],
-  manageAi: ['developer', 'admin']
+  manageTeam: ['developer', 'director'],
+  publishCurriculum: ['developer', 'director'],
+  deleteRecords: ['developer'],
+  manageAi: ['developer']
 };
 
 export function can(role: StaffRole | undefined, cap: Capability): boolean {
@@ -54,15 +52,15 @@ export function can(role: StaffRole | undefined, cap: Capability): boolean {
   return allowed(role, MAP[cap]!);
 }
 
-export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional', 'ops', 'admin', 'board'];
+export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional', 'board'];
 
 /**
- * Uygulama geliştiricisi (ve aynı yetkideki eski 'admin' rolü) kimseye görünmez:
+ * Uygulama geliştiricisi kimseye görünmez:
  * adı, e-postası ve rolü ekip listesinde, Yetkiler ve Bildirimler ekranında
  * yalnızca geliştiriciye çıkar. Direktör dahil kimse onu göremez, ekleyemez,
  * değiştiremez. Aynı sınır firestore.rules → users'da da var.
  */
-export const HIDDEN_ROLES: StaffRole[] = ['developer', 'admin'];
+export const HIDDEN_ROLES: StaffRole[] = ['developer'];
 export const isDevRole = (r: StaffRole | string | undefined): boolean => !!r && (HIDDEN_ROLES as string[]).includes(r);
 /**
  * Kayıtlara yazılan yazar adı (byName, createdByName, reviewedByName …).
@@ -84,17 +82,15 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   director: 'Kahve Operasyon Direktörü',
   opsmanager: 'Operasyon Müdürü',
   regional: 'Bölge Müdürü',
-  ops: 'Kahve Operasyonu',
-  admin: 'Tam yetkili',
   board: 'Yönetim Kurulu Üyesi'
 };
 
 /** Ekibe kimin hangi rolle kişi ekleyebileceği. */
 export function assignableRoles(me: StaffRole): StaffRole[] {
   // Uygulama geliştiricisi tektir; ekibe geliştirici eklenmez.
-  if (me === 'developer' || me === 'admin') return ['director', 'opsmanager', 'regional', 'ops', 'board'];
+  if (me === 'developer') return ['director', 'opsmanager', 'regional', 'board'];
   // Cenk Bey uygulamanın yürütücüsü: Yönetim Kurulu dahil ekibi o kurar.
-  if (me === 'director') return ['opsmanager', 'regional', 'ops', 'board'];
+  if (me === 'director') return ['opsmanager', 'regional', 'board'];
   return [];
 }
 

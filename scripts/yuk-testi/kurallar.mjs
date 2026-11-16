@@ -116,7 +116,7 @@ for (const role of ['barista', 'lead', 'shift']) {
 }
 // Ekip rolleri
 const staffRows = {};
-for (const role of ['developer', 'director', 'opsmanager', 'regional', 'ops', 'board']) {
+for (const role of ['developer', 'director', 'opsmanager', 'regional', 'board']) {
   const s = staff(role);
   const c = await staffC(s);
   staffRows[role] = c;
@@ -140,7 +140,7 @@ for (const role of ['developer', 'director', 'opsmanager', 'regional', 'ops', 'b
   }
 }
 { // Rol başına tipik yazımlar
-  const dev = staffRows.developer, dir = staffRows.director, om = staffRows.opsmanager, reg = staffRows.regional, ops = staffRows.ops, brd = staffRows.board;
+  const dev = staffRows.developer, dir = staffRows.director, om = staffRows.opsmanager, reg = staffRows.regional, brd = staffRows.board;
   const roles = await dir.m('lib/roles.ts');
   kontrol('director', 'ekip listesi (geliştirici hariç)', 'ok', await dene(F(dir).getDocs(F(dir).query(F(dir).collection(dir.db, 'users'), F(dir).where('role', 'in', roles.visibleStaffRoles('director'))))));
   kontrol('director', 'ekip listesi geliştirici dahil (red beklenir)', 'red', await dene(F(dir).getDocs(F(dir).query(F(dir).collection(dir.db, 'users'), F(dir).where('role', 'in', ['developer', 'director'])))));
@@ -156,10 +156,11 @@ for (const role of ['developer', 'director', 'opsmanager', 'regional', 'ops', 'b
   const chO = await om.m('api/changes.ts');
   const omLesson = CUR.lessons.find((l) => CUR.modules.find((m) => m.id === l.moduleId)?.trackId === 'oryantasyon');
   kontrol('opsmanager', 'kendi alanında ders yayınla', 'ok', await dene(chO.commitChange([{ op: 'update', col: 'lessons', id: omLesson.id, data: { summary: 'om güncelledi' } }], { kind: 'lesson', title: 'x', summary: 'x' }).then((r) => { if (r !== 'applied') throw new Error(r); })));
-  const chOps = await ops.m('api/changes.ts');
-  kontrol('ops', 'öneri gönder', 'ok', await dene(chOps.commitChange([{ op: 'update', col: 'lessons', id: L2.id, data: { summary: 'ops önerisi' } }], { kind: 'lesson', title: 'ops önerisi', summary: 'x' }).then((r) => { if (r !== 'proposed') throw new Error(r); })));
-  kontrol('ops', 'görev ata', 'ok', await dene(F(ops).addDoc(F(ops).collection(ops.db, 'assignments'), { kind: 'module', targetId: MOD.id, title: 'ops görevi', note: '', storeId: H.phones[3].storeId, baristaId: null, dueAt: Date.now() + 86400000, createdAt: Date.now(), createdBy: staff('ops').uid, createdByName: 'Işıl' })));
-  kontrol('ops', 'talebe yanıt (red beklenir; varsayılan yetki yok)', 'red', await dene((async () => { const r = (await adb.collection('requests').limit(1).get()).docs[0]; const rq = await ops.m('api/requests.ts'); await rq.addNote({ id: r.id, ...r.data() }, { side: 'ops', by: { uid: staff('ops').uid, name: 'Işıl' }, text: 'ops yanıtı' }); })()));
+  const chReg = await reg.m('api/changes.ts');
+  kontrol('regional', 'öneri gönder', 'ok', await dene(chReg.commitChange([{ op: 'update', col: 'lessons', id: L2.id, data: { summary: 'bölge önerisi' } }], { kind: 'lesson', title: 'bölge önerisi', summary: 'x' }).then((r) => { if (r !== 'proposed') throw new Error(r); })));
+  kontrol('regional', 'görev ata', 'ok', await dene(F(reg).addDoc(F(reg).collection(reg.db, 'assignments'), { kind: 'module', targetId: MOD.id, title: 'bölge görevi', note: '', storeId: H.phones[3].storeId, baristaId: null, dueAt: Date.now() + 86400000, createdAt: Date.now(), createdBy: staff('regional').uid, createdByName: 'Uğur' })));
+  kontrol('director', 'geliştiriciyi ekipten kaldır (red beklenir)', 'red', await dene(F(dir).updateDoc(F(dir).doc(dir.db, 'users', staff('developer').uid), { active: false })));
+  kontrol('director', 'birine geliştirici rolü ver (red beklenir)', 'red', await dene(F(dir).updateDoc(F(dir).doc(dir.db, 'users', staff('regional', 1).uid), { role: 'developer' })));
   const rqO = await om.m('api/requests.ts');
   kontrol('opsmanager', 'talebe yanıt', 'ok', await dene((async () => { const r = (await adb.collection('requests').limit(1).get()).docs[0]; await rqO.addNote({ id: r.id, ...r.data() }, { side: 'ops', by: { uid: staff('opsmanager').uid, name: 'Semih' }, text: 'om yanıtı', status: 'in_progress' }); })()));
   // Bölge müdürü: barista ekle, davet, telefon kodu
@@ -315,6 +316,16 @@ async function deniedSet(c, g, extra = {}) {
   await adb.doc(`users/${u.uid}`).set({ role: 'ops', name: 'Eski Kayıt', email: 'eski-kayit@1401coffee.com', createdAt: Date.now() });
   const c = await client('k-aktifsiz'); await c.signIn('eski-kayit@1401coffee.com', 'yuk-testi-1401');
   kontrol('bilgi: active alanı yok', 'içerik okuma (kural gereği red)', 'red', await dene(F(c).getDocs(F(c).collection(c.db, 'modules'))));
+}
+{ // Kaldırılan roller ('ops', 'admin'): etkin hesap olsa da hiçbir şey okuyamaz.
+  for (const old of ['ops', 'admin']) {
+    const email = `eski-${old}@1401coffee.com`;
+    const u = await aauth.createUser({ email, password: 'yuk-testi-1401' });
+    await adb.doc(`users/${u.uid}`).set({ role: old, name: `Eski ${old}`, email, active: true, createdAt: Date.now() });
+    const c = await client(`k-eski-${old}`); await c.signIn(email, 'yuk-testi-1401');
+    kontrol(`kaldırılan rol: ${old}`, 'baristalar okuma (red beklenir)', 'red', await dene(F(c).getDocs(F(c).collection(c.db, 'baristas'))));
+    kontrol(`kaldırılan rol: ${old}`, 'ekip listesi (red beklenir)', 'red', await dene(F(c).getDocs(F(c).collection(c.db, 'users'))));
+  }
 }
 
 // ======================================================================

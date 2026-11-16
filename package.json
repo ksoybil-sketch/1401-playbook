@@ -1,7 +1,7 @@
 {
   "name": "1401-campus",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "1401 Coffee Campus — barista eğitimi, standartlar, sınav ve görev yönetimi",
   "type": "module",
   "scripts": {

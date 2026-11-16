@@ -70,7 +70,7 @@ export const PERMS: PermDef[] = [
 const PANEL_ALL: Perm[] = ['ekran.talepler', 'ekran.onaylar', 'ekran.baristalar', 'ekran.magazalar', 'ekran.gorevler', 'ekran.bulten', 'ekran.rozetler', 'ekran.yeniUrun', 'ekran.akademi', 'ekran.soruHavuzu'];
 
 /** Rol → varsayılan açık yetkiler. firestore.rules perm() varsayılanlarıyla aynı. */
-export const DEFAULTS: Record<Exclude<StaffRole, 'developer' | 'admin'>, Perm[]> = {
+export const DEFAULTS: Record<Exclude<StaffRole, 'developer'>, Perm[]> = {
   director: [...PANEL_ALL, 'ekran.geriBildirim', 'ekran.kurulSorulari', 'ekran.bildirimler',
     'talepYanit', 'servisOnay', 'icerikYayin', 'oneriOnay', 'bultenYayin', 'soruDuzelt', 'gorevAtama', 'rozetAyar', 'kurulYanit'],
   // Semih Dizdar: rütbece Cenk Bey'le eş, alanı kahve dışı (standartlar, oryantasyon, misafir).
@@ -78,7 +78,6 @@ export const DEFAULTS: Record<Exclude<StaffRole, 'developer' | 'admin'>, Perm[]>
     'ekran.akademi', 'ekran.soruHavuzu', 'ekran.geriBildirim', 'ekran.kurulSorulari',
     'talepYanit', 'servisOnay', 'icerikYayin', 'oneriOnay', 'bultenYayin', 'soruDuzelt', 'gorevAtama', 'kurulYanit'],
   regional: [...PANEL_ALL, 'ekran.geriBildirim', 'ekran.kurulSorulari', 'talepYanit', 'baristaYonetim', 'gorevAtama', 'kurulYanit'],
-  ops: [...PANEL_ALL, 'gorevAtama'],
   board: ['kurul.magazalar', 'kurul.isler', 'kurul.sorular', 'kurul.raporlar']
 };
 
@@ -92,7 +91,7 @@ export const DEFAULT_DOMAINS: Partial<Record<StaffRole, string[]>> = {
 };
 
 /** Ayarlanabilir roller (yetki sırasıyla). Geliştirici listede yok. */
-export const EDITABLE_ROLES: Exclude<StaffRole, 'developer' | 'admin'>[] = ['director', 'opsmanager', 'regional', 'ops', 'board'];
+export const EDITABLE_ROLES: Exclude<StaffRole, 'developer'>[] = ['director', 'opsmanager', 'regional', 'board'];
 
 export interface PermConfig {
   roles?: Partial<Record<StaffRole, Partial<Record<Perm, boolean>>>>;
@@ -113,7 +112,7 @@ export const usePermStore = create<PermState>((set) => ({
     () => set({ config: {}, ready: true }))
 }));
 
-const isDev = (r?: StaffRole) => r === 'developer' || r === 'admin';
+const isDev = (r?: StaffRole) => r === 'developer';
 
 export function allowedIn(cfg: PermConfig, role: StaffRole | undefined, p: Perm): boolean {
   if (!role) return false;

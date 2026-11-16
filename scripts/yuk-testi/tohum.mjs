@@ -86,9 +86,9 @@ const STAFF = [
   ['semihdizdar@1401coffee.com', 'Semih Dizdar', 'opsmanager'],
   ['ugurcangurbuz@1401coffee.com', 'Uğur Can Gürbüz', 'regional'],
   ['bolge2@1401coffee.com', 'Gülşen Ağaoğlu', 'regional'],
-  ['ops1@1401coffee.com', 'Işıl Öncü', 'ops'],
-  ['ops2@1401coffee.com', 'Çağrı Şen', 'ops'],
-  ['ops3@1401coffee.com', 'Ümit İnce', 'ops'],
+  ['ops1@1401coffee.com', 'Işıl Öncü', 'regional'],
+  ['ops2@1401coffee.com', 'Çağrı Şen', 'regional'],
+  ['ops3@1401coffee.com', 'Ümit İnce', 'regional'],
   ['ogunturanli@1401coffee.com', 'Ogün Turanlı', 'board'],
   ['bulentozgurkilic@1401coffee.com', 'Bülent Özgür Kılıç', 'board']
 ];

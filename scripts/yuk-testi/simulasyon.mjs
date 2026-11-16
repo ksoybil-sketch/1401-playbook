@@ -87,7 +87,7 @@ function staffListeners(c, s) {
   c.listen('boardQuestions(300)', query(collection(db, 'boardQuestions'), orderBy('updatedAt', 'desc'), limit(300)));
   if (s.role !== 'board') {
     c.listen('users(pending-phones)', query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)));
-    c.listen('users(staff-team)', query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional', 'ops', 'board'])));
+    c.listen('users(staff-team)', query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional', 'board'])));
   }
 }
 
@@ -272,7 +272,7 @@ async function staffClient(s) {
     const storeIds = (await adb.collection('stores').get()).docs.map((x) => x.id);
     await sd.loadOverviewExams(sd.dayStart(Date.now() - 6 * 86400000), storeIds).catch((e) => hata(s.role, 'genel bakış', e));
     c.listen('users(pending-phones)', query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)));
-    c.listen('users(staff-team)', query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional', 'ops', 'board'])));
+    c.listen('users(staff-team)', query(collection(db, 'users'), where('role', 'in', ['director', 'opsmanager', 'regional', 'board'])));
   }
   await sleep(3000);
   c.label('panel (canlı)');
@@ -298,7 +298,7 @@ async function main() {
   const opsm = await staffClient(staffBy('opsmanager'));
   const reg1 = await staffClient(staffBy('regional', 0));
   const reg2 = await staffClient(staffBy('regional', 1));
-  const ops = [await staffClient(staffBy('ops', 0)), await staffClient(staffBy('ops', 1)), await staffClient(staffBy('ops', 2))];
+  const ops = [await staffClient(staffBy('regional', 2)), await staffClient(staffBy('regional', 3)), await staffClient(staffBy('regional', 4))];
   const board = [await staffClient(staffBy('board', 0)), await staffClient(staffBy('board', 1))];
   const staffAll = [director, opsm, reg1, reg2, ...ops, ...board];
   const snapshotCounts = (label) => { const S = globalThis.__SAYAC; const o = {}; for (const [k, v] of S) o[k] = { r: v.r, w: v.w, d: v.d }; return { label, t: +el(), o }; };
@@ -336,8 +336,8 @@ async function main() {
     await sleep(15000);
     // KO tüm mağazalara görev atar: biri bugün gecikmiş (dün bitti), biri haftaya.
     ops[0].label('görev atama');
-    try { const n = await timed('görevAta(12 mağaza)', assignAll(ops[0], ops[0].s ?? staffBy('ops', 0), modules[0], -1)); olay('ops1', 'görev atandı (gecikmiş)', { n }); } catch (e) { hata('ops1', 'görev atama', e); }
-    try { const n = await assignAll(ops[1], staffBy('ops', 1), modules[1], 7); olay('ops2', 'görev atandı (haftaya)', { n }); } catch (e) { hata('ops2', 'görev atama', e); }
+    try { const n = await timed('görevAta(12 mağaza)', assignAll(ops[0], ops[0].s ?? staffBy('regional', 2), modules[0], -1)); olay('ops1', 'görev atandı (gecikmiş)', { n }); } catch (e) { hata('ops1', 'görev atama', e); }
+    try { const n = await assignAll(ops[1], staffBy('regional', 3), modules[1], 7); olay('ops2', 'görev atandı (haftaya)', { n }); } catch (e) { hata('ops2', 'görev atama', e); }
 
     // Direktör bülten yayınlar; KO bülten önerir.
     const chD = await director.m('api/changes.ts');
@@ -347,7 +347,7 @@ async function main() {
       .then((r) => olay('director', 'bülten', { r })).catch((e) => hata('director', 'bülten yayın', e));
     const chO = await ops[1].m('api/changes.ts');
     ops[1].label('bülten öneri');
-    await chO.commitChange([{ op: 'set', col: 'bulletins', id: 'yuk-bulten-2', data: { kind: 'kampanya', title: 'Hafta sonu kampanyası', body: 'Öneri', storeIds: ['moda-cadde', 'pendik'], rows: [], people: [], expiresAt: null, published: true, pinned: false, createdAt: Date.now(), createdBy: staffBy('ops', 1).uid, createdByName: 'Çağrı Şen' } }], { kind: 'bulletin', title: 'Hafta sonu kampanyası', summary: 'Yeni bülten' })
+    await chO.commitChange([{ op: 'set', col: 'bulletins', id: 'yuk-bulten-2', data: { kind: 'kampanya', title: 'Hafta sonu kampanyası', body: 'Öneri', storeIds: ['moda-cadde', 'pendik'], rows: [], people: [], expiresAt: null, published: true, pinned: false, createdAt: Date.now(), createdBy: staffBy('regional', 3).uid, createdByName: 'Çağrı Şen' } }], { kind: 'bulletin', title: 'Hafta sonu kampanyası', summary: 'Yeni bülten' })
       .then((r) => olay('ops2', 'bülten önerisi', { r })).catch((e) => hata('ops2', 'bülten önerisi', e));
 
     await sleep(10000);
@@ -379,19 +379,19 @@ async function main() {
     } catch (e) { hata('reg1', 'telefon eşleştir', e); }
 
     await sleep(5000);
-    // Direktör: ops'un görev atama yetkisini kapatır; o anda ops3 görev atar.
+    // Direktör: bölge müdürlerinin görev atama yetkisini kapatır; o anda üçüncü bölge müdürü görev atar.
     director.label('yetki değiştir');
     const { setDoc, doc } = director.fs;
-    await timed('yetkiKapat', setDoc(doc(director.fb.db, 'config', 'permissions'), { roles: { ops: { gorevAtama: false } }, updatedAt: Date.now(), updatedByName: 'Cenk Girginol', log: [{ at: Date.now(), byName: 'Cenk Girginol', text: 'Kahve Operasyonu · Görev ata: kapatıldı' }] }, { merge: true }));
-    olay('director', 'ops gorevAtama kapatıldı');
+    await timed('yetkiKapat', setDoc(doc(director.fb.db, 'config', 'permissions'), { roles: { regional: { gorevAtama: false } }, updatedAt: Date.now(), updatedByName: 'Cenk Girginol', log: [{ at: Date.now(), byName: 'Cenk Girginol', text: 'Bölge Müdürü · Görev ata: kapatıldı' }] }, { merge: true }));
+    olay('director', 'regional gorevAtama kapatıldı');
     ops[2].label('görev atama (yetki kapalı)');
     const pe = await ops[2].m('lib/permissions.ts');
     const t = Date.now();
-    olay('ops3', 'yetki istemcide kapalı mı', { allowed: pe.allowed('ops', 'gorevAtama'), ms: Date.now() - t });
-    try { await assignAll(ops[2], staffBy('ops', 2), modules[2], 3); olay('ops3', 'yetki kapalıyken görev atandı (BEKLENMİYOR)'); }
+    olay('ops3', 'yetki istemcide kapalı mı', { allowed: pe.allowed('regional', 'gorevAtama'), ms: Date.now() - t });
+    try { await assignAll(ops[2], staffBy('regional', 4), modules[2], 3); olay('ops3', 'yetki kapalıyken görev atandı (BEKLENMİYOR)'); }
     catch (e) { olay('ops3', 'yetki kapalı → görev reddedildi', { code: e.code, message: e.message }); }
     // Yetki geri açılır
-    await setDoc(doc(director.fb.db, 'config', 'permissions'), { roles: { ops: { gorevAtama: true } }, updatedAt: Date.now() }, { merge: true });
+    await setDoc(doc(director.fb.db, 'config', 'permissions'), { roles: { regional: { gorevAtama: true } }, updatedAt: Date.now() }, { merge: true });
 
     // Kurul soru sorar, direktör yanıtlar.
     for (const [i, bc] of board.entries()) {
