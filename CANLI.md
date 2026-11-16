@@ -53,4 +53,4 @@ Raporu Claude'a ver: "bu raporun açık hatalarını düzelt".
 - [ ] **Telefonla son kontrol:** gerçek mağaza telefonunda eşleştirme, barista PIN'i, bir ders, bir sınav.
 - [ ] **E-posta konusu ve gönderen adı:** Firebase bu projede şablon düzenlemeyi kapatmış; e-postalardaki ad proje adından ("1401 Campus") gelir.
 
-Ayrıntılı tarihçe: [YAYIN-GUNU.md](YAYIN-GUNU.md).
+Ayrıntılı tarihçe: [YAYIN-GUNU.md](docs/YAYIN-GUNU.md).

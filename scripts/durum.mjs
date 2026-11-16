@@ -50,7 +50,7 @@ const clean = (i) => i && !String(i.commit).endsWith('+');
 const sameCode = (a, b) => a && b && same(a.commit.replace('+', ''), b.commit.replace('+', ''));
 
 ok(canli && eski && canli.commit === eski.commit && canli.built === eski.built,
-  'İki canlı adres aynı yayını gösteriyor.', 'İki canlı adres farklı yayında. Canlıya yeniden dağıt (YAYIN-GUNU.md §2).');
+  'İki canlı adres aynı yayını gösteriyor.', 'İki canlı adres farklı yayında. Canlıya yeniden dağıt (docs/YAYIN-GUNU.md §2).');
 ok(sameCode(canli, demo) && clean(canli) && clean(demo),
   'Canlı ve demo aynı kodda.', 'Canlı ve demo farklı kodda ya da biri kaydedilmemiş değişiklikle derlenmiş.');
 ok(canli && same(canli.commit.replace('+', ''), 'origin/master'),
