@@ -10,6 +10,7 @@ import { useAllow, type Perm } from '../../lib/permissions';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { isClosed } from '../../api/requests';
 import { useStaffData } from './staffData';
+import { ChangePasswordSheet } from './ChangePasswordSheet';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
 import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
@@ -54,6 +55,7 @@ export const StaffLayout: React.FC = () => {
   const dataError = useStaffData((x) => x.error);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
+  const [pw, setPw] = useState(false);
   useStaffTheme();
   useEffect(() => subscribe(), [subscribe]);
   useEffect(() => { setMore(false); window.scrollTo(0, 0); }, [pathname]);
@@ -172,6 +174,7 @@ export const StaffLayout: React.FC = () => {
             {/* Uzun unvan ("Kahve Operasyon Direktörü") kesilmesin: iki satıra iner. */}
             <div className="text-[11px] text-fg-3 leading-snug">{STAFF_ROLE_LABEL[s.role]}</div>
           </div>
+          <button onClick={() => setPw(true)} className={t.iconBtn} aria-label="Şifremi değiştir" title="Şifremi değiştir"><Icon name="key" size={15} /></button>
           <button onClick={doLogout} className={t.iconBtn} aria-label="Çıkış" title="Çıkış"><Icon name="logout" size={15} /></button>
         </div>
       </aside>
@@ -240,9 +243,15 @@ export const StaffLayout: React.FC = () => {
               <Icon name="chevronRight" size={16} className={t.rowChevron} />
             </NavLink>
           ))}
+          <button type="button" className={`${t.listRow} w-full text-left`} onClick={() => { setMore(false); setPw(true); }}>
+            <span className={t.iconChip('neutral')}><Icon name="key" size={16} /></span>
+            <span className="text-[14px] font-medium flex-1">Şifremi değiştir</span>
+            <Icon name="chevronRight" size={16} className={t.rowChevron} />
+          </button>
         </div>
         <ThemePicker />
       </Sheet>
+      <ChangePasswordSheet open={pw} onClose={() => setPw(false)} />
     </div>
   );
 };
