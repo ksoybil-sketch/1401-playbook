@@ -417,6 +417,29 @@ async function changeOwnPin(baristaId: string, oldPin: string, newPin: string): 
   await updatePassword(user, pinPassword(baristaId, newPin));
 }
 
+/**
+ * [Kahve Operasyonu / Yönetim Kurulu] Panelden kendi şifresini değiştirir.
+ * E-postaya dayanmaz (şirket postası Firebase'in gönderdiği postayı
+ * düşürebiliyor): mevcut şifreyle yeniden doğrulanır, yeni şifre hemen
+ * geçerli olur. Firebase şifre değişince öteki cihazlardaki oturumları
+ * geçersiz sayar; o cihazlar en geç giriş anahtarının ömrü (≈1 saat) dolunca düşer.
+ */
+async function changeOwnPassword(current: string, next: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user?.email) throw new AppError('Oturum bulunamadı. Çıkış yapıp yeniden gir.');
+  if (next.length < 8) throw new AppError('Yeni şifre en az 8 karakter olmalı.', 'weak-password');
+  if (next === current) throw new AppError('Yeni şifre eskisiyle aynı olamaz.', 'weak-password');
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, current));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === 'auth/too-many-requests') throw new AppError('Çok fazla hatalı deneme. Birkaç dakika sonra tekrar dene.', 'current-password');
+    if (code === 'auth/network-request-failed') throw new AppError('İnternet bağlantısı yok.', 'current-password');
+    throw new AppError('Mevcut şifre hatalı.', 'current-password');
+  }
+  await updatePassword(user, next);
+}
+
 /* ------------------------------------------------------------------ */
 /* Yöneticiler                                                         */
 /* ------------------------------------------------------------------ */
@@ -469,7 +492,7 @@ async function createStaff(name: string, email: string, role: StaffRole = 'regio
 export const backend = {
   createPairingCode, pairDevice, deviceSignIn, revokeDevice,
   createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, verifyPin, checkInvite, redeemInvite, changeOwnPin,
-  bootstrapAdmin, needsBootstrap, createStaff
+  bootstrapAdmin, needsBootstrap, createStaff, changeOwnPassword
 };
 
 /** Kullanıcıya gösterilecek hata mesajı. */

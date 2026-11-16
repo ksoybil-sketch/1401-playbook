@@ -8,6 +8,7 @@ import { isDevRole, STAFF_ROLE_LABEL } from '../../lib/roles';
 import { useBoardView } from '../../lib/boardView';
 import { useStaffData } from '../staff/staffData';
 import { useStaffSession } from '../staff/StaffLayout';
+import { ChangePasswordSheet } from '../staff/ChangePasswordSheet';
 import { ThemePicker, useStaffTheme } from '../staff/theme';
 import { useBoardQuestions } from './BoardQuestions';
 import { useAllow, type Perm } from '../../lib/permissions';
@@ -32,6 +33,7 @@ export const BoardLayout: React.FC = () => {
   const subscribe = useStaffData((x) => x.subscribe);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);
+  const [pw, setPw] = useState(false);
   // Geliştiricinin kurul görünümü: panele dönüş düğmesi.
   const dev = isDevRole(s.role);
   const navigate = useNavigate();
@@ -97,6 +99,7 @@ export const BoardLayout: React.FC = () => {
             <div className="text-[13px] font-medium truncate">{s.name}</div>
             <div className="text-[11px] text-fg-3 leading-snug">{STAFF_ROLE_LABEL[s.role]}</div>
           </div>
+          <button onClick={() => setPw(true)} className={t.iconBtn} aria-label="Şifremi değiştir" title="Şifremi değiştir"><Icon name="key" size={15} /></button>
           <button onClick={logout} className={t.iconBtn} aria-label="Çıkış" title="Çıkış"><Icon name="logout" size={15} /></button>
         </div>
       </aside>
@@ -111,7 +114,7 @@ export const BoardLayout: React.FC = () => {
             <div className="text-[11px] text-fg-3 truncate">{s.name}</div>
           </div>
           {dev && <button onClick={toPanel} className={t.iconBtn} aria-label="Panele dön" title="Panele dön"><Icon name="chevronLeft" size={16} /></button>}
-          <button onClick={() => setMore(true)} className={t.iconBtn} aria-label="Tema"><Icon name="palette" size={16} /></button>
+          <button onClick={() => setMore(true)} className={t.iconBtn} aria-label="Ayarlar"><Icon name="palette" size={16} /></button>
           <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}><Icon name="logout" size={14} /> Çıkış</button>
         </div>
       </header>
@@ -137,9 +140,13 @@ export const BoardLayout: React.FC = () => {
         </div>
       </nav>
 
-      <Sheet open={more} title="Görünüm" onClose={() => setMore(false)}>
+      <Sheet open={more} title="Ayarlar" onClose={() => setMore(false)}>
+        <button type="button" className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => { setMore(false); setPw(true); }}>
+          <Icon name="key" size={15} /> Şifremi değiştir
+        </button>
         <ThemePicker />
       </Sheet>
+      <ChangePasswordSheet open={pw} onClose={() => setPw(false)} />
     </div>
   );
 };
