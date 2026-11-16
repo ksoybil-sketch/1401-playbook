@@ -15,7 +15,7 @@
  * yalnızca bu dosya ve kurallar değişir.
  */
 import {
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword, sendPasswordResetEmail,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential
 } from 'firebase/auth';
 import {
@@ -52,6 +52,17 @@ function randomDigits(n: number): string {
   const a = new Uint32Array(n);
   crypto.getRandomValues(a);
   return Array.from(a, (x) => (x % 10).toString()).join('');
+}
+/**
+ * Yeni ekip üyesine verilecek geçici şifre: okunması ve yazdırılması kolay
+ * (0/O, 1/l/I gibi karışan karakterler yok), 10 karakter.
+ */
+export function tempPassword(): string {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const a = new Uint32Array(10);
+  crypto.getRandomValues(a);
+  const s = Array.from(a, (x) => abc[x % abc.length]).join('');
+  return `${s.slice(0, 5)}-${s.slice(5)}`;
 }
 function randomToken(len = 32): string {
   const a = new Uint8Array(len);
@@ -424,7 +435,7 @@ async function changeOwnPin(baristaId: string, oldPin: string, newPin: string): 
  * geçerli olur. Firebase şifre değişince öteki cihazlardaki oturumları
  * geçersiz sayar; o cihazlar en geç giriş anahtarının ömrü (≈1 saat) dolunca düşer.
  */
-async function changeOwnPassword(current: string, next: string): Promise<void> {
+async function changeOwnPassword(current: string, next: string, clearMustChange = false): Promise<void> {
   const user = auth.currentUser;
   if (!user?.email) throw new AppError('Oturum bulunamadı. Çıkış yapıp yeniden gir.');
   if (next.length < 8) throw new AppError('Yeni şifre en az 8 karakter olmalı.', 'weak-password');
@@ -438,6 +449,8 @@ async function changeOwnPassword(current: string, next: string): Promise<void> {
     throw new AppError('Mevcut şifre hatalı.', 'current-password');
   }
   await updatePassword(user, next);
+  // Geçici şifreyle açılan hesap: zorunlu değişiklik tamamlandı.
+  if (clearMustChange) await updateDoc(doc(db, 'users', user.uid), { mustChangePassword: false });
 }
 
 /* ------------------------------------------------------------------ */
@@ -465,13 +478,14 @@ async function needsBootstrap(): Promise<boolean> {
 }
 
 /**
- * [Kahve Operasyon Direktörü] Ekibe yeni kişi; şifresini e-postadaki bağlantıyla
- * kendisi belirler. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
+ * [Kahve Operasyon Direktörü] Ekibe yeni kişi, geçici şifreyle; kişi ilk
+ * girişte şifresini değiştirir. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
  */
-async function createStaff(name: string, email: string, role: StaffRole = 'regional'): Promise<void> {
+async function createStaff(name: string, email: string, role: StaffRole = 'regional', password: string = tempPassword()): Promise<void> {
+  if (password.length < 8) throw new AppError('Geçici şifre en az 8 karakter olmalı.', 'weak-password');
   let uid: string;
   try {
-    uid = await createAccount(email.trim(), randomToken(24));
+    uid = await createAccount(email.trim(), password);
   } catch (e) {
     // Bir hesabın tek rolü var (H27): aynı e-postayla ikinci hesap açılamaz.
     // Kişi ekipte görünüyorsa rolüyle birlikte söylenir; geliştirici hiç görünmez.
@@ -484,9 +498,10 @@ async function createStaff(name: string, email: string, role: StaffRole = 'regio
     }
     throw e;
   }
-  await setDoc(doc(db, 'users', uid), { role, name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
-  auth.languageCode = 'tr';
-  await sendPasswordResetEmail(auth, email.trim());
+  // İlk şifre e-postayla gitmez (şirket postası Firebase'in e-postasını
+  // düşürebiliyor): direktör geçici şifreyi kişiye kendisi iletir, kişi ilk
+  // girişte değiştirir (App.tsx → zorunlu şifre değişikliği).
+  await setDoc(doc(db, 'users', uid), { role, name: name.trim(), email: email.trim(), active: true, mustChangePassword: true, createdAt: Date.now() });
 }
 
 export const backend = {

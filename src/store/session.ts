@@ -37,7 +37,7 @@ export type Session =
   | { kind: 'closed'; storeName: string }
   | { kind: 'store'; uid: string; storeId: string; storeName: string; offline?: boolean; held?: string }
   | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole; offline?: boolean }
-  | { kind: 'staff'; uid: string; name: string; email: string; role: StaffRole };
+  | { kind: 'staff'; uid: string; name: string; email: string; role: StaffRole; mustChangePassword?: boolean };
 
 interface SessionState {
   session: Session;
@@ -299,6 +299,12 @@ export const useSession = create<SessionState>((set, get) => {
         stopWatch?.();
         stopWatch = null;
         void dropAccount(uid);
+        return;
+      }
+      // Geçici şifre değiştirilince zorunlu ekran kalkar (başka sekmede de).
+      const cur = get().session;
+      if (cur.kind === 'staff' && cur.uid === uid && !!cur.mustChangePassword !== (snap.data()?.mustChangePassword === true)) {
+        set({ session: { ...cur, mustChangePassword: snap.data()?.mustChangePassword === true || undefined } });
       }
     }, () => { /* oturum kapanırken izin hatası: yok say */ });
   }
@@ -332,7 +338,7 @@ export const useSession = create<SessionState>((set, get) => {
     void syncServerClock();
 
     if (STAFF_ROLES.includes(profile.role as StaffRole)) {
-      set({ session: { kind: 'staff', uid: user.uid, role: profile.role as StaffRole, name: profile.name || user.email || 'Yönetici', email: user.email || '' } });
+      set({ session: { kind: 'staff', uid: user.uid, role: profile.role as StaffRole, name: profile.name || user.email || 'Yönetici', email: user.email || '', mustChangePassword: profile.mustChangePassword === true || undefined } });
       return;
     }
     if (profile.role === 'store') {

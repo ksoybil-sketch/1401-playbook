@@ -5,6 +5,7 @@ import { useSession } from './store/session';
 import { useContent } from './store/content';
 import { can, isBoard, isDevRole, isManager } from './lib/roles';
 import { useBoardView } from './lib/boardView';
+import { ForcedPasswordScreen } from './features/staff/ChangePasswordSheet';
 import { useAllow, usePermStore } from './lib/permissions';
 import { PermissionsPage } from './features/staff/PermissionsPage';
 import { useBadgeConfig } from './store/badgeConfig';
@@ -152,6 +153,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
     case 'staff':
       // Yetki ayarı gelmeden ekranlar çizilmez (açık bir ekran yanlışlıkla ana sayfaya yönlenmesin).
       if (!contentReady || !permReady) return <FullLoader />;
+      // Geçici şifreyle açılan hesap: önce kendi şifresini belirler.
+      if (session.mustChangePassword) return <ForcedPasswordScreen />;
       // Yönetim Kurulu: ayrı, salt okunur ekran (src/features/board).
       if (isBoard(session.role) || (isDevRole(session.role) && boardView)) return (
         <Routes>

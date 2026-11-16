@@ -317,6 +317,17 @@ async function deniedSet(c, g, extra = {}) {
   const c = await client('k-aktifsiz'); await c.signIn('eski-kayit@1401coffee.com', 'yuk-testi-1401');
   kontrol('bilgi: active alanı yok', 'içerik okuma (kural gereği red)', 'red', await dene(F(c).getDocs(F(c).collection(c.db, 'modules'))));
 }
+{ // Geçici şifreyle açılan ekip hesabı: bayrağını kapatabilir, açamaz; bayrak açıkken lastSeenAt yazabilir.
+  const email = 'gecici-sifre@1401coffee.com';
+  const u = await aauth.createUser({ email, password: 'yuk-testi-1401' });
+  await adb.doc(`users/${u.uid}`).set({ role: 'regional', name: 'Geçici Şifre', email, active: true, mustChangePassword: true, createdAt: Date.now() });
+  const c = await client('k-gecici'); await c.signIn(email, 'yuk-testi-1401');
+  const ref = F(c).doc(c.db, 'users', u.uid);
+  kontrol('geçici şifreli hesap', 'bayrak açıkken lastSeenAt yaz', 'ok', await dene(F(c).updateDoc(ref, { lastSeenAt: Date.now() })));
+  kontrol('geçici şifreli hesap', 'bayrağı kapat', 'ok', await dene(F(c).updateDoc(ref, { mustChangePassword: false })));
+  kontrol('geçici şifreli hesap', 'bayrağı yeniden aç (red beklenir)', 'red', await dene(F(c).updateDoc(ref, { mustChangePassword: true })));
+  kontrol('geçici şifreli hesap', 'kendi rolünü değiştir (red beklenir)', 'red', await dene(F(c).updateDoc(ref, { role: 'director' })));
+}
 { // Kaldırılan roller ('ops', 'admin'): etkin hesap olsa da hiçbir şey okuyamaz.
   for (const old of ['ops', 'admin']) {
     const email = `eski-${old}@1401coffee.com`;
