@@ -159,7 +159,7 @@ if (EMULATOR) {
 } else {
   // Gerçek projede servis hesabı anahtarı aramak yerine, zaten var olan bir
   // yönetici hesabının e-posta/şifresiyle REST API üzerinden yazılır —
-  // firestore.rules zaten bu hesabın "admin" rolünü doğrular.
+  // firestore.rules zaten bu hesabın geliştirici rolünü doğrular.
   const email = argVal('--email') || (DEMO ? TEST.staff.email : undefined);
   const password = argVal('--password') || (DEMO ? TEST.staff.password : undefined);
   // Şifreyi hiç paylaşmadan çalıştırmak için: panelde açık oturumun yenileme
@@ -342,11 +342,13 @@ if (EMULATOR) {
   };
 
   if (DEMO && adminUid) {
-    // Müfredat yazmak "admin" rolü ister; rol belgesi her şeyden önce yazılır.
+    // Müfredat yazmak geliştirici rolü ister; rol belgesi her şeyden önce yazılır.
     // İlk çalıştırmada kurallar bunu yalnızca config/bootstrap yokken kabul
-    // eder, sonraki çalıştırmalarda hesap zaten admin olduğu için geçer.
+    // eder, sonraki çalıştırmalarda hesap zaten geliştirici olduğu için geçer.
+    // (Eskiden burada 'admin' yazılıyordu: her içerik yüklemesi demodaki
+    // geliştirici hesabını "Tam yetkili"ye geri çeviriyordu.)
     await setDoc(`users/${adminUid}`, {
-      role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: Date.now()
+      role: 'developer', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: Date.now()
     });
     // Kimlik yazılmaz: belge yalnızca "kurulum yapıldı" işaretidir (güvenlik raporu K-3).
     await setDoc('config/bootstrap', { at: Date.now() }).catch(() => {});
@@ -393,8 +395,6 @@ if ((EMULATOR || DEMO) && !CONTENT_ONLY) {
 
   // --- Yöneticiler -----------------------------------------------------
   const staff = await ensureUser(TEST.staff.email, TEST.staff.password, TEST.staff.name);
-  // Önce 'admin' (ilk kurulum kuralı bunu bekler), ardından asıl rolü.
-  await setDoc(`users/${staff.uid}`, { role: 'admin', name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
   await setDoc(`users/${staff.uid}`, { role: TEST.staff.role, name: TEST.staff.name, email: TEST.staff.email, active: true, createdAt: now });
   // Kurallar config/bootstrap'ın üzerine yazılmasına izin vermez; demo
   // yeniden kurulduğunda belge zaten yerindedir, hata yutulur.

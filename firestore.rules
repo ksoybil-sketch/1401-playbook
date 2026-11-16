@@ -52,15 +52,13 @@ service cloud.firestore {
     function myRole() { return isActive() ? me().role : null; }
     // Yetki sıralaması — bkz. src/lib/roles.ts (ikisi birlikte değişmeli).
     //   developer  uygulama geliştiricisi; dağıtıma kadar hiçbir kurala takılmaz
-    //   admin      eski sürümden kalan tam yetkili rol (developer gibi)
     //   director   Kahve Operasyon Direktörü: yayınlar, onaylar, ekibi yönetir
     //   regional   Bölge Müdürü: barista/mağaza/kod işleri, talepler
-    //   ops        Kahve Operasyonu ekibi: görür, görev atar, öneri yapar
     //   board      Yönetim Kurulu üyesi: her şeyi okur, hiçbir şey yazmaz
     //              (yalnızca kurul sorusu sorar). isStaff() kurulu KAPSAMAZ:
     //              yazma izinleri isStaff() üzerinden verildiği için kurul
     //              okuma kurallarına ayrıca (canRead) eklenir.
-    function isStaff() { return myRole() in ['developer', 'admin', 'director', 'opsmanager', 'regional', 'ops']; }
+    function isStaff() { return myRole() in ['developer', 'director', 'opsmanager', 'regional']; }
     function isBoard() { return myRole() == 'board'; }
     /** Okuma: Kahve Operasyonu ve Yönetim Kurulu. */
     function canRead() { return isStaff() || isBoard(); }
@@ -77,7 +75,7 @@ service cloud.firestore {
     function perm(cap, defaults) {
       let r = myRole();
       let o = exists(permDoc()) ? get(permDoc()).data.get('roles', {}) : {};
-      return r in ['developer', 'admin']
+      return r == 'developer'
         || ((r != 'board' || cap.matches('kurul[.].*'))
             && ((r in o && cap in o[r]) ? o[r][cap] == true : r in defaults));
     }
@@ -85,7 +83,7 @@ service cloud.firestore {
     function domainLimit() {
       let r = myRole();
       let d = exists(permDoc()) ? get(permDoc()).data.get('domains', {}) : {};
-      return r in ['developer', 'admin'] ? null
+      return r == 'developer' ? null
         : (r in d ? d[r] : (r == 'opsmanager' ? ['oryantasyon', 'misafir-deneyimi', 'isletme-standartlari'] : null));
     }
     /** Modülün yolu: aynı toplu yazımda yeni açılan modül için yazım sonrası hâli. */
@@ -146,7 +144,7 @@ service cloud.firestore {
     function canFixQuestions() { return perm('soruDuzelt', ['director', 'opsmanager']); }
     function canApproveProposals() { return perm('oneriOnay', ['director', 'opsmanager']); }
     function canPublishBulletin() { return perm('bultenYayin', ['director', 'opsmanager']); }
-    function canAssign() { return perm('gorevAtama', ['director', 'opsmanager', 'regional', 'ops']); }
+    function canAssign() { return perm('gorevAtama', ['director', 'opsmanager', 'regional']); }
     function canBadges() { return perm('rozetAyar', ['director']); }
     function canNotifications() { return perm('ekran.bildirimler', ['director']); }
     function canFeedback() { return perm('ekran.geriBildirim', ['director', 'opsmanager', 'regional']); }
@@ -154,9 +152,9 @@ service cloud.firestore {
     function seesBoard() { return perm('ekran.kurulSorulari', ['director', 'opsmanager', 'regional']); }
     function answersBoard() { return perm('kurulYanit', ['director', 'opsmanager', 'regional']); }
     /** Geri dönüşsüz işler (sınav kaydı silmek) ve rol üstü her şey. */
-    function isAdmin() { return myRole() in ['developer', 'admin']; }
+    function isAdmin() { return myRole() == 'developer'; }
     /** İçeriği ve bülteni doğrudan yayınlar, önerileri onaylar. */
-    function isDirector() { return myRole() in ['developer', 'admin', 'director']; }
+    function isDirector() { return myRole() in ['developer', 'director']; }
     /** Barista, mağaza telefonu ve davet kodları. */
     function canManageBaristas() { return perm('baristaYonetim', ['regional']); }
     /** Mağaza taleplerini yanıtlar, durumunu değiştirir ya da servis onayı verir. */
@@ -169,26 +167,26 @@ service cloud.firestore {
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
     /** Ekibe verilebilecek roller: Kahve Operasyon Direktörü kurul dahil ekibi kurar. */
     // Ekibe geliştirici eklenmez (tektir); geliştirici ekibin geri kalanını kurar.
-    function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'ops', 'board'] : ['opsmanager', 'regional', 'ops', 'board']; }
+    function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'board'] : ['opsmanager', 'regional', 'board']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
 
     // --- Kullanıcı hesapları ------------------------------------------
     match /users/{uid} {
-      // Uygulama geliştiricisinin (ve eski 'admin') belgesi yalnızca ona görünür:
+      // Uygulama geliştiricisinin belgesi yalnızca ona görünür:
       // direktör dahil kimse adını, e-postasını ya da rolünü okuyamaz. Ekip
       // listeleri bu yüzden sorguda rolü süzer (bkz. roles.ts visibleStaffRoles).
-      allow get: if (isStaff() && (isAdmin() || resource == null || !(resource.data.role in ['developer', 'admin'])))
+      allow get: if (isStaff() && (isAdmin() || resource == null || !(resource.data.role == 'developer')))
                  || (signedIn() && request.auth.uid == uid);
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
-      allow list: if (isStaff() && (isAdmin() || !(resource.data.role in ['developer', 'admin'])))
+      allow list: if (isStaff() && (isAdmin() || !(resource.data.role == 'developer')))
         // Kurul, soru sorarken kime soracağını seçmek için direktörü ve bölge müdürünü görür.
         || (isBoard() && resource.data.role in ['director', 'opsmanager', 'regional']);
-      // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'admin' olarak kendi belgesini oluşturur.
+      // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'developer' (uygulama geliştiricisi) olarak kendi belgesini oluşturur.
       // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
-      allow create: if userTextOk() && ((signedIn() && request.auth.uid == uid && request.resource.data.role == 'admin'
+      allow create: if userTextOk() && ((signedIn() && request.auth.uid == uid && request.resource.data.role == 'developer'
                           && !exists(/databases/$(database)/documents/config/bootstrap))
                       || (isDirector() && request.resource.data.role in teamRolesFor())
                       || (canManageBaristas() && request.resource.data.role in storeRoles()));
@@ -215,12 +213,12 @@ service cloud.firestore {
     // İlk kurulum işareti. Herkes okur ("kurulum yapıldı mı"), içinde kimlik
     // yok: yalnızca { at }. Eskiden geliştiricinin uid'ini taşıyordu ve
     // oturumsuz okunabiliyordu (güvenlik raporu K-3). Belge yoksa bir kez,
-    // aynı toplu yazımda kendini admin yapan hesap oluşturur; sonra değişmez.
+    // aynı toplu yazımda kendini geliştirici yapan hesap oluşturur; sonra değişmez.
     match /config/bootstrap {
       allow get: if true;
       allow create: if signedIn() && !exists(/databases/$(database)/documents/config/bootstrap)
         && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at is number
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'developer'];
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'developer';
       allow update, delete: if false;
     }
 
@@ -522,7 +520,7 @@ service cloud.firestore {
       allow update: if canFixQuestions() && resource.data.submittedAt == null && (isAdmin() || inModule(resource.data.moduleId))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedQuestions']);
       // Sınav geçmişi kayıttır: ne barista ne de operasyon silebilir.
-      // Yalnızca admin, hatalı/deneme kayıtlarını temizlemek ve demo
+      // Yalnızca geliştirici, hatalı/deneme kayıtlarını temizlemek ve demo
       // ortamını sıfırlamak için silebilir.
       allow delete: if isAdmin();
     }

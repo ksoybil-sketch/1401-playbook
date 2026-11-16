@@ -10,7 +10,7 @@ import { loadChunk } from '../lib/chunk';
  * Neden burada: Spark planında Cloud Functions yok, yani içerik yüklemek için
  * ya servis hesabı anahtarı ya da bir yönetici şifresi gereken bir betik
  * gerekiyordu. Oysa yönetici panele zaten giriş yapmış durumda ve
- * firestore.rules onun "admin" rolünü doğruluyor — yazmayı doğrudan onun
+ * firestore.rules onun rolünü (geliştirici ya da direktör) doğruluyor — yazmayı doğrudan onun
  * oturumuyla yapmak hem daha basit hem daha güvenli (şifre hiçbir yere
  * kopyalanmıyor, anahtar dosyası tutulmuyor).
  *

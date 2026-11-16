@@ -26,7 +26,7 @@ type Role = (typeof EDITABLE_ROLES)[number];
 interface Person { id: string; name: string; role: StaffRole; active: boolean }
 
 const SHORT: Record<Role, string> = {
-  director: 'Direktör', opsmanager: 'Operasyon Md.', regional: 'Bölge Md.', ops: 'Operasyon ekibi', board: 'Yönetim Kurulu'
+  director: 'Direktör', opsmanager: 'Operasyon Md.', regional: 'Bölge Md.', board: 'Yönetim Kurulu'
 };
 
 /** Hücre bu rol için anlamlı mı: kurul yalnız kendi ekranları, diğerleri yalnız panel. */

@@ -422,16 +422,16 @@ async function changeOwnPin(baristaId: string, oldPin: string, newPin: string): 
 /* ------------------------------------------------------------------ */
 
 /**
- * İlk kurulum: hiç yönetici yoksa ilk hesabı admin olarak açar.
+ * İlk kurulum: hiç yönetici yoksa ilk hesabı uygulama geliştiricisi olarak açar.
  * config/bootstrap herkese açık bir "kurulum yapıldı" işaretidir; içine kimlik
  * yazılmaz (eskiden geliştiricinin uid'i duruyordu, güvenlik raporu K-3).
- * Kurallar işareti yalnızca aynı toplu yazımda kendini admin yapan hesaba,
+ * Kurallar işareti yalnızca aynı toplu yazımda kendini geliştirici yapan hesaba,
  * belge yokken bir kez yazdırır.
  */
 async function bootstrapAdmin(name: string, email: string, password: string): Promise<void> {
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
   const batch = writeBatch(db);
-  batch.set(doc(db, 'users', cred.user.uid), { role: 'admin', name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
+  batch.set(doc(db, 'users', cred.user.uid), { role: 'developer', name: name.trim(), email: email.trim(), active: true, createdAt: Date.now() });
   batch.set(doc(db, 'config', 'bootstrap'), { at: Date.now() });
   await batch.commit();
 }
@@ -445,7 +445,7 @@ async function needsBootstrap(): Promise<boolean> {
  * [Kahve Operasyon Direktörü] Ekibe yeni kişi; şifresini e-postadaki bağlantıyla
  * kendisi belirler. Hangi rolü verebileceğini kurallar ve roles.ts sınırlar.
  */
-async function createStaff(name: string, email: string, role: StaffRole = 'ops'): Promise<void> {
+async function createStaff(name: string, email: string, role: StaffRole = 'regional'): Promise<void> {
   let uid: string;
   try {
     uid = await createAccount(email.trim(), randomToken(24));

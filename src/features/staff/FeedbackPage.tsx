@@ -35,7 +35,7 @@ export const FeedbackPage: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<FeedbackStatus | 'hepsi' | 'hatalar'>('yeni');
   // Sürüm ve otomatik hata kaydı yalnızca uygulama geliştiricisine görünür.
-  const dev = me.role === 'developer' || me.role === 'admin';
+  const dev = me.role === 'developer';
   // Son N bildirim (eskiden hepsi canlı); "Daha eski" ile büyür.
   const [max, setMax] = useState(100);
   const { data, loading } = useQueryLive<Feedback>(canRead ? query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(max)) : null, `feedback-${max}`);

@@ -395,10 +395,10 @@ const StaffTeamSection: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<StaffRole>('ops');
+  const [role, setRole] = useState<StaffRole>('regional');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rank = (r: StaffRole) => ['board', 'developer', 'admin', 'director', 'opsmanager', 'regional', 'ops'].indexOf(r);
+  const rank = (r: StaffRole) => ['board', 'developer', 'director', 'opsmanager', 'regional'].indexOf(r);
 
   const add = async () => {
     setError(null);
@@ -431,7 +431,7 @@ const StaffTeamSection: React.FC = () => {
 
   return (
     <Section label={`Kahve Operasyonu ekibi · ${staff.filter((s) => s.active).length}`}
-      action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => { setRole(roles.includes('ops') ? 'ops' : roles[0]); setOpen(true); }}><Icon name="plus" size={14} /> Ekle</button> : undefined}>
+      action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={() => { setRole(roles.includes('regional') ? 'regional' : roles[0]); setOpen(true); }}><Icon name="plus" size={14} /> Ekle</button> : undefined}>
       <div className={t.listGroup}>
         {staff.filter((s) => s.active).sort((a, b) => rank(a.role) - rank(b.role) || a.name.localeCompare(b.name, 'tr')).map((s) => (
           <div key={s.id} className={`${t.listRowStatic} flex-wrap`}>
@@ -508,11 +508,9 @@ const StaffTeamSection: React.FC = () => {
 
 const ROLE_HINT: Record<StaffRole, string> = {
   developer: 'her şeyi görür ve yapar',
-  admin: 'her şeyi görür ve yapar',
   director: 'yayınlar, onaylar, ekibi yönetir',
   opsmanager: 'kahve dışı eğitimleri yayınlar, talepleri yanıtlar ve servis onaylar, bülten yayınlar',
   regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
-  ops: 'görür, görev atar; içerik ve bülten önerileri onaya düşer',
   board: 'gidişatı, raporları ve süren işleri okur; hiçbir şeyi değiştirmez, soru sorar'
 };
 
