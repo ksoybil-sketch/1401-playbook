@@ -12,13 +12,39 @@ import type { IconName } from '../ui/Icon';
  * "Sözlü talepler geçersiz sayılır" — kayıt burada tutulur.
  */
 
+/**
+ * Bütün kategoriler. Bu liste **gösterim** içindir: eski kayıtların ve
+ * uygulamanın kendi açtığı taleplerin (PIN sıfırlama → 'personel') etiketi
+ * buradan gelir. Mağazanın seçebildiği liste ayrıdır: MAGAZA_KATEGORILERI.
+ */
 export const CATEGORIES: { id: RequestCategory; label: string; icon: IconName; hint: string }[] = [
   { id: 'ariza', label: 'Arıza', icon: 'wrench', hint: 'Kahve makinesi, değirmen, fırın, yazıcı, yazılım' },
   { id: 'servis', label: 'Teknik servis', icon: 'shield', hint: 'Yetkili servis çağrısı, periyodik bakım' },
-  { id: 'malzeme', label: 'Malzeme / ekipman', icon: 'package', hint: 'Eksik ekipman, sarf, ekstra sevkiyat' },
+  { id: 'malzeme', label: 'Ekipman ihtiyacı', icon: 'package', hint: 'Bozulan ekipmanın yenisi, eksik ekipman' },
   { id: 'personel', label: 'Personel', icon: 'users', hint: 'Yeni barista, PIN, eğitim, vardiya' },
   { id: 'diger', label: 'Diğer', icon: 'message', hint: 'Başka bir konu' }
 ];
+
+/**
+ * Mağazanın yeni talep açarken seçebildiği konular (17.11.2026).
+ *
+ * Uygulamada yalnızca **operasyonu doğrudan durduran teknik konular** takip
+ * edilir: ekipman arızası, yetkili servis ve eksik/bozuk ekipman. Sarf
+ * malzeme ve ürün (şurup, toz, bardak) satın almayı ilgilendiriyor ve bu
+ * uygulamada satın almadan kimse yok; personel konuları da burada
+ * yürümüyor. Kategori listeden çıkarılmadı, yalnızca seçilemez oldu:
+ *   - 'personel' uygulamanın kendi açtığı PIN sıfırlama taleplerinde
+ *     kullanılmaya devam ediyor (backend.ts resetBaristaPin, Ekibim ekranı);
+ *   - eski kayıtlar etiketleriyle görünmeye devam ediyor.
+ */
+export const MAGAZA_KATEGORILERI: RequestCategory[] = ['ariza', 'servis', 'malzeme'];
+export const MAGAZA_KATEGORI_LISTESI = CATEGORIES.filter((c) => MAGAZA_KATEGORILERI.includes(c.id));
+
+/** Yeni talep ekranındaki uyarı: neyin buradan yürümediği. */
+export const TALEP_KAPSAM_UYARISI =
+  'Buradan yalnızca ekipman arızası, yetkili servis ve eksik/bozuk ekipman takip edilir. '
+  + 'Sarf malzeme, ürün siparişi ve personel konularını bölge müdürüne ilet. '
+  + 'PIN sıfırlama için Ekibim ekranını kullan.';
 
 export const EQUIPMENT = ['Espresso makinesi', 'Kahve değirmeni', 'Filtre kahve makinesi', 'Fırın', 'Blender', 'Buzdolabı / dondurucu', 'Buz makinesi', 'Su arıtma', 'Yazıcı', 'Kerzzpos / yazılım', 'Diğer'];
 
@@ -52,7 +78,10 @@ export const REJECT_REASONS: { id: RequestRejectReason; label: string }[] = [
 ];
 export const reasonLabel = (id?: string | null) =>
   [...WAIT_REASONS, ...REJECT_REASONS].find((r) => r.id === id)?.label || '';
-export const catOf = (c: RequestCategory) => CATEGORIES.find((x) => x.id === c) ?? CATEGORIES[4];
+/** Kategori etiketi; tanınmayan/eski değerde "Diğer"e düşer. */
+export const catOf = (c: RequestCategory) => CATEGORIES.find((x) => x.id === c)
+  ?? CATEGORIES.find((x) => x.id === 'diger')
+  ?? CATEGORIES[CATEGORIES.length - 1];
 
 export async function createRequest(input: {
   storeId: string; storeName: string; category: RequestCategory; priority: RequestPriority;

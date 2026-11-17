@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
-import { CATEGORIES, EQUIPMENT, createRequest, isClosed } from '../../api/requests';
+import { EQUIPMENT, MAGAZA_KATEGORI_LISTESI, TALEP_KAPSAM_UYARISI, createRequest, isClosed } from '../../api/requests';
 import { errorText } from '../../api/backend';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { useBaristaSession } from './useBaristaData';
@@ -144,7 +144,7 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
       <div className={t.field}>
         <span className={t.label}>Konu</span>
         <div className="grid grid-cols-2 gap-2">
-          {CATEGORIES.map((c) => (
+          {MAGAZA_KATEGORI_LISTESI.map((c) => (
             <button key={c.id} onClick={() => setCategory(c.id)}
               className={`flex items-start gap-2 p-3 rounded-xl border text-left transition-colors ${category === c.id ? 'border-crema bg-panel-3' : 'border-line bg-panel'}`}>
               <Icon name={c.icon} size={16} className="mt-0.5 text-fg-2" />
@@ -155,6 +155,7 @@ const NewRequestSheet: React.FC<{ open: boolean; onClose: () => void }> = ({ ope
             </button>
           ))}
         </div>
+        <p className="mt-2 text-[12px] leading-snug text-fg-3">{TALEP_KAPSAM_UYARISI}</p>
       </div>
       {category === 'ariza' && (
         <label className={t.field}>
