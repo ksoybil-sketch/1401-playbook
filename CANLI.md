@@ -41,6 +41,14 @@ Panel → Genel bakış → Kahve Operasyonu ekibi → **Ekle**. Uygulama geçic
 Çıkan pencerede adres, e-posta ve geçici şifre bir kez gösterilir: **Kopyala** deyip kişiye WhatsApp'tan ilet.
 Kişi ilk girişte kendi şifresini belirlemeden panele geçemez. Herkes şifresini sonra panelde anahtar simgesinden değiştirebilir.
 
+Geçici şifre önceden kararlaştırıldıysa komutla da eklenir (şifreler sorulur, ekranda görünmez):
+
+```bash
+npm run yonetici-ekle -- --email ornek@1401coffee.com --ad "Ad Soyad" --rol director
+```
+
+Roller: `director` · `opsmanager` · `regional` · `board`. Betik önce ne yapacağını yazar ve onay ister.
+
 ## Yedek
 
 Spark planında otomatik yedek yok. **Haftada bir** al: panelde sol altta **Yedek al** (yalnızca geliştiricide görünür) dosyayı İndirilenler klasörüne indirir. Aynısı komutla da alınır (şifreni sorar, şifre ekranda görünmez):
@@ -51,6 +59,30 @@ npm run yedek
 
 Dosya `yedekler/` klasörüne tarihli yazılır. Ayda bir OneDrive → `1401 Playbook Yedek` klasörüne kopyala.
 Bir kayıt bozulursa Claude'a "şu kaydı yedekten geri getir" de: önce neyin değişeceğini gösterir, onayla yazar.
+
+## Kullanım nasıl gidiyor?
+
+Kim uygulamayı açıyor, hangi ekranlar işliyor, nerede takılıyorlar (şifreni sorar,
+şifre ekranda görünmez):
+
+```bash
+npm run kullanim -- --gun 7
+```
+
+İki ek kip giriş istemez, yerel dosyaları okur:
+
+```bash
+npm run kullanim -- --trend
+```
+
+```bash
+npm run kullanim -- --yedek-farki yedekler/<eski>.json yedekler/<yeni>.json
+```
+
+Rapor `kullanim-raporlari/` klasörüne tarihli yazılır. Claude'a "durum nedir?" de;
+komutu terminal sekmesinde başlatır ve raporu özetler. Hangi sorunun bugünkü
+veriyle yanıtlanabildiği: [docs/KULLANIM-VERISI.md](docs/KULLANIM-VERISI.md).
+Neler yapılabileceği: [docs/KULLANIM-ONERILER.md](docs/KULLANIM-ONERILER.md).
 
 ## Hata ve öneriler
 
@@ -63,9 +95,21 @@ npm run geri-bildirim -- --gun 1
 
 Raporu Claude'a ver: "bu raporun açık hatalarını düzelt".
 
+## İki hafta veri topluyoruz (17.11 → 1.12.2026)
+
+Kullanım ölçümleri hazır ama **canlıya alınmadı**: önce iki hafta gerçek veri
+biriksin. Bu sürede haftada bir `npm run kullanim -- --gun 7` (ya da Claude'a
+"durum nedir?"). Raporlar birikince `npm run kullanim -- --trend` gidişatı
+gösterir.
+
+Bu iki haftada **ekran ve reçete kullanımı ile hız ölçümü birikmez** — ikisi de
+yeni sürümde, canlıda yok. Geri kalan her şey birikiyor. Ayrıntı:
+[docs/KULLANIM-ONERILER.md](docs/KULLANIM-ONERILER.md).
+
 ## İlk hafta (16-23.11.2026)
 
 - [ ] Her gün `npm run geri-bildirim -- --gun 1` raporunu Claude'a ver.
+- [ ] Hafta ortasında ve sonunda Claude'a "durum nedir?" de (`npm run kullanim`).
 - [ ] Günlük okuma kotasına bak (`npm run durum` çıktısının sonundaki bağlantı). 50.000'in yarısını geçerse Claude'a söyle.
 - [ ] Haftanın sonunda ilk `npm run yedek`.
 

@@ -7,6 +7,7 @@ import { watchForUpdates } from './lib/updateCheck';
 import { installBackButton } from './lib/backButton';
 import { installWebHistory } from './lib/webHistory';
 import { installErrorLog } from './lib/errorLog';
+import { installPerf } from './lib/perf';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { reloadForNewVersion, STALE_SAVE_TEXT, STALE_TEXT } from './lib/chunk';
 import { toast } from './ui/kit';
@@ -16,6 +17,11 @@ watchForUpdates();
 
 // Yakalanmamış hatalar "hatalar" koleksiyonuna düşer (yalnızca geliştirici okur).
 installErrorLog();
+
+// Hız ölçümü (Firebase Performance Monitoring): ekran açılışı, ağ süreleri ve
+// sınav akışının adımları. Ayrı parça olarak yüklenir, ana paketi büyütmez.
+// Kişi kimliği göndermez; Spark planında ücretsiz. Bütçe: docs/HIZ-BUTCESI.md
+installPerf();
 
 // Android geri tuşu: alt sayfa → sınav onayı → önceki ekran → arka plana al.
 installBackButton();

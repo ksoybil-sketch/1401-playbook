@@ -38,3 +38,6 @@ scripts/yuk-testi/out/
 # Zorlu senaryo çıktıları
 scripts/zorlu/**/out/
 yedekler/
+
+# Kullanım raporları (mağaza ve kişi adları)
+kullanim-raporlari/

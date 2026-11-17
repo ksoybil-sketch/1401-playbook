@@ -40,6 +40,7 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 - **Sınav telefonda puanlanır.** Süreli, şıklar karışık, haftalık hak sınırlı. Hatalı soru iptal edilirse geçmiş sınavlar yeniden puanlanır; kimsenin puanı düşmez.
 - **Yeni ürün:** Reçete girilir; uygulama mini sınavı üretir, bülteni yazar ve şubelere görev açar.
 - **Dosyadan ders:** PDF'in bölümlerinden 1-4 dakikalık dersler çıkar.
+- **Talep kapsamı dar.** Mağaza yalnızca üç konu açabilir: arıza, yetkili servis, ekipman ihtiyacı. Sarf malzeme/ürün siparişi, personel ve diğer konular uygulamada takip edilmiyor (satın almadan kimse yok); formda bunu söyleyen bir uyarı var. Kategoriler silinmedi, yalnızca seçilemez oldu — PIN sıfırlama talepleri `personel` kategorisini kullanmayı sürdürüyor (`src/api/requests.ts` MAGAZA_KATEGORILERI).
 - **Onay akışı:** Bölge müdürünün içerik ve bülten değişiklikleri öneri olarak düşer, direktör yayınlar.
 - **Yönetim Kurulu:** Mağaza karnesi, dönem karşılaştırması, süren işler, Excel raporu.
 
@@ -54,10 +55,13 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 
 ## Kalite
 
-- **Kural testi** (`scripts/yuk-testi/kurallar.mjs`): 198 denetim. Her rolün yapabildiği ve yapamadığı işler, pasif ve kaldırılmış hesaplar.
+- **Kural testi** (`scripts/yuk-testi/kurallar.mjs`): 235 denetim. Her rolün yapabildiği ve yapamadığı işler, pasif ve kaldırılmış hesaplar.
 - **Yük testi** (`scripts/yuk-testi/`): Yerel emülatörde 12 şube, 76 barista ve tam ekip aynı anda. Aynı anda sınav, iki cihazdan başlama, sınav sürerken müfredat güncellemesi, yetki kapatma, ağ kesintisi.
+- **Çevrimdışı testi** (`scripts/cevrimdisi-test.mjs`): 17.11.2026 · 10 adım, 8 geçti. İnternetsiz: uygulama açılıyor, "Kim çalışıyor?" geliyor, reçete listesi ve ölçüler okunuyor, açık barista oturumu sürüyor, dersler okunuyor. Çalışmayan ikisi tasarım gereği: PIN ile **yeni** giriş (Auth gerekir — anlaşılır hata mesajı gösteriyor) ve sınava başlama.
 - **Ölçümler:** Yoğun anda sınav başlatma 4,5 sn, teslim 3,4 sn (en yavaş %5). 12 şube için günlük okuma 29-40 bin; Spark sınırı 50 bin.
 - **Hata kaydı:** Çöken ekranlar otomatik kaydedilir; geri bildirimler uygulamanın içinden gelir (`npm run geri-bildirim`).
+- **Hız ölçümü:** Firebase Performance Monitoring (Spark'ta ücretsiz, kişi tutmaz). Hedefler ve ölçüm noktaları: [HIZ-BUTCESI.md](HIZ-BUTCESI.md).
+- **Kullanım raporu:** `npm run kullanim` — kim kullanıyor, nerede takılıyor, neyi sadeleştirmeli ([KULLANIM-VERISI.md](KULLANIM-VERISI.md)).
 
 ## Kod yapısı
 
@@ -66,6 +70,9 @@ shared/types.ts               Veri modeli (Firestore koleksiyonları)
 firestore.rules               Rol ve etkinlik bazlı erişim
 src/api/                      Hesap, eşleştirme, PIN, sınav, yeniden puanlama, öneri ve onay, müfredat yükleme
 src/lib/                      Roller ve yetkiler, rozetler, ilerleme, PDF'ten ders, arama
+src/lib/ekranlar.ts           Ekran yollarının adları ve sayaç kodları (demo kaydı + sayaç ortak)
+src/lib/kullanimKaydi.ts      Mağaza düzeyinde kullanım sayacı (kişiye bağlı değil)
+src/lib/perf.ts               Süre ölçümü → Performance Monitoring özel izleri
 src/features/device           Telefon eşleştirme, "Kim çalışıyor?", PIN, davet
 src/features/barista          Bugün, Akademi, ders, reçete, sınav, sonuçlar, bülten, ekibim, talepler
 src/features/staff            Panel ekranları
@@ -73,6 +80,7 @@ src/features/board            Yönetim Kurulu ekranları ve raporlar
 scripts/content.mjs           Müfredat kaynağı
 scripts/build-curriculum.mjs  Müfredatı src/generated/curriculum.json'a yazar
 scripts/seed.mjs              Emülatöre ve demoya örnek veri; canlıya yalnızca müfredat
+scripts/kullanim.mjs         Canlı kullanım raporu (npm run kullanim; docs/KULLANIM-VERISI.md)
 scripts/yuk-testi/            Kural, yük ve doğrulama betikleri
 blaze/                        Blaze planına geçiş için saklanan sunucu kodu (kullanılmıyor)
 ```

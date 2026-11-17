@@ -20,6 +20,19 @@
       ],
       "port": 5174,
       "autoPort": true
+    },
+    {
+      "name": "playbook-demo",
+      "runtimeExecutable": "/Users/kutays/.local/node/bin/npx",
+      "runtimeArgs": [
+        "vite",
+        "--mode",
+        "demo",
+        "--port",
+        "5175"
+      ],
+      "port": 5175,
+      "autoPort": true
     }
   ]
 }

@@ -637,12 +637,45 @@ service cloud.firestore {
 
     // --- Sunucu saati ölçümü (src/lib/serverTime.ts) --------------------
     // Her hesap yalnızca kendi belgesine, yalnızca sunucu zamanını yazar
-    // (serverTimestamp); kimse başkasınınkini okuyamaz. İz bırakmaz: içinde
-    // ad ya da rol yok.
+    // (serverTimestamp). İçinde ad ya da rol yok, yalnızca zaman.
+    //
+    // Bu yazım her oturum açılışında bir kez, sonra etkin kullanımda 30
+    // dakikada bir olur (REFRESH_MS) — yani belge, o hesabın son etkinlik
+    // anıdır. Kullanım raporu (npm run kullanim) bunu okur: users.lastSeenAt
+    // yalnızca mağaza telefonunda tutuluyor, bu ise her rolde var.
+    // Geliştirici dışında kimse başkasınınkini okuyamaz.
     match /clock/{uid} {
-      allow get: if signedIn() && request.auth.uid == uid;
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
       allow create, update: if isActive() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time;
+    }
+
+    // --- Kullanım sayacı (src/lib/kullanimKaydi.ts) ----------------------
+    // Mağaza başına, gün başına TEK belge: kullanim/{storeId}_{YYYYAAGG}.
+    // İçinde uid, ad ya da barista kimliği YOK — kişisel veri değil, mağaza
+    // düzeyinde toplu istatistiktir (KVKK: docs/KVKK-AYDINLATMA-TASLAK.md).
+    // Yalnızca o mağazanın etkin oturumu yazar, yalnızca bugünün belgesine;
+    // sayaçlar ve anahtar sayıları üstten sınırlı. Yalnızca geliştirici okur.
+    //
+    // Kişi bazlı kayıt (kullanim/{uid}_{gün}) BİLİNÇLİ OLARAK KAPALI: açmak
+    // için hem kullanimKaydi.ts'teki KISI_BAZLI sabiti hem buradaki kimlik
+    // kuralı değişmeli, ve ikisi de KVKK metni onaylanmadan açılmamalı.
+    match /kullanim/{id} {
+      allow read: if isAdmin();
+      allow create, update: if isStoreSession() && isActive()
+        && id == myStoreId() + '_' + ymd(request.time)
+        && request.resource.data.keys().hasOnly(['storeId', 'day', 'acilis', 'saatler', 'ekran', 'recete', 'updatedAt'])
+        && request.resource.data.storeId == myStoreId()
+        && request.resource.data.day == ymd(request.time)
+        && nearNow(request.resource.data.updatedAt, 10 * 60 * 1000)
+        && request.resource.data.get('acilis', 0) is int
+        && request.resource.data.get('acilis', 0) >= 0
+        && request.resource.data.get('acilis', 0) <= 5000
+        && request.resource.data.get('saatler', {}).keys().size() <= 24
+        && request.resource.data.get('ekran', {}).keys().size() <= 20
+        && request.resource.data.get('recete', {}).keys().size() <= 40;
+      allow delete: if isAdmin();
     }
 
     // --- Yönetim Kurulu soruları ----------------------------------------

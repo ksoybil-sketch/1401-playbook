@@ -32,6 +32,7 @@ import { ContentPage, ModuleEditorPage, LessonEditorPage } from './features/staf
 import { BulletinPage } from './features/staff/BulletinPages';
 import { ACTIVITY_LOG } from './demo/log';
 import { DemoTracker } from './demo/DemoTracker';
+import { KullanimSayaci } from './features/shared/KullanimSayaci';
 import { DemoLogPage } from './demo/DemoLogPage';
 import { BoardLayout } from './features/board/BoardLayout';
 import { BoardOverviewPage, BoardStoresPage, BoardWorkPage, BoardReportsPage, BoardPrintReport } from './features/board/BoardPages';
@@ -75,6 +76,9 @@ export const App: React.FC = () => {
     <>
       <Screens session={session} contentReady={contentReady} />
       {ACTIVITY_LOG && <DemoTracker />}
+      {/* Mağaza düzeyinde kullanım sayacı (kişiye bağlı değil, yalnızca mağaza
+          oturumlarında yazar): src/lib/kullanimKaydi.ts */}
+      <KullanimSayaci />
       <ToastHost />
     </>
   );

@@ -21,6 +21,8 @@
  *   invites/{code}                Barista davet kodu (7 gün, tek kullanım)
  *   media/{id}                    Ders fotoğrafları (küçültülmüş JPEG, base64)
  *   config/bootstrap              İlk yönetici oluşturuldu mu
+ *   clock/{uid}                   Sunucu saati ölçümü = o hesabın son etkinliği
+ *   kullanim/{storeId}_{gün}      Mağaza düzeyinde kullanım sayacı (kişiye bağlı DEĞİL)
  */
 
 /** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
@@ -410,6 +412,28 @@ export interface Assignment {
   createdAt: number;
   createdBy: string;
   createdByName: string;
+}
+
+/**
+ * kullanim/{storeId}_{YYYYAAGG} — mağaza düzeyinde günlük kullanım sayacı.
+ * İçinde uid, ad ya da barista kimliği YOKTUR: kişisel veri değil, toplu
+ * istatistiktir. Yazan: src/lib/kullanimKaydi.ts (yalnızca mağaza
+ * oturumları). Okuyan: yalnızca uygulama geliştiricisi (firestore.rules,
+ * npm run kullanim). Anahtar sayıları kuralda sınırlıdır.
+ */
+export interface KullanimGunu {
+  storeId: string;
+  /** YYYYAAGG (UTC) — kural request.time ile doğrular. */
+  day: string;
+  /** Uygulama kaç kez açıldı. */
+  acilis?: number;
+  /** "08" → o saatte kaç açılış (Türkiye saati). En çok 24 anahtar. */
+  saatler?: Record<string, number>;
+  /** Ekran kodu → kaç kez açıldı (src/lib/ekranlar.ts). En çok 20 anahtar. */
+  ekran?: Record<string, number>;
+  /** Reçete kimliği → kaç kez açıldı. En çok 40 anahtar. */
+  recete?: Record<string, number>;
+  updatedAt: number;
 }
 
 export const MAX_EXAMS_PER_WEEK = 3;

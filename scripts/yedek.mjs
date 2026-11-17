@@ -23,7 +23,8 @@ const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : un
 const DEMO = has('--demo');
 
 const COLLECTIONS = ['users', 'stores', 'baristas', 'progress', 'attempts', 'assignments', 'bulletins', 'requests',
-  'proposals', 'boardQuestions', 'feedback', 'hatalar', 'mailLog', 'tracks', 'modules', 'lessons', 'questions'];
+  'proposals', 'boardQuestions', 'feedback', 'hatalar', 'mailLog', 'tracks', 'modules', 'lessons', 'questions',
+  'clock', 'kullanim'];
 const CONFIG_DOCS = ['badges', 'permissions', 'notifications'];
 
 const env = {};

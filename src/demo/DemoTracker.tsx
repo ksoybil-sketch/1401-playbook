@@ -6,6 +6,7 @@ import { record, setActor } from './log';
 import { useContent } from '../store/content';
 import { FS_TRANSPORT, IS_NATIVE } from '../api/firebase';
 import { measure } from '../lib/perf';
+import { pageName } from '../lib/ekranlar';
 
 /** Ölçümleri yorumlamak için ortam: yerel uygulama mı, bağlantı biçimi, ağ. */
 function env() {
@@ -14,20 +15,6 @@ function env() {
   const conn = (navigator as unknown as { connection?: { effectiveType?: string } }).connection?.effectiveType;
   return { uygulama: IS_NATIVE ? 'yerel' : 'tarayıcı', os, bağlantı: FS_TRANSPORT, ağ: conn || '?', ua: ua.slice(0, 160) };
 }
-
-/** Ekran yollarının okunur adları (ilk eşleşen kazanır). */
-const PAGES: [RegExp, string][] = [
-  [/^\/$/, 'Ana ekran'],
-  [/^\/receteler$/, 'Reçeteler'], [/^\/recete\//, 'Reçete'],
-  [/^\/bulten$/, 'Bülten'], [/^\/akademi$/, 'Akademi'], [/^\/akademi\//, 'Eğitim yolu'],
-  [/^\/modul\//, 'Modül'], [/^\/ders\//, 'Ders'], [/^\/sinav\//, 'Sınav'],
-  [/^\/sonuclarim$/, 'Ben / sonuçlarım'], [/^\/ekip$/, 'Ekibim'], [/^\/talepler/, 'Talepler'],
-  [/^\/magazalar$/, 'Mağazalar'], [/^\/magazalar\//, 'Mağaza'], [/^\/baristalar$/, 'Baristalar'], [/^\/baristalar\//, 'Barista'],
-  [/^\/gorevler$/, 'Görevler'], [/^\/onaylar$/, 'Onaylar / öneriler'], [/^\/rozetler$/, 'Rozetler'],
-  [/^\/icerik$/, 'Akademi düzenleme'], [/^\/icerik\/modul\//, 'Modül düzenleme'], [/^\/icerik\/ders\//, 'Ders düzenleme'],
-  [/^\/yonetici-girisi$/, 'Yönetici girişi'], [/^\/davet$/, 'Davet'], [/^\/demo-kaydi$/, 'Demo kaydı']
-];
-const pageName = (p: string) => PAGES.find(([r]) => r.test(p))?.[1] || p;
 
 const BARISTA_ROLE: Record<string, string> = { barista: 'Barista', lead: 'Mağaza müdürü', shift: 'Vardiya sorumlusu' };
 

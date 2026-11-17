@@ -113,6 +113,22 @@ for (const role of ['barista', 'lead', 'shift']) {
     kontrol(g, 'talep aç (red beklenir)', 'red', await dene(addDoc(collection(c.db, 'requests'), { storeId: b.storeId, createdBy: c.uid(), status: 'open', lastSide: 'store', title: 'x' })));
   }
   kontrol(g, 'geri bildirim yaz', 'ok', await dene(addDoc(collection(c.db, 'feedback'), { by: c.uid(), status: 'yeni', text: 'barista geri bildirim', createdAt: Date.now() })));
+  // Kullanım sayacı (src/lib/kullanimKaydi.ts): yalnızca kendi mağazasının
+  // bugünkü belgesi, yalnızca izinli alanlar, sınırlı anahtar sayısı.
+  const bugun = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const { setDoc, doc: d1 } = F(c);
+  const sayacYaz = (id, data) => dene(setDoc(d1(c.db, 'kullanim', id), data, { merge: true }));
+  const gecerli = { storeId: b.storeId, day: bugun, acilis: 1, saatler: { '09': 1 }, ekran: { recete: 3 }, recete: { 'r-latte': 2 }, updatedAt: Date.now() };
+  kontrol(g, 'kullanım sayacı yaz', 'ok', await sayacYaz(`${b.storeId}_${bugun}`, gecerli));
+  kontrol(g, 'kullanım sayacı: başka mağaza (red)', 'red', await sayacYaz(`baska-magaza_${bugun}`, { ...gecerli, storeId: 'baska-magaza' }));
+  kontrol(g, 'kullanım sayacı: dünün belgesi (red)', 'red', await sayacYaz(`${b.storeId}_20200101`, { ...gecerli, day: '20200101' }));
+  kontrol(g, 'kullanım sayacı: kişi bazlı kimlik (red)', 'red', await sayacYaz(`${c.uid()}_${bugun}`, gecerli));
+  kontrol(g, 'kullanım sayacı: fazladan alan (red)', 'red', await sayacYaz(`${b.storeId}_${bugun}`, { ...gecerli, uid: c.uid() }));
+  kontrol(g, 'kullanım sayacı: ad yazma (red)', 'red', await sayacYaz(`${b.storeId}_${bugun}`, { ...gecerli, baristaId: b.id }));
+  kontrol(g, 'kullanım sayacı: şişirilmiş sayaç (red)', 'red', await sayacYaz(`${b.storeId}_${bugun}`, { ...gecerli, acilis: 99999 }));
+  kontrol(g, 'kullanım sayacı: 41 reçete anahtarı (red)', 'red', await sayacYaz(`${b.storeId}_${bugun}`,
+    { ...gecerli, recete: Object.fromEntries(Array.from({ length: 41 }, (_, i) => [`r-${i}`, 1])) }));
+  kontrol(g, 'kullanım sayacı oku (red beklenir)', 'red', await dene(getDocs(collection(c.db, 'kullanim'))));
 }
 // Ekip rolleri
 const staffRows = {};
@@ -147,6 +163,13 @@ for (const role of ['developer', 'director', 'opsmanager', 'regional', 'board'])
   kontrol('director', 'geliştiricinin users belgesi (red beklenir)', 'red', await dene(F(dir).getDoc(F(dir).doc(dir.db, 'users', staff('developer').uid))));
   kontrol('developer', 'ekip listesi (hepsi)', 'ok', await dene(F(dev).getDocs(F(dev).query(F(dev).collection(dev.db, 'users'), F(dev).where('role', 'in', roles.visibleStaffRoles('developer'))))));
   kontrol('developer', 'hatalar koleksiyonu', 'ok', await dene(F(dev).getDocs(F(dev).collection(dev.db, 'hatalar'))));
+  // Saat belgeleri (son etkinlik; npm run kullanim okur).
+  kontrol('developer', 'saat belgeleri listesi', 'ok', await dene(F(dev).getDocs(F(dev).collection(dev.db, 'clock'))));
+  kontrol('developer', 'kullanım sayacı listesi', 'ok', await dene(F(dev).getDocs(F(dev).collection(dev.db, 'kullanim'))));
+  kontrol('director', 'kullanım sayacı listesi (red beklenir)', 'red', await dene(F(dir).getDocs(F(dir).collection(dir.db, 'kullanim'))));
+  kontrol('developer', 'başkasının saat belgesi', 'ok', await dene(F(dev).getDoc(F(dev).doc(dev.db, 'clock', staff('director').uid))));
+  kontrol('director', 'saat belgeleri listesi (red beklenir)', 'red', await dene(F(dir).getDocs(F(dir).collection(dir.db, 'clock'))));
+  kontrol('director', 'başkasının saat belgesi (red beklenir)', 'red', await dene(F(dir).getDoc(F(dir).doc(dir.db, 'clock', staff('developer').uid))));
   // İçerik yayını
   const chD = await dir.m('api/changes.ts');
   const L2 = CUR.lessons.find((l) => l.moduleId === MOD.id && l.id !== LESSON.id);
