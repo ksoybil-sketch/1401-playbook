@@ -102,9 +102,8 @@ biriksin. Bu sürede haftada bir `npm run kullanim -- --gun 7` (ya da Claude'a
 "durum nedir?"). Raporlar birikince `npm run kullanim -- --trend` gidişatı
 gösterir.
 
-Bu iki haftada **ekran ve reçete kullanımı ile hız ölçümü birikmez** — ikisi de
-yeni sürümde, canlıda yok. Geri kalan her şey birikiyor. Ayrıntı:
-[docs/KULLANIM-ONERILER.md](docs/KULLANIM-ONERILER.md).
+17.11.2026'da 1.5.0 canlıya çıktı; **ekran/reçete sayacı ve hız ölçümü de
+artık veri topluyor.** Ayrıntı: [docs/KULLANIM-ONERILER.md](docs/KULLANIM-ONERILER.md).
 
 ## İlk hafta (16-23.11.2026)
 

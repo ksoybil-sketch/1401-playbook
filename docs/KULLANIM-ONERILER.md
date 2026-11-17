@@ -28,9 +28,10 @@ bildirim tuşu var), 5. grup (Blaze) sonraya bırakıldı.
 **Demoya dağıtıldı (17.11.2026).** Kurallar ve yeni sürüm
 https://playbook-demo-1401.web.app adresinde.
 
-**Canlıya alınmadı — karar: 17.11.2026.** Kullanıcı "uygulama iki hafta veri
-toplasın, sonra ne istediğimde daha net olacağım" dedi. Yani **1 Aralık 2026**
-civarında yeniden bakılacak.
+**Canlıya alındı: 17.11.2026 (sürüm 1.5.0, commit f41a178).** Önce "iki hafta
+veri toplasın" denmişti; aynı gün talep kapsamı değişikliğiyle birlikte canlıya
+çıkıldı. Artık **her şey canlıda veri topluyor** — aşağıdaki "ne birikir"
+tablosunun son iki satırı da dahil.
 
 ### Bu iki haftada ne birikir, ne birikmez
 
@@ -43,17 +44,11 @@ Canlıya hiçbir şey dağıtılmadığı için fark önemli:
 | Ölü özellik avı, düzeltme oranı, tekrar eden iş, ders–sınav kaybı, ilk kullanım gecikmesi | **Evet** | Hepsi var olan kayıtlardan |
 | `clock` — her hesabın son etkinliği | **Yazılıyor, okunamıyor** | Yazım zaten vardı; okuma kuralı canlıya gitmedi |
 | Firebase Auth son giriş zamanı | **Evet** | Auth tarafında; yalnızca `serviceAccountKey.json` gerekiyor, dağıtım gerekmiyor |
-| **Ekran ve reçete kullanımı (mağaza sayacı)** | **HAYIR** | Sayaç yeni sürümde; canlıda yok |
-| **Hız ölçümü (Performance Monitoring)** | **HAYIR** | Aynı sebep |
+| **Ekran ve reçete kullanımı (mağaza sayacı)** | **Evet** (17.11'den beri) | 1.5.0 ile canlıya çıktı |
+| **Hız ölçümü (Performance Monitoring)** | **Evet** (17.11'den beri) | Aynı sürümle |
 
-Yani iki hafta sonunda "hangi ekran kullanılıyor, reçeteye kaç kez bakılıyor,
-nerede vazgeçiliyor, uygulama kaç kez açılıyor" soruları **hâlâ
-yanıtsız** olur. Geri kalan her şey (kim kullanıyor, nerede takılıyor, neyi
-sadeleştirmeli) iki haftalık gerçek veriyle yanıtlanır.
-
-`clock` için de not: belge yalnızca **son** anı tutuyor, geçmiş biriktirmiyor.
-Okuma kuralı canlıya gitmediği için `npm run kullanim` bu iki hafta boyunca
-canlıda "son giriş" sütununu boş bırakır.
+`clock` için not: belge yalnızca **son** anı tutuyor, geçmiş biriktirmiyor.
+Geçmiş, raporu düzenli çalıştırdıkça `kullanim-raporlari/` klasöründe birikir.
 
 ### İki haftada yapılacak
 
