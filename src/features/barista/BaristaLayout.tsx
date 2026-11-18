@@ -12,7 +12,12 @@ import { useBaristaSession, useMyBulletins } from './useBaristaData';
 import { finalizeExpired } from '../../api/exam';
 import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 
-/** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
+/**
+ * Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın.
+ * Evden ders çalışmada (derslik) kapalı: telefon kişinin kendi telefonu ve
+ * o kipte sınav yok — gerekçe ortadan kalkıyor, uzun bir dersi okurken
+ * çıkış yemek ise sinir bozucu olurdu.
+ */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
 
 /**
@@ -24,12 +29,15 @@ export const BaristaLayout: React.FC<{ derslik?: boolean }> = ({ derslik }) => {
   const s = useBaristaSession();
   // Baristanın eğitimle açtığı tema (Ben → Temalar).
   useBaristaTheme();
-  const logout = useSession((x) => x.logout);
+  const logoutRaw = useSession((x) => x.logout);
+  // Evden ders çalışırken çıkış, mağaza telefonunun ekranına değil derslik
+  // koduna döner: baristanın evde göreceği yer orası.
+  const logout = async () => { await logoutRaw(); if (derslik) location.hash = '#/derslik'; };
   const { pathname } = useLocation();
   const { unread } = useMyBulletins();
   const { items: requests } = useStoreRequests(isManager(s.role));
   const replies = requests.filter(hasNewReply).length;
-  const idle = useIdleLogout(IDLE_LOGOUT_MS);
+  const idle = useIdleLogout(IDLE_LOGOUT_MS, !derslik);
 
   // Yarıda kalıp süresi dolmuş denemeler, oturum açılır açılmaz o ana kadarki
   // cevaplarla puanlanır; hiçbir deneme havada kalmaz.
@@ -79,7 +87,7 @@ export const BaristaLayout: React.FC<{ derslik?: boolean }> = ({ derslik }) => {
           {/* Ders ve sınavda çıkış yok: sınavın kendi "Kapat"ı onay ister,
               buradaki tek dokunuşla oturum kapanıyor, süre işlemeye devam ediyordu. */}
           {!focused && (
-            <button onClick={logout} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
+            <button onClick={() => void logout()} className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>
               <Icon name="logout" size={14} /> Çıkış
             </button>
           )}

@@ -33,7 +33,7 @@ import { BulletinPage } from './features/staff/BulletinPages';
 import { ACTIVITY_LOG } from './demo/log';
 import { DemoTracker } from './demo/DemoTracker';
 import { KullanimSayaci } from './features/shared/KullanimSayaci';
-import { DerslikPickScreen } from './features/device/DerslikScreens';
+import { DerslikPickScreen, DerslikCodeScreen } from './features/device/DerslikScreens';
 import { DemoLogPage } from './demo/DemoLogPage';
 import { BoardLayout } from './features/board/BoardLayout';
 import { BoardOverviewPage, BoardStoresPage, BoardWorkPage, BoardReportsPage, BoardPrintReport } from './features/board/BoardPages';
@@ -117,6 +117,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
         <Routes>
           <Route path="/yonetici-girisi" element={<StaffLogin />} />
           <Route path="/kurulum" element={<BootstrapScreen />} />
+          {/* Evde ders çalışma: baristanın kendi ekranı, panel girişi yok. */}
+          <Route path="/derslik" element={<DerslikCodeScreen />} />
           <Route path="*" element={<PairScreen />} />
         </Routes>
       );

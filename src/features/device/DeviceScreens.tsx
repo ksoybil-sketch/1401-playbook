@@ -16,7 +16,7 @@ import { pruneOfflinePins } from '../../lib/offlineLogin';
 import { useOnline } from '../../hooks/useOnline';
 import type { Barista } from '../../../shared/types';
 
-const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
+export const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
   <div className="flex flex-col items-center gap-3 text-center">
     <img src="/icons/logo.svg" alt="" className="w-14 h-14 opacity-90" />
     <div>
@@ -26,7 +26,7 @@ const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
   </div>
 );
 
-const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 py-10 pt-[max(2.5rem,env(safe-area-inset-top))] gap-8 animate-[fadeIn_0.2s_ease-out]">
     {children}
   </div>
@@ -80,17 +80,19 @@ export const PairScreen: React.FC = () => {
       <Brand sub="Barista eğitim ve standartlar" />
       <DemoPairNotice />
       <div className="flex flex-col items-center gap-2 text-center max-w-[320px]">
-        <h1 className="text-[17px] font-semibold">Kodunu gir</h1>
+        <h1 className="text-[17px] font-semibold">Mağaza telefonunu bağla</h1>
         <p className="text-[13px] text-fg-3 leading-relaxed">
-          <b className="text-fg-2">Evde ders çalışmak için:</b> mağazanın derslik kodunu gir, sonra adını seçip PIN'ini gir.
-        </p>
-        <p className="text-[13px] text-fg-3 leading-relaxed">
-          <b className="text-fg-2">Mağaza telefonunu bağlamak için:</b> panelde mağazanın sayfasından aldığın eşleştirme kodunu gir.
+          Kahve Operasyonu panelinde mağazanın sayfasından <b className="text-fg-2">"Telefon bağla"</b> ile aldığın 6 haneli kodu gir.
         </p>
       </div>
       <PinPad length={6} masked={false} onComplete={submit} busy={busy} errorKey={errKey} />
       <div className="h-5">{busy && <Spinner />}</div>
       <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
+      {/* Evde ders çalışanlar kendi ekranına gider (mağaza kodu + ad + PIN).
+          Ana ekran mağaza telefonunun ekranıdır; orada panel girişi de var. */}
+      <button className="text-[13px] text-fg-3 underline underline-offset-4" onClick={() => navigate('/derslik')}>
+        Evde ders çalışacaksan buradan gir
+      </button>
       <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/yonetici-girisi')}>
         <Icon name="shield" size={16} /> Kahve Operasyonu girişi
       </button>

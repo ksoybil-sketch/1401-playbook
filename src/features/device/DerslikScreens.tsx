@@ -8,21 +8,68 @@ import { Avatar, ErrorText, Spinner, FullLoader } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
 import { PinPad } from './PinPad';
+import { Brand, Shell } from './DeviceScreens';
 import type { Barista } from '../../../shared/types';
 
 /**
  * Evden ders çalışma girişi (derslikKodlari).
  *
- * Üç adım: mağaza kodu → adını seç → PIN. Kod, eşleştirme koduyla aynı
- * kutuya girilir (DeviceScreens PairScreen); bu dosya kod kabul edildikten
- * sonrasını çizer. Mağaza telefonundaki akışın
- * aynısıdır, farkı girişten sonra yalnızca Akademi ve Reçeteler açılır —
- * sınav, bülten, ekip ve talepler mağaza telefonunda kalır.
+ * Üç adım: mağaza kodu → adını seç → PIN. Kendi ekranı var (#/derslik):
+ * baristanın evde göreceği yerde "mağaza telefonunu bağla" açıklaması ya da
+ * Kahve Operasyonu girişi düğmesi olmaz — kodunu girer, PIN'ini girer,
+ * derslerini görür. Ana ekran (mağaza telefonunun ekranı) derslik kodunu
+ * yine kabul eder; oradan bu ekrana bir bağlantı da var.
+ *
+ * Girişten sonra yalnızca Akademi ve Reçeteler açılır — sınav, bülten,
+ * ekip ve talepler mağaza telefonunda kalır.
  *
  * Mağaza kodunu müdür dağıtır, panelden yenilenir. Kod tek başına kimsenin
  * dersine erişim vermez: yalnızca "hangi mağaza" sorusunu yanıtlar, ders
  * okumak için barista kendi PIN'iyle girer.
  */
+
+/* ------------------------------------------------------------------ */
+/* 1. Mağaza kodu (#/derslik)                                          */
+/* ------------------------------------------------------------------ */
+
+export const DerslikCodeScreen: React.FC = () => {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [errKey, setErrKey] = useState(0);
+
+  const submit = async (code: string) => {
+    setBusy(true); setError(null);
+    try {
+      await backend.studySignIn(code);
+      setDerslikModu(true);
+      // Oturum çözümlemesi session.ts'te; ekran kendiliğinden isim listesine geçer.
+    } catch (e) {
+      setDerslikModu(false);
+      setError(errorText(e));
+      setErrKey((k) => k + 1);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell>
+      <Brand sub="Evde ders çalış" />
+      <div className="flex flex-col items-center gap-2 text-center max-w-[320px]">
+        <h1 className="text-[17px] font-semibold">Mağazanın kodunu gir</h1>
+        <p className="text-[13px] text-fg-3 leading-relaxed">
+          Kodu mağaza müdüründen alırsın. Sonra adını seçip kendi PIN'ini gireceksin.
+        </p>
+      </div>
+      <PinPad length={6} masked={false} onComplete={submit} busy={busy} errorKey={errKey} />
+      <div className="h-5">{busy && <Spinner />}</div>
+      <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
+      <p className="text-[12px] text-fg-4 text-center max-w-[300px] leading-relaxed">
+        Burada dersler ve reçeteler var. Sınavlar mağaza telefonunda verilir.
+      </p>
+    </Shell>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /* 2. Adını seç + 3. PIN                                               */
@@ -39,7 +86,8 @@ export const DerslikPickScreen: React.FC<{ storeId: string; storeName: string }>
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
 
-  const cikis = () => { setDerslikModu(false); void logout(); };
+  // Çıkışta ana ekrana (mağaza telefonu ekranı) değil, derslik koduna dön.
+  const cikis = async () => { setDerslikModu(false); await logout(); location.hash = '#/derslik'; };
 
   const submit = async (value: string) => {
     if (!picked) return;
