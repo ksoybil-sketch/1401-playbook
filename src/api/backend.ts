@@ -100,10 +100,22 @@ async function createAccount(email: string, password: string): Promise<string> {
   return cred.user.uid;
 }
 
+/**
+ * Benzersiz 6 haneli kod.
+ *
+ * Eşleştirme ve derslik kodları AYNI kutuya giriliyor (giriş ekranı ikisini
+ * de tanır), bu yüzden ikisi arasında çakışma olmamalı: biri üretilirken
+ * diğerinde de bakılır. Davet kodu ayrı bir ekrandan girilir ama aynı
+ * havuzdan sayılır; 900.000 olasılıkta birkaç yüz kod için fark etmez.
+ */
 async function uniqueCode(col: 'invites' | 'pairingCodes' | 'derslikKodlari'): Promise<string> {
+  // Giriş ekranındaki kutuya giren iki koleksiyon birlikte denetlenir.
+  const birlikte: ('pairingCodes' | 'derslikKodlari')[] = ['pairingCodes', 'derslikKodlari'];
+  const bakilacak = birlikte.includes(col as 'pairingCodes') ? birlikte : [col];
   for (let i = 0; i < 8; i++) {
     const code = randomDigits(6);
-    if (!(await getDoc(doc(db, col, code))).exists()) return code;
+    const dolu = await Promise.all(bakilacak.map((c) => getDoc(doc(db, c, code)).then((d) => d.exists()).catch(() => false)));
+    if (!dolu.some(Boolean)) return code;
   }
   throw new AppError('Kod üretilemedi, tekrar dene.');
 }

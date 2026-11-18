@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { backend, errorText } from '../../api/backend';
@@ -14,7 +13,9 @@ import type { Barista } from '../../../shared/types';
 /**
  * Evden ders çalışma girişi (derslikKodlari).
  *
- * Üç adım: mağaza kodu → adını seç → PIN. Mağaza telefonundaki akışın
+ * Üç adım: mağaza kodu → adını seç → PIN. Kod, eşleştirme koduyla aynı
+ * kutuya girilir (DeviceScreens PairScreen); bu dosya kod kabul edildikten
+ * sonrasını çizer. Mağaza telefonundaki akışın
  * aynısıdır, farkı girişten sonra yalnızca Akademi ve Reçeteler açılır —
  * sınav, bülten, ekip ve talepler mağaza telefonunda kalır.
  *
@@ -22,47 +23,6 @@ import type { Barista } from '../../../shared/types';
  * dersine erişim vermez: yalnızca "hangi mağaza" sorusunu yanıtlar, ders
  * okumak için barista kendi PIN'iyle girer.
  */
-
-/* ------------------------------------------------------------------ */
-/* 1. Mağaza kodu                                                      */
-/* ------------------------------------------------------------------ */
-
-export const DerslikCodeScreen: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errKey, setErrKey] = useState(0);
-
-  const submit = async (value: string) => {
-    setBusy(true); setError(null);
-    try {
-      setDerslikModu(true);
-      await backend.studySignIn(value);
-      // Oturum çözümlemesi session.ts'te; ekran kendiliğinden değişir.
-    } catch (e) {
-      setDerslikModu(false);
-      setError(errorText(e));
-      setErrKey((k) => k + 1);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 py-10 gap-6 max-w-[420px] mx-auto">
-      <div className="text-center">
-        <Icon name="cap" size={28} className="mx-auto text-crema" />
-        <h1 className="text-[17px] font-semibold mt-3">Evde ders çalış</h1>
-        <p className="text-[13px] text-fg-3 mt-1 leading-relaxed">
-          Mağaza müdüründen aldığın 6 haneli kodu gir. Sonra adını seçip kendi PIN'ini gireceksin.
-        </p>
-      </div>
-      <PinPad length={6} masked={false} onComplete={submit} busy={busy} errorKey={errKey} />
-      <div className="h-5">{busy && <Spinner />}</div>
-      <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
-      <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={onBack}>Geri</button>
-    </div>
-  );
-};
 
 /* ------------------------------------------------------------------ */
 /* 2. Adını seç + 3. PIN                                               */
@@ -142,10 +102,4 @@ export const DerslikPickScreen: React.FC<{ storeId: string; storeName: string }>
       </button>
     </div>
   );
-};
-
-/** Eşleşmemiş cihazda /derslik yolu: kod ekranı + eşleştirme ekranına dönüş. */
-export const DerslikEntry: React.FC = () => {
-  const navigate = useNavigate();
-  return <DerslikCodeScreen onBack={() => navigate('/')} />;
 };

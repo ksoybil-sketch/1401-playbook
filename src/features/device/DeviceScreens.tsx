@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, where } from 'firebase/firestore';
 import { db, USE_EMULATOR } from '../../api/firebase';
 import { backend, errorText, weakPin } from '../../api/backend';
-import { useSession } from '../../store/session';
+import { setDerslikModu, useSession } from '../../store/session';
 import { useQueryLive } from '../../hooks/useFirestore';
 import { Icon } from '../../ui/Icon';
 import { Avatar, ErrorText, Spinner, Sheet } from '../../ui/kit';
@@ -43,12 +43,31 @@ export const PairScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [errKey, setErrKey] = useState(0);
 
+  /**
+   * Tek kutu, iki kod: mağaza telefonunu bağlayan eşleştirme kodu ve
+   * evden ders çalışma (derslik) kodu. Hangisi olduğuna kodun kendisi
+   * karar verir; barista ayrı bir düğme aramak zorunda kalmaz.
+   * İkisi çakışmaz (backend.ts uniqueCode ikisine birden bakar).
+   */
   const submit = async (code: string) => {
     setBusy(true);
     setError(null);
     try {
+      // Önce derslik: kodu bilen giriş yapmadan okuyabiliyor. Belge yoksa
+      // kural "yok" değil "yetkisiz" der (kod taraması yapılamasın diye),
+      // o yüzden sessizce eşleştirmeye düşülür. Ağ hatası ayrı: kullanıcıya
+      // "kod geçersiz" demek yerine bağlantı sorunu söylenir.
+      let derslikHata: unknown = null;
+      const derslik = await backend.studySignIn(code).then(() => true).catch((e) => { derslikHata = e; return false; });
+      if (derslik) { setDerslikModu(true); return; }
+      if ((derslikHata as { code?: string } | null)?.code === 'unavailable') throw derslikHata;
       await pair(code);
+      // Mağaza telefonu bağlandı: bu cihaz artık derslik değil. (Aynı
+      // tarayıcıda önce derslik kodu denenmişse işaret kalmasın, yoksa
+      // telefonda giren barista kısıtlı görünüm alırdı.)
+      setDerslikModu(false);
     } catch (e) {
+      setDerslikModu(false);
       setError(errorText(e));
       setErrKey((k) => k + 1);
     } finally {
@@ -61,18 +80,17 @@ export const PairScreen: React.FC = () => {
       <Brand sub="Barista eğitim ve standartlar" />
       <DemoPairNotice />
       <div className="flex flex-col items-center gap-2 text-center max-w-[320px]">
-        <h1 className="text-[17px] font-semibold">Mağaza telefonunu bağla</h1>
+        <h1 className="text-[17px] font-semibold">Kodunu gir</h1>
         <p className="text-[13px] text-fg-3 leading-relaxed">
-          Kahve Operasyonu panelinde mağazanın sayfasından <b className="text-fg-2">"Telefon bağla"</b> ile aldığın 6 haneli kodu gir.
+          <b className="text-fg-2">Evde ders çalışmak için:</b> mağazanın derslik kodunu gir, sonra adını seçip PIN'ini gir.
+        </p>
+        <p className="text-[13px] text-fg-3 leading-relaxed">
+          <b className="text-fg-2">Mağaza telefonunu bağlamak için:</b> panelde mağazanın sayfasından aldığın eşleştirme kodunu gir.
         </p>
       </div>
       <PinPad length={6} masked={false} onComplete={submit} busy={busy} errorKey={errKey} />
       <div className="h-5">{busy && <Spinner />}</div>
       <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
-      {/* Kendi telefonundan ders çalışma: mağaza kodu + ad + PIN. */}
-      <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => navigate('/derslik')}>
-        <Icon name="cap" size={16} /> Evde ders çalış
-      </button>
       <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/yonetici-girisi')}>
         <Icon name="shield" size={16} /> Kahve Operasyonu girişi
       </button>
