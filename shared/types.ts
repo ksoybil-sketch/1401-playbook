@@ -18,6 +18,7 @@
  *
  *   users/{uid}                   Her hesabın rolü (bkz. Profile)
  *   pairingCodes/{code}           Telefon eşleştirme (7 gün, tek kullanım)
+ *   derslikKodlari/{code}         Evden ders çalışma kodu (mağaza başına, yenilenebilir)
  *   invites/{code}                Barista davet kodu (7 gün, tek kullanım)
  *   media/{id}                    Ders fotoğrafları (küçültülmüş JPEG, base64)
  *   config/bootstrap              İlk yönetici oluşturuldu mu
@@ -31,7 +32,8 @@
 export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'board';
 /** lead: mağaza müdürü · shift: vardiya müdürü. */
 export type BaristaRole = 'barista' | 'lead' | 'shift';
-export type Role = StaffRole | BaristaRole | 'store';
+/** derslik: evden ders çalışma girişi — yalnızca mağazasının barista listesini ve müfredatı okur. */
+export type Role = StaffRole | BaristaRole | 'store' | 'derslik';
 
 /**
  * users/{uid} — her Firebase Auth hesabının rolü. Güvenlik kuralları
@@ -434,6 +436,30 @@ export interface KullanimGunu {
   /** Reçete kimliği → kaç kez açıldı. En çok 40 anahtar. */
   recete?: Record<string, number>;
   updatedAt: number;
+}
+
+/**
+ * derslikKodlari/{code} — "evden ders çalış" kodu.
+ *
+ * Mağaza başına bir kod; müdür dağıtır, panelden yenilenir. Kodu bilen,
+ * giriş yapmadan bu belgeyi okuyabilir (eşleştirme kodlarıyla aynı desen:
+ * kodu bilmek kanıttır) ve içindeki sınırlı "derslik" hesabıyla yalnızca
+ * o mağazanın barista listesini görür. Ders okumak için barista sonra
+ * kendi PIN'iyle girer.
+ *
+ * Belge PIN ya da barista şifresi TAŞIMAZ; yalnızca derslik hesabının
+ * kimliği vardır. Kod sızarsa panelden yenilenir (eski hesap pasifleşir).
+ */
+export interface DerslikKodu {
+  code: string;
+  storeId: string;
+  storeName: string;
+  /** Sınırlı derslik hesabı (users/{uid}.role == 'derslik'). */
+  uid: string;
+  email: string;
+  password: string;
+  createdAt: number;
+  createdByName?: string;
 }
 
 export const MAX_EXAMS_PER_WEEK = 3;

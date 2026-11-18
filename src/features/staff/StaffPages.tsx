@@ -36,7 +36,7 @@ const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, 
 /* Davet kodu gösterimi                                                */
 /* ------------------------------------------------------------------ */
 
-export const CodeSheet: React.FC<{ code: { code: string; expiresAt: number; title: string; hint: string } | null; onClose: () => void }> = ({ code, onClose }) => {
+export const CodeSheet: React.FC<{ code: { code: string; expiresAt?: number; title: string; hint: string } | null; onClose: () => void }> = ({ code, onClose }) => {
   // Pano izni yoksa (http, bazı WebView'ler) kopyalama hata veriyor ama
   // "Kopyalandı" deniyordu: hata yakalanır, kod seçili bir kutuda gösterilir.
   const [copyFailed, setCopyFailed] = useState(false);
@@ -74,7 +74,9 @@ export const CodeSheet: React.FC<{ code: { code: string; expiresAt: number; titl
           </label>
         )}
         <p className="text-[13px] text-fg-2 leading-relaxed">{code.hint}</p>
-        <p className="text-[12px] text-fg-3">Geçerlilik: {fmtDateTime(code.expiresAt)}. Kod tek kullanımlıktır.</p>
+        {code.expiresAt
+          ? <p className="text-[12px] text-fg-3">Geçerlilik: {fmtDateTime(code.expiresAt)}. Kod tek kullanımlıktır.</p>
+          : <p className="text-[12px] text-fg-3">Kodun süresi yok; ekibe dağıtılır. Sızarsa buradan yenile — eski kod geçersiz olur.</p>}
       </>
     )}
   </Sheet>
@@ -786,7 +788,7 @@ export const StoreDetailPage: React.FC = () => {
     storeId ? query(collection(db, 'users'), where('role', '==', 'store'), where('storeId', '==', storeId)) : null,
     `dev-${storeId}`
   );
-  const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
+  const [code, setCode] = useState<{ code: string; expiresAt?: number; title: string; hint: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // "Telefon bağla": yeni (ek) telefon mu, yoksa verisi silinen / değişen bir telefonun yerine mi (H16).
@@ -803,6 +805,15 @@ export const StoreDetailPage: React.FC = () => {
       const r = await backend.createPairingCode(store.id, store.name, replace ? { replaces: [replace] } : {});
       setPairAsk(false);
       setCode({ ...r, title: 'Telefon eşleştirme kodu', hint: `Mağaza telefonunda 1401 Campus'u aç ve bu kodu gir. Telefon kalıcı olarak ${store.name} mağazasına bağlanır.${replace ? ' Eski telefonun bağlantısı kaldırıldı.' : ''}` });
+    } catch (e) { toast(errorText(e), 'negative'); }
+    setBusy(false);
+  };
+  const derslikKodu = async () => {
+    if (!confirm(`${store.name} için "evde ders çalış" kodu oluşturulsun mu?\n\nVarsa eski kod geçersiz olur. Kod ekibe dağıtılır; barista kendi telefonundan kod + adı + PIN'iyle girip YALNIZCA dersleri ve reçeteleri görür (sınav, bülten, ekip, talep yok).`)) return;
+    setBusy(true);
+    try {
+      const r = await backend.createStudyCode(store.id, store.name, authorName(me.role, me.name));
+      setCode({ code: r.code, title: 'Evde ders çalışma kodu', hint: `Barista kendi telefonunda 1401 Campus'u açar, "Evde ders çalış" der ve bu kodu girer. Sonra adını seçip kendi PIN'ini girer.` });
     } catch (e) { toast(errorText(e), 'negative'); }
     setBusy(false);
   };
@@ -835,7 +846,12 @@ export const StoreDetailPage: React.FC = () => {
           )}
         </Section>
 
-        <Section label="Mağaza telefonları" action={manage ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={pairPhone} disabled={busy}><Icon name="phone" size={14} /> Telefon bağla</button> : undefined}>
+        <Section label="Mağaza telefonları" action={manage ? (
+          <div className="flex gap-2">
+            <button className={`${t.btn} ${t.btnGhost} ${t.btnSm}`} onClick={derslikKodu} disabled={busy}><Icon name="cap" size={14} /> Derslik kodu</button>
+            <button className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`} onClick={pairPhone} disabled={busy}><Icon name="phone" size={14} /> Telefon bağla</button>
+          </div>
+        ) : undefined}>
           {devices.filter((d) => d.active).length === 0 ? <Empty icon="phone" text="Bağlı telefon yok. 'Telefon bağla' ile kod oluştur." /> : (
             <div className={t.listGroup}>
               {devices.filter((d) => d.active).map((d) => (
@@ -1029,7 +1045,7 @@ export const BaristasPage: React.FC = () => {
   const setQ = (v: string) => setParam('q', v);
   const sort = (params.get('sira') || 'ad') as 'ad' | 'ilerleme' | 'etkinlik';
   const [addOpen, setAddOpen] = useState(false);
-  const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
+  const [code, setCode] = useState<{ code: string; expiresAt?: number; title: string; hint: string } | null>(null);
 
   const activity = useMemo(() => {
     const byB = new Map<string, Attempt[]>();
@@ -1149,7 +1165,7 @@ export const BaristaDetailPage: React.FC = () => {
   // son 300 sınavından ve son görevlerden hesaplanıyordu).
   const own = useBaristaAttempts(b?.id || null);
   const storeTasks = useStoreAssignments(b?.storeId || null);
-  const [code, setCode] = useState<{ code: string; expiresAt: number; title: string; hint: string } | null>(null);
+  const [code, setCode] = useState<{ code: string; expiresAt?: number; title: string; hint: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [openAttempt, setOpenAttempt] = useState<string | null>(null);

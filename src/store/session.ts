@@ -30,13 +30,30 @@ import { resetBackHistory } from '../lib/backButton';
  *    gitmiyordu.
  *  - barista.offline: çevrimdışı PIN girişi (lib/offlineLogin); salt okunur.
  */
+/**
+ * Evden ders çalışma kipi. Derslik kodundan girildiğinde işaretlenir;
+ * barista kendi PIN'iyle girdikten sonra da sürsün diye tarayıcıda tutulur
+ * (mağaza telefonundaki normal giriş bu işareti taşımaz). Çıkışta silinir.
+ */
+const DERSLIK_KEY = 'derslik.modu';
+export const derslikModu = (): boolean => {
+  try { return localStorage.getItem(DERSLIK_KEY) === '1'; } catch { return false; }
+};
+export const setDerslikModu = (on: boolean) => {
+  try { on ? localStorage.setItem(DERSLIK_KEY, '1') : localStorage.removeItem(DERSLIK_KEY); } catch { /* gizli pencere */ }
+};
+
 export type Session =
   | { kind: 'loading' }
   | { kind: 'unpaired' }
   | { kind: 'offline' }
   | { kind: 'closed'; storeName: string }
   | { kind: 'store'; uid: string; storeId: string; storeName: string; offline?: boolean; held?: string }
-  | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole; offline?: boolean }
+  | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole; offline?: boolean;
+      /** Evden ders çalışma girişi: yalnızca dersler ve reçeteler açılır (bkz. App.tsx). */
+      derslik?: boolean }
+  /** Derslik kodu girildi, barista henüz seçilmedi: yalnızca mağazanın listesi okunur. */
+  | { kind: 'derslik'; uid: string; storeId: string; storeName: string }
   | { kind: 'staff'; uid: string; name: string; email: string; role: StaffRole; mustChangePassword?: boolean };
 
 interface SessionState {
@@ -352,6 +369,12 @@ export const useSession = create<SessionState>((set, get) => {
       if (!isOnline()) startReconnect();
       return;
     }
+    if (profile.role === 'derslik') {
+      const st = await storeIsOpen(profile.storeId!);
+      if (!st.open) { set({ session: { kind: 'closed', storeName: st.name } }); watchReopen(profile.storeId!); return; }
+      set({ session: { kind: 'derslik', uid: user.uid, storeId: profile.storeId!, storeName: st.name } });
+      return;
+    }
     if (BARISTA_ROLES.includes(profile.role as BaristaRole)) {
       const [b, st] = await Promise.all([
         getDoc(doc(db, 'baristas', profile.baristaId!)).catch(() => null),
@@ -363,7 +386,8 @@ export const useSession = create<SessionState>((set, get) => {
       set({
         session: {
           kind: 'barista', uid: user.uid, storeId: profile.storeId!, storeName: name,
-          baristaId: profile.baristaId!, role: profile.role as BaristaRole, name: b?.data()?.name || 'Barista'
+          baristaId: profile.baristaId!, role: profile.role as BaristaRole, name: b?.data()?.name || 'Barista',
+          derslik: derslikModu() || undefined
         }
       });
       return;

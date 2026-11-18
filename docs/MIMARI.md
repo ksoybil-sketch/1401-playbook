@@ -39,6 +39,7 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 - **Mağaza telefonu bir kez eşleşir.** Kahve Operasyonu 6 haneli kodu verir; baristalar adına dokunup 4 haneli PIN'le girer. Reçeteler PIN'siz açılır.
 - **Sınav telefonda puanlanır.** Süreli, şıklar karışık. Hatalı soru iptal edilirse geçmiş sınavlar yeniden puanlanır; kimsenin puanı düşmez.
 - **Haftada 3 sınav, bütün modüller için ortak** (18.11.2026). 2 İtalyan Klasikler + 1 Açılış denemesi yapan barista o hafta başka sınava giremez; haklar İstanbul saatiyle Pazartesi 00:00'da yenilenir. Geçilemeyen deneme de hakkı harcar. Reçete mini sınavlarının kendi hakkı vardır, bu üçe girmez. Sınır yalnızca istemcide (`src/api/exam.ts`); Spark'ta sunucu doğrulaması yok.
+- **Evde ders çalışma (derslik).** Barista kendi telefonundan `#/derslik` yolundan girer: mağaza kodu → adını seç → PIN. Yalnızca Akademi ve Reçeteler açılır; sınav, bülten, ekip ve talepler mağaza telefonunda kalır (sınav bütünlüğü). Mağaza kodunu Bölge Müdürü panelden üretir (mağaza sayfası → "Derslik kodu"), süresi yoktur, sızarsa yenilenir — eski kod ve hesabı geçersiz olur. Kodun açtığı hesabın rolü `derslik`: yalnızca kendi mağazasının barista listesini ve müfredatı okur, hiçbir şey yazamaz (geri bildirim dahil).
 - **Müfredat sırayla açılır.** Her modül kendi eğitim yolundaki bir öncekine bağlıdır (`prerequisiteId`, `scripts/content.mjs` içinde otomatik zincirlenir); yolun ilk modülü açıktır. Dört yol olduğu için başlangıçta dört modül açık, onu kilitlidir.
 - **Yeni ürün:** Reçete girilir; uygulama mini sınavı üretir, bülteni yazar ve şubelere görev açar.
 - **Dosyadan ders:** PDF'in bölümlerinden 1-4 dakikalık dersler çıkar.
@@ -49,7 +50,7 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 ## Roller ve yetki
 
 - Her telefon, barista ve yönetici ayrı bir Firebase hesabıdır; rolü `users/{uid}` belgesinde durur.
-- Ekip rolleri: uygulama geliştiricisi, Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Yönetim Kurulu. Mağaza rolleri: mağaza müdürü, vardiya müdürü, barista.
+- Ekip rolleri: uygulama geliştiricisi, Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Yönetim Kurulu. Mağaza rolleri: mağaza müdürü, vardiya müdürü, barista. Ayrıca `store` (mağaza telefonu) ve `derslik` (evden ders çalışma girişi, yalnızca okur).
 - Rol tanımları `src/lib/roles.ts` ve `src/lib/permissions.ts` içinde, aynı sınırlar `firestore.rules` içinde. Üçü birlikte değişir.
 - Yetkiler rol bazında panelin Yetkiler ekranından ayarlanır; sunucu kuralları aynı ayarı okur.
 - Pasif hesap hiçbir şey okuyamaz ve yazamaz; açık oturumu da kapanır.
@@ -57,7 +58,7 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 
 ## Kalite
 
-- **Kural testi** (`scripts/yuk-testi/kurallar.mjs`): 235 denetim. Her rolün yapabildiği ve yapamadığı işler, pasif ve kaldırılmış hesaplar.
+- **Kural testi** (`scripts/yuk-testi/kurallar.mjs`): 249 denetim. Her rolün yapabildiği ve yapamadığı işler, pasif ve kaldırılmış hesaplar.
 - **Yük testi** (`scripts/yuk-testi/`): Yerel emülatörde 12 şube, 76 barista ve tam ekip aynı anda. Aynı anda sınav, iki cihazdan başlama, sınav sürerken müfredat güncellemesi, yetki kapatma, ağ kesintisi.
 - **Çevrimdışı testi** (`scripts/cevrimdisi-test.mjs`): 17.11.2026 · 10 adım, 8 geçti. İnternetsiz: uygulama açılıyor, "Kim çalışıyor?" geliyor, reçete listesi ve ölçüler okunuyor, açık barista oturumu sürüyor, dersler okunuyor. Çalışmayan ikisi tasarım gereği: PIN ile **yeni** giriş (Auth gerekir — anlaşılır hata mesajı gösteriyor) ve sınava başlama.
 - **Ölçümler:** Yoğun anda sınav başlatma 4,5 sn, teslim 3,4 sn (en yavaş %5). 12 şube için günlük okuma 29-40 bin; Spark sınırı 50 bin.

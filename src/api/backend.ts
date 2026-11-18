@@ -100,7 +100,7 @@ async function createAccount(email: string, password: string): Promise<string> {
   return cred.user.uid;
 }
 
-async function uniqueCode(col: 'invites' | 'pairingCodes'): Promise<string> {
+async function uniqueCode(col: 'invites' | 'pairingCodes' | 'derslikKodlari'): Promise<string> {
   for (let i = 0; i < 8; i++) {
     const code = randomDigits(6);
     if (!(await getDoc(doc(db, col, code))).exists()) return code;
@@ -144,6 +144,60 @@ async function createPairingCode(storeId: string, storeName: string, opts: { rep
   (opts.replaces || []).forEach((old) => batch.update(doc(db, 'users', old), { active: false, revokedAt: now, replacedBy: uid }));
   await batch.commit();
   return { code, expiresAt };
+}
+
+/* ------------------------------------------------------------------ */
+/* Evde ders çalışma (derslikKodlari)                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * [Bölge Müdürü] Mağazaya "evde ders çalış" kodu üretir (varsa yeniler).
+ *
+ * Kod mağaza başınadır ve müdür tarafından ekibe dağıtılır; süresi yoktur,
+ * sızarsa yenilenir. Kodun açtığı hesabın rolü 'derslik': yalnızca o
+ * mağazanın barista listesini ve müfredatı okur, hiçbir şey yazamaz
+ * (firestore.rules isDerslik). Ders okumak için barista ardından kendi
+ * PIN'iyle girer — yani kod tek başına kimsenin dersine erişim vermez,
+ * yalnızca "hangi mağaza" sorusunu yanıtlar.
+ */
+async function createStudyCode(storeId: string, storeName: string, byName?: string): Promise<{ code: string }> {
+  const email = `derslik-${storeId}-${randomToken(6)}@${ACCOUNT_DOMAIN}`;
+  const password = randomToken(28);
+  const [uid] = await Promise.all([createAccount(email, password), syncServerClock()]);
+  const now = serverNow();
+  // Eski kod ve hesabı: kod belgesi silinir, hesap pasifleşir.
+  const eski = await getDocs(query(collection(db, 'derslikKodlari'), where('storeId', '==', storeId)));
+  const code = await uniqueCode('derslikKodlari');
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'users', uid), { role: 'derslik', storeId, active: true, label: 'Derslik girişi', createdAt: now });
+  batch.set(doc(db, 'derslikKodlari', code), {
+    code, storeId, storeName, uid, email, password, createdAt: now, ...(byName ? { createdByName: byName } : {})
+  });
+  eski.forEach((d) => {
+    const prev = d.data() as { uid?: string };
+    batch.delete(d.ref);
+    if (prev.uid) batch.update(doc(db, 'users', prev.uid), { active: false });
+  });
+  await batch.commit();
+  return { code };
+}
+
+/**
+ * [Derslik] Kodu kullanır: sınırlı hesapla oturum açar, mağazayı döndürür.
+ * Barista listesi bundan sonra okunabilir; ders okumak için barista
+ * kendi PIN'iyle girer (baristaSignIn).
+ */
+async function studySignIn(code: string): Promise<{ storeId: string; storeName: string }> {
+  let d: Record<string, any> | undefined;
+  try {
+    d = (await getDoc(doc(db, 'derslikKodlari', code.trim()))).data();
+  } catch (e) {
+    if (isNetworkError(e)) throw new AppError(NETWORK_MSG, 'unavailable');
+    throw e;
+  }
+  if (!d) throw new AppError('Mağaza kodu geçersiz. Müdüründen güncel kodu iste.');
+  await signInWithEmailAndPassword(auth, d.email, d.password);
+  return { storeId: d.storeId, storeName: d.storeName };
 }
 
 /** [Telefon] Kodu kullanır, telefonu mağaza hesabıyla oturum açtırır. */
@@ -506,7 +560,7 @@ async function createStaff(name: string, email: string, role: StaffRole = 'regio
 }
 
 export const backend = {
-  createPairingCode, pairDevice, deviceSignIn, revokeDevice,
+  createPairingCode, pairDevice, deviceSignIn, revokeDevice, createStudyCode, studySignIn,
   createBarista, resetBaristaPin, setBaristaActive, updateBarista, baristaSignIn, verifyPin, checkInvite, redeemInvite, changeOwnPin,
   bootstrapAdmin, needsBootstrap, createStaff, changeOwnPassword
 };

@@ -69,6 +69,10 @@ export const PairScreen: React.FC = () => {
       <PinPad length={6} masked={false} onComplete={submit} busy={busy} errorKey={errKey} />
       <div className="h-5">{busy && <Spinner />}</div>
       <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
+      {/* Kendi telefonundan ders çalışma: mağaza kodu + ad + PIN. */}
+      <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => navigate('/derslik')}>
+        <Icon name="cap" size={16} /> Evde ders çalış
+      </button>
       <button className={`${t.btn} ${t.btnGhost} ${t.btnMd}`} onClick={() => navigate('/yonetici-girisi')}>
         <Icon name="shield" size={16} /> Kahve Operasyonu girişi
       </button>

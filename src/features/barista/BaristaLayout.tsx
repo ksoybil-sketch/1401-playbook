@@ -15,7 +15,12 @@ import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 /** Ortak telefonda unutulan oturum başkası adına sınav çözülmesine yol açmasın. */
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
 
-export const BaristaLayout: React.FC = () => {
+/**
+ * derslik: evden ders çalışma kipi — yalnızca Akademi ve Reçeteler sekmeleri
+ * görünür, "Bugün", "Bülten" ve "Ben" (dolayısıyla sınav geçmişi, ekip,
+ * talepler) yoktur. Sınav ekranı bu kipte hiç yönlendirilmez (App.tsx).
+ */
+export const BaristaLayout: React.FC<{ derslik?: boolean }> = ({ derslik }) => {
   const s = useBaristaSession();
   // Baristanın eğitimle açtığı tema (Ben → Temalar).
   useBaristaTheme();
@@ -44,13 +49,18 @@ export const BaristaLayout: React.FC = () => {
   // sekmesinin içinden açılır.
   // Her sekmenin rengi ana sayfadaki kutusuyla aynı: barista "turuncu =
   // reçete" diye öğrenir, ekranlar arasında kaybolmaz.
-  const nav: { to: string; label: string; icon: IconName; badge?: number; hue: Hue; also?: string[] }[] = [
-    { to: '/', label: 'Bugün', icon: 'home', hue: 'sand' },
-    { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] },
-    { to: '/akademi', label: 'Akademi', icon: 'cap', hue: 'sky', also: ['/modul/'] },
-    { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread, hue: 'mint' },
-    { to: '/sonuclarim', label: 'Ben', icon: 'user', badge: replies, hue: 'violet', also: ['/ekip', '/talepler'] }
-  ];
+  const nav: { to: string; label: string; icon: IconName; badge?: number; hue: Hue; also?: string[] }[] = derslik
+    ? [
+      { to: '/akademi', label: 'Akademi', icon: 'cap', hue: 'sky', also: ['/modul/'] },
+      { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] }
+    ]
+    : [
+      { to: '/', label: 'Bugün', icon: 'home', hue: 'sand' },
+      { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] },
+      { to: '/akademi', label: 'Akademi', icon: 'cap', hue: 'sky', also: ['/modul/'] },
+      { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread, hue: 'mint' },
+      { to: '/sonuclarim', label: 'Ben', icon: 'user', badge: replies, hue: 'violet', also: ['/ekip', '/talepler'] }
+    ];
 
   return (
     <div className="min-h-[100dvh] flex flex-col">

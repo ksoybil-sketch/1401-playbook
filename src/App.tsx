@@ -33,6 +33,7 @@ import { BulletinPage } from './features/staff/BulletinPages';
 import { ACTIVITY_LOG } from './demo/log';
 import { DemoTracker } from './demo/DemoTracker';
 import { KullanimSayaci } from './features/shared/KullanimSayaci';
+import { DerslikPickScreen, DerslikEntry } from './features/device/DerslikScreens';
 import { DemoLogPage } from './demo/DemoLogPage';
 import { BoardLayout } from './features/board/BoardLayout';
 import { BoardOverviewPage, BoardStoresPage, BoardWorkPage, BoardReportsPage, BoardPrintReport } from './features/board/BoardPages';
@@ -116,6 +117,8 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
         <Routes>
           <Route path="/yonetici-girisi" element={<StaffLogin />} />
           <Route path="/kurulum" element={<BootstrapScreen />} />
+          {/* Evden ders çalışma: kendi telefonundan, mağaza kodu + ad + PIN. */}
+          <Route path="/derslik" element={<DerslikEntry />} />
           <Route path="*" element={<PairScreen />} />
         </Routes>
       );
@@ -133,8 +136,31 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
           <Route path="*" element={<StoreHome />} />
         </Routes>
       );
+    case 'derslik':
+      // Mağaza kodu girildi, barista henüz seçilmedi.
+      return (
+        <Routes>
+          <Route path="*" element={<DerslikPickScreen storeId={session.storeId} storeName={session.storeName} />} />
+        </Routes>
+      );
     case 'barista':
       if (!contentReady) return <FullLoader text="Eğitimler yükleniyor" />;
+      // Evden ders çalışma: yalnızca dersler ve reçeteler. Sınav, bülten,
+      // ekip ve talepler mağaza telefonunda kalır (sınav bütünlüğü).
+      if (session.derslik) return (
+        <Routes>
+          <Route element={<BaristaLayout derslik />}>
+            <Route index element={<Navigate to="/akademi" replace />} />
+            <Route path="akademi" element={<TracksPage />} />
+            <Route path="akademi/:trackId" element={<TrackPage />} />
+            <Route path="modul/:moduleId" element={<ModulePage />} />
+            <Route path="ders/:lessonId" element={<LessonPage />} />
+            <Route path="receteler" element={<RecipesPage />} />
+            <Route path="recete/:lessonId" element={<RecipeDetailPage />} />
+            <Route path="*" element={<Navigate to="/akademi" replace />} />
+          </Route>
+        </Routes>
+      );
       return (
         <Routes>
           <Route element={<BaristaLayout />}>

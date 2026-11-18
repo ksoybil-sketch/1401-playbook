@@ -174,6 +174,37 @@ for (const role of ['developer', 'director', 'opsmanager', 'regional', 'board'])
   // Saat belgeleri (son etkinlik; npm run kullanim okur).
   kontrol('developer', 'saat belgeleri listesi', 'ok', await dene(F(dev).getDocs(F(dev).collection(dev.db, 'clock'))));
   kontrol('developer', 'kullanım sayacı listesi', 'ok', await dene(F(dev).getDocs(F(dev).collection(dev.db, 'kullanim'))));
+  /* --- Derslik rolü: evden ders çalışma girişi ----------------------- */
+  // Bölge müdürü kodu üretir; kodun açtığı hesap YALNIZCA kendi mağazasının
+  // barista listesini ve müfredatı okur, hiçbir şey yazamaz.
+  {
+    const store = H.baristas[0].storeId;
+    const baska = H.baristas.find((x) => x.storeId !== store)?.storeId || 'yok';
+    const rg = staffRows.regional;
+    let kod = null;
+    kontrol('regional', 'derslik kodu üret', 'ok', await dene(
+      rg.backend.createStudyCode(store, 'Deneme Mağaza', 'Uğur').then((r) => { kod = r.code; })));
+    if (kod) {
+      const d = await client('derslik');
+      const { collection, getDocs, doc, getDoc, query, where, setDoc, addDoc, updateDoc } = F(d);
+      kontrol('derslik', 'kodla giriş', 'ok', await dene(d.backend.studySignIn(kod)));
+      kontrol('derslik', 'kendi mağazasının baristaları', 'ok', await dene(getDocs(query(collection(d.db, 'baristas'), where('storeId', '==', store)))));
+      kontrol('derslik', 'başka mağazanın baristaları (red)', 'red', await dene(getDocs(query(collection(d.db, 'baristas'), where('storeId', '==', baska)))));
+      kontrol('derslik', 'müfredat okuma', 'ok', await dene(getDocs(collection(d.db, 'modules'))));
+      kontrol('derslik', 'dersler okuma', 'ok', await dene(getDocs(collection(d.db, 'lessons'))));
+      kontrol('derslik', 'sınav denemeleri (red)', 'red', await dene(getDocs(collection(d.db, 'attempts'))));
+      kontrol('derslik', 'talepler (red)', 'red', await dene(getDocs(collection(d.db, 'requests'))));
+      kontrol('derslik', 'ilerleme yazma (red)', 'red', await dene(setDoc(doc(d.db, 'progress', H.baristas[0].id), { updatedAt: Date.now() }, { merge: true })));
+      kontrol('derslik', 'sınav açma (red)', 'red', await dene(addDoc(collection(d.db, 'attempts'), { baristaId: H.baristas[0].id, storeId: store, startedAt: Date.now(), total: 5 })));
+      kontrol('derslik', 'talep açma (red)', 'red', await dene(addDoc(collection(d.db, 'requests'), { storeId: store, createdBy: d.uid(), status: 'open', lastSide: 'store', title: 'x' })));
+      kontrol('derslik', 'geri bildirim yazma (red)', 'red', await dene(addDoc(collection(d.db, 'feedback'), { by: d.uid(), status: 'yeni', text: 'x', createdAt: Date.now() })));
+      kontrol('derslik', 'kendi rolünü yükseltme (red)', 'red', await dene(updateDoc(doc(d.db, 'users', d.uid()), { role: 'lead' })));
+      kontrol('derslik', 'derslik kodlarını listeleme (red)', 'red', await dene(getDocs(collection(d.db, 'derslikKodlari'))));
+      kontrol('derslik', 'kod belgesini kimlikle okuma', 'ok', await dene(getDoc(doc(d.db, 'derslikKodlari', kod))));
+      kontrol('barista-rolü', 'derslik kodu üretme (red)', 'red', await dene(
+        setDoc(doc(d.db, 'derslikKodlari', '999999'), { code: '999999', storeId: store, storeName: 'x', uid: 'x', email: 'x@y.z', password: 'p', createdAt: Date.now() })));
+    }
+  }
   kontrol('director', 'kullanım sayacı listesi (red beklenir)', 'red', await dene(F(dir).getDocs(F(dir).collection(dir.db, 'kullanim'))));
   kontrol('developer', 'başkasının saat belgesi', 'ok', await dene(F(dev).getDoc(F(dev).doc(dev.db, 'clock', staff('director').uid))));
   kontrol('director', 'saat belgeleri listesi (red beklenir)', 'red', await dene(F(dir).getDocs(F(dir).collection(dir.db, 'clock'))));

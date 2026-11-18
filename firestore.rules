@@ -161,10 +161,16 @@ service cloud.firestore {
     function canHandleRequests() { return perm('talepYanit', ['director', 'opsmanager', 'regional']) || perm('servisOnay', ['director', 'opsmanager']); }
     function canApproveService() { return perm('servisOnay', ['director', 'opsmanager']); }
     function isStoreSession() { return myRole() in ['store', 'barista', 'lead', 'shift']; }
+    // "Evde ders çalış" girişi (derslikKodlari): yalnızca kendi mağazasının
+    // barista listesini okur. isStoreSession'a DAHİL DEĞİLDİR: talep açamaz,
+    // sınav başlatamaz, ilerleme yazamaz, reçete/ders dışında bir şey göremez.
+    function isDerslik() { return myRole() == 'derslik'; }
     function isBarista() { return myRole() in ['barista', 'lead', 'shift']; }
     /** Mağaza müdürü ve vardiya müdürü. */
     function isLead() { return myRole() in ['lead', 'shift']; }
     function storeRoles() { return ['store', 'barista', 'lead', 'shift']; }
+    /** Bölge müdürünün açıp kapatabildiği hesaplar: mağaza rolleri + derslik. */
+    function manageableRoles() { return ['store', 'barista', 'lead', 'shift', 'derslik']; }
     /** Ekibe verilebilecek roller: Kahve Operasyon Direktörü kurul dahil ekibi kurar. */
     // Ekibe geliştirici eklenmez (tektir); geliştirici ekibin geri kalanını kurar.
     function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'board'] : ['opsmanager', 'regional', 'board']; }
@@ -189,7 +195,7 @@ service cloud.firestore {
       allow create: if userTextOk() && ((signedIn() && request.auth.uid == uid && request.resource.data.role == 'developer'
                           && !exists(/databases/$(database)/documents/config/bootstrap))
                       || (isDirector() && request.resource.data.role in teamRolesFor())
-                      || (canManageBaristas() && request.resource.data.role in storeRoles()));
+                      || (canManageBaristas() && request.resource.data.role in manageableRoles()));
       // Cihaz/barista hesapları kendi "son görülme" zamanını her girişte;
       // mağaza telefonu ayrıca eşleştirme kodunu kullandığında kendi
       // paired/label alanlarını günceller (bkz. backend.ts pairDevice).
@@ -198,7 +204,7 @@ service cloud.firestore {
       allow update: if isAdmin()
                       || (userTextOk() && (
                          (isDirector() && resource.data.role in teamRolesFor() && request.resource.data.role in teamRolesFor())
-                      || (canManageBaristas() && resource.data.role in storeRoles() && request.resource.data.role in storeRoles())
+                      || (canManageBaristas() && resource.data.role in manageableRoles() && request.resource.data.role in manageableRoles())
                       || (signedIn() && request.auth.uid == uid && resource.data.get('active', false) == true
                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'paired', 'label', 'mustChangePassword'])
                           // Geçici şifre bayrağını yalnızca kapatabilir (açamaz).
@@ -290,7 +296,9 @@ service cloud.firestore {
     // okur, durumunu değiştirir. Silinmez: neyin bildirildiği kayıttır.
     match /feedback/{id} {
       // Alanlar src/features/shared/Feedback.tsx ile aynı; görsel yalnızca yüklenen data URL.
-      allow create: if isActive() && request.resource.data.by == request.auth.uid
+      // Derslik hesabı hariç: kodu bilen herkesin paylaştığı bir hesaptır,
+      // geri bildirim kişiye bağlı olmalı (barista kendi PIN'iyle girince yazar).
+      allow create: if isActive() && !isDerslik() && request.resource.data.by == request.auth.uid
         && request.resource.data.status == 'yeni'
         && request.resource.data.text is string && request.resource.data.text.size() <= 2000
         && request.resource.data.keys().hasOnly(['kind', 'text', 'imageUrl', 'lessonId', 'lessonTitle', 'questionId', 'questionPrompt',
@@ -341,7 +349,8 @@ service cloud.firestore {
     }
 
     match /baristas/{baristaId} {
-      allow read: if canRead() || inStore(resource.data.storeId);
+      allow read: if canRead() || inStore(resource.data.storeId)
+        || (isDerslik() && resource.data.storeId == myStoreId());
       allow create, delete: if canManageBaristas();
       // Davet kodunu kullanan barista kendi "pinPending" bayrağını kapatır
       // (bkz. backend.ts redeemInvite); başka her şeyi Bölge Müdürü değiştirir.
@@ -676,6 +685,27 @@ service cloud.firestore {
         && request.resource.data.get('ekran', {}).keys().size() <= 20
         && request.resource.data.get('recete', {}).keys().size() <= 40;
       allow delete: if isAdmin();
+    }
+
+    // --- Evde ders çalışma kodu (derslikKodlari) -------------------------
+    // Mağaza başına tek kod. Kodu bilen giriş yapmadan okuyabilir —
+    // pairingCodes ile aynı desen (kodu bilmek kanıttır, var olmayan kod
+    // reddedilir ki oturumsuz biri kod taraması yapamasın). Belge PIN ya da
+    // barista şifresi taşımaz; yalnızca sınırlı "derslik" hesabının kimliği.
+    // Kod sızarsa panelden yenilenir: yeni kod yazılır, eski hesap pasifleşir.
+    match /derslikKodlari/{code} {
+      allow get: if canManageBaristas() || resource != null;
+      allow list: if canManageBaristas();
+      allow create, update: if canManageBaristas()
+        && request.resource.data.keys().hasOnly(['code', 'storeId', 'storeName', 'uid', 'email', 'password', 'createdAt', 'createdByName'])
+        && request.resource.data.code == code
+        && request.resource.data.storeId is string
+        && strMax(request.resource.data, 'storeName', 120)
+        && strMax(request.resource.data, 'email', 200)
+        && strMax(request.resource.data, 'password', 100)
+        && strMax(request.resource.data, 'createdByName', 120)
+        && nearNow(request.resource.data.createdAt, 10 * 60 * 1000);
+      allow delete: if canManageBaristas();
     }
 
     // --- Yönetim Kurulu soruları ----------------------------------------
