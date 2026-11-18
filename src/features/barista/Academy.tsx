@@ -83,19 +83,18 @@ export const TrackPage: React.FC = () => {
                 {st.passed ? <Icon name="check" size={15} strokeWidth={2.2} /> : st.locked ? <Icon name="lock" size={14} /> : i + 1}
               </span>
               <div className="flex-1 min-w-0">
-                <div className={`text-[14px] font-semibold ${st.locked ? 'text-fg-3' : ''}`}>{m.title}</div>
+                <div className="text-[14px] font-semibold">{m.title}</div>
+                {/* Önkoşul yalnızca SINAVI kilitler; dersler her zaman okunur.
+                    (18.11.2026: kilitli modül hiç açılmıyordu.) */}
                 <div className="text-[12px] text-fg-3 mt-0.5">
-                  {st.locked ? 'Önceki modülü geçince açılır' : `${st.lessonsDone}/${st.lessons.length} ders${st.passed ? ` · Sınav ${st.score} puan` : ''}`}
+                  {`${st.lessonsDone}/${st.lessons.length} ders`}
+                  {st.passed ? ` · Sınav ${st.score} puan` : st.locked ? ' · Sınav kilitli' : ''}
                 </div>
               </div>
-              {!st.locked && <Icon name="chevronRight" size={16} className={t.rowChevron} />}
+              <Icon name="chevronRight" size={16} className={t.rowChevron} />
             </>
           );
-          return st.locked ? (
-            <div key={m.id} className={`${t.listRowStatic} opacity-70`}>{content}</div>
-          ) : (
-            <Link key={m.id} to={`/modul/${m.id}`} className={t.listRow}>{content}</Link>
-          );
+          return <Link key={m.id} to={`/modul/${m.id}`} className={t.listRow}>{content}</Link>;
         })}
       </div>
     </Page>
@@ -140,6 +139,9 @@ export function nextModuleAfter(mod: Module, modules: Module[]): Module | undefi
 
 export const ModulePage: React.FC = () => {
   const { moduleId } = useParams();
+  // Evden ders çalışma kipinde sınav yoktur: kart hiç çizilmez (App.tsx
+  // sınav yolunu da yönlendirmiyor). Sınav mağaza telefonunda verilir.
+  const derslik = useBaristaSession().derslik;
   const { tracks, modules, lessons } = useContent();
   const { progress } = useMyProgress();
   const { items: attempts } = useMyAttempts(50);
@@ -165,7 +167,7 @@ export const ModulePage: React.FC = () => {
 
       {/* Görevden ya da bağlantıyla gelen barista kilitli modülü de açabiliyor;
           sınavın neden açılmadığı en başta yazsın. */}
-      {st.locked && (
+      {st.locked && !derslik && (
         <div className="text-[13px] text-caution bg-caution-bg border border-caution-line rounded-lg px-3 py-2.5 leading-relaxed">
           Bu modülün sınavı kilitli. Önce {prereq ? <Link to={`/modul/${prereq.id}`} className="underline font-semibold">{prereq.title}</Link> : 'önceki modülü'} sınavını geçmelisin.
         </div>
@@ -195,7 +197,7 @@ export const ModulePage: React.FC = () => {
         )}
       </Section>
 
-      <Section label="Modül sınavı">
+      {!derslik && <Section label="Modül sınavı">
         <div className={`${t.card} p-4 flex flex-col gap-4`}>
           <div className="flex items-start gap-3">
             <span className={t.iconChip(st.passed ? 'positive' : 'accent')}><Icon name={st.passed ? 'award' : 'clipboard'} size={16} /></span>
@@ -223,7 +225,7 @@ export const ModulePage: React.FC = () => {
             </div>
           )}
         </div>
-      </Section>
+      </Section>}
     </Page>
   );
 };
@@ -256,7 +258,7 @@ export const LessonPage: React.FC = () => {
   // "Başla" ile başlar.
   const st = mod ? moduleState(mod, lessons, progress, { modules, tracks }) : null;
   const allDoneAfter = !!st && st.lessons.every((l) => l.id === lesson.id || !!progress.lessons?.[l.id]);
-  const toExam = !next && !!mod && !!st && allDoneAfter && !st.locked && !st.passed && mod.examSize > 0
+  const toExam = !s.derslik && !next && !!mod && !!st && allDoneAfter && !st.locked && !st.passed && mod.examSize > 0
     && examSlots(attempts, mod.id).canStart;
 
   const complete = async () => {
