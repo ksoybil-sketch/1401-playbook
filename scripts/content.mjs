@@ -1236,7 +1236,13 @@ export function flattenCurriculum(curriculum = CURRICULUM) {
       modules.push({
         id: m.id, trackId: tr.id, title: m.title, description: m.description, order: mi + 1,
         passScore: m.passScore, examSize: examSizeFor(m.examSize, m.questions.length),
-        prerequisiteId: m.prerequisiteId || null, published: true, questionCount: m.questions.length
+        // Önkoşul (18.11.2026): her modül kendi eğitim yolundaki bir öncekine
+        // bağlıdır — müfredat sırayla ilerlesin, herkes bütün sınavlara aynı
+        // anda girmesin. Yolun ilk modülünün önkoşulu yoktur.
+        // Bir modül zincirden çıkarılacaksa tanımında açıkça
+        // `prerequisiteId: null` yazılır (|| değil, ?? ile ayırt edilir).
+        prerequisiteId: m.prerequisiteId !== undefined ? m.prerequisiteId : (mi > 0 ? tr.modules[mi - 1].id : null),
+        published: true, questionCount: m.questions.length
       });
       m.lessons.forEach((l, li) => lessons.push({
         id: l.id, moduleId: m.id, title: l.title, order: li + 1, durationMin: l.durationMin, blocks: l.blocks, published: true

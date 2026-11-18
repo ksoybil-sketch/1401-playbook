@@ -184,7 +184,7 @@ export const ExamPage: React.FC = () => {
       let msg = errorText(e);
       if (e instanceof AppError && e.code === 'weekly-limit') {
         const nextAt = (e.data as { nextAt: number } | undefined)?.nextAt;
-        msg = `Bu sınav için bu haftaki ${EXAMS_PER_WEEK} deneme hakkını kullandın.${nextAt ? ` Hakların ${renewText(nextAt)} yenilenir.` : ''}`;
+        msg = `Bu haftaki ${EXAMS_PER_WEEK} sınav hakkını kullandın. Haklar bütün modüller için ortaktır.${nextAt ? ` Hakların ${renewText(nextAt)} yenilenir.` : ''}`;
       }
       setError(msg);
       setPhase({ k: 'intro' });
@@ -308,8 +308,8 @@ export const ExamPage: React.FC = () => {
               {!phase.passed && (
                 <p className="text-[13px] text-fg-2 text-center leading-relaxed">
                   {slots.left > 0
-                    ? `Bu hafta ${slots.left} hakkın kaldı. Dersleri gözden geçirip yeniden dene.`
-                    : `Bu haftaki ${EXAMS_PER_WEEK} hakkın doldu${slots.nextSlotAt ? ` · hakların ${renewText(slots.nextSlotAt)} yenilenir` : ''}.`}
+                    ? `Bu hafta ${slots.left} sınav hakkın kaldı (bütün modüller için ortak). Dersleri gözden geçirip yeniden dene.`
+                    : `Bu haftaki ${EXAMS_PER_WEEK} sınav hakkın doldu${slots.nextSlotAt ? ` · hakların ${renewText(slots.nextSlotAt)} yenilenir` : ''}.`}
                 </p>
               )}
               {nextOpen ? (

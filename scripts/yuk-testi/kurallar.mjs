@@ -87,7 +87,15 @@ for (const role of ['barista', 'lead', 'shift']) {
   kontrol(g, 'kendi denemeleri (300)', 'ok', await dene(getDocs(query(collection(c.db, 'attempts'), where('baristaId', '==', b.id), orderBy('startedAt', 'desc'), limit(300)))));
   kontrol(g, 'mağaza görevleri', 'ok', await dene(getDocs(query(collection(c.db, 'assignments'), where('storeId', '==', b.storeId)))));
   kontrol(g, 'bültenler (50)', 'ok', await dene(getDocs(query(collection(c.db, 'bulletins'), orderBy('createdAt', 'desc'), limit(50)))));
-  // Sınav: başla → cevapla → teslim
+  // Sınav: başla → cevapla → teslim.
+  // Haftalık hak 18.11.2026'dan beri bütün modüllerde ORTAK (exam.ts). Tohum
+  // geçmişi bu haftaya denk gelirse hak dolmuş olabilir; bu denetim yetkiyi
+  // ölçüyor, hakkı değil — önce bu haftanın denemeleri temizlenir.
+  {
+    const hafta = (await c.m('api/exam.ts')).weekWindow().from;
+    const snap = await adb.collection('attempts').where('baristaId', '==', b.id).get();
+    for (const d of snap.docs) if ((d.data().startedAt || 0) >= hafta) await d.ref.delete();
+  }
   let st = 'ok';
   try {
     const s = await c.exam.startExam(MOD, { baristaId: b.id, storeId: b.storeId, name: b.name }, null);

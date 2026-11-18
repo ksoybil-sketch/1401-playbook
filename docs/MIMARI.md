@@ -37,7 +37,9 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 ## Öne çıkan akışlar
 
 - **Mağaza telefonu bir kez eşleşir.** Kahve Operasyonu 6 haneli kodu verir; baristalar adına dokunup 4 haneli PIN'le girer. Reçeteler PIN'siz açılır.
-- **Sınav telefonda puanlanır.** Süreli, şıklar karışık, haftalık hak sınırlı. Hatalı soru iptal edilirse geçmiş sınavlar yeniden puanlanır; kimsenin puanı düşmez.
+- **Sınav telefonda puanlanır.** Süreli, şıklar karışık. Hatalı soru iptal edilirse geçmiş sınavlar yeniden puanlanır; kimsenin puanı düşmez.
+- **Haftada 3 sınav, bütün modüller için ortak** (18.11.2026). 2 İtalyan Klasikler + 1 Açılış denemesi yapan barista o hafta başka sınava giremez; haklar İstanbul saatiyle Pazartesi 00:00'da yenilenir. Geçilemeyen deneme de hakkı harcar. Reçete mini sınavlarının kendi hakkı vardır, bu üçe girmez. Sınır yalnızca istemcide (`src/api/exam.ts`); Spark'ta sunucu doğrulaması yok.
+- **Müfredat sırayla açılır.** Her modül kendi eğitim yolundaki bir öncekine bağlıdır (`prerequisiteId`, `scripts/content.mjs` içinde otomatik zincirlenir); yolun ilk modülü açıktır. Dört yol olduğu için başlangıçta dört modül açık, onu kilitlidir.
 - **Yeni ürün:** Reçete girilir; uygulama mini sınavı üretir, bülteni yazar ve şubelere görev açar.
 - **Dosyadan ders:** PDF'in bölümlerinden 1-4 dakikalık dersler çıkar.
 - **Talep kapsamı dar.** Mağaza yalnızca üç konu açabilir: arıza, yetkili servis, ekipman ihtiyacı. Sarf malzeme/ürün siparişi, personel ve diğer konular uygulamada takip edilmiyor (satın almadan kimse yok); formda bunu söyleyen bir uyarı var. Kategoriler silinmedi, yalnızca seçilemez oldu — PIN sıfırlama talepleri `personel` kategorisini kullanmayı sürdürüyor (`src/api/requests.ts` MAGAZA_KATEGORILERI).

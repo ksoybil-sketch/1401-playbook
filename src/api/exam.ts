@@ -23,7 +23,7 @@
  * kez tazelenir; seçilen sorular sunucudan doğrulanır (bkz. readPool).
  */
 import {
-  collection, doc, documentId, getCountFromServer, getDoc, getDocFromServer, getDocs, getDocsFromCache, getDocsFromServer, query, runTransaction,
+  collection, doc, documentId, getCountFromServer, getDoc, getDocFromServer, getDocs, getDocsFromCache, getDocsFromServer, limit, orderBy, query, runTransaction,
   updateDoc, where, writeBatch, type Query, type QuerySnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -240,9 +240,20 @@ export function activeAttemptIn(open: Attempt[], moduleId: string, lessonId?: st
 }
 
 /**
- * Haftalık deneme hakkı — MODÜL BAŞINA. Önceden tüm sınavlar toplam 3
- * hakkı paylaşıyordu: üç farklı modülün sınavına giren barista dördüncü
- * modülü bir hafta bekliyordu. Demo ve emülatörde sınav denemek serbest.
+ * Haftalık deneme hakkı — KİŞİ BAŞINA, bütün modüller için ortak.
+ *
+ * 18.11.2026: modül başına sayma geri alındı. Modül başına olunca sınır
+ * hız sınırı değil yalnızca "aynı sınavı tekrar tekrar deneme" sınırıydı:
+ * 14 modül × 3 = haftada 42 deneme ve bütün müfredat tek haftada
+ * bitirilebiliyordu. Artık 2 İtalyan Klasikler + 1 Açılış denemesi yapan
+ * barista o hafta başka sınava giremez. Geçilemeyen deneme de hakkı
+ * harcar (hep öyleydi), yoksa sonsuza kadar denenebilirdi.
+ *
+ * Mini sınavlar (Yeni ürün akışı, lessonId dolu) bu hakka GİRMEZ: kendi
+ * ders başına haftalık hakları vardır. Yeni ürün duyurusu modül sınavı
+ * bütçesini yemesin.
+ *
+ * Demo ve emülatörde sınav denemek serbest.
  *
  * Hafta TAKVİM haftasıdır: haklar İstanbul saatiyle Pazartesi 00:00'da
  * yenilenir (eskiden kayan 7 gündü; ekran "Bu hafta" dediği hâlde Pazartesi
@@ -307,11 +318,18 @@ export async function startExam(
 
   // Okumalar aynı anda yapılır (yavaş bağlantıda her biri ayrı bir gidiş-dönüş).
   // Sunucu saati: deneme zamanları kuralda request.time ile denetlenir (H1).
-  const [, openSnap, modSnap, pSnap, firstPool] = await Promise.all([
+  const [, openSnap, modSnap, weekSnap, pSnap, firstPool] = await Promise.all([
     // Ölçüm 5 dakikadan eskiyse yenilenir (cihaz uyuyup uyanınca tekdüze saat de şaşabilir).
     timed('saat', syncServerClock(false, 5 * 60_000)),
     timed('açık denemeler', getDocs(openAttemptsQuery(who.baristaId))),
     timed('modül denemeleri', getDocs(query(collection(db, 'attempts'), where('baristaId', '==', who.baristaId), where('moduleId', '==', mod.id)))),
+    // Haftalık hak artık bütün modüllerde ortak: baristanın son denemeleri.
+    // Zaman sınırı sorguda yok (telefonun saati şaşmış olabilir); hafta
+    // penceresi aşağıda sunucu saatiyle süzülür. 50 kayıt bir haftayı
+    // fazlasıyla kapsar (hak 3). Dizin: baristaId + startedAt (DESC).
+    quiz ? Promise.resolve(null) : timed('haftalık denemeler', getDocs(query(
+      collection(db, 'attempts'), where('baristaId', '==', who.baristaId),
+      orderBy('startedAt', 'desc'), limit(50)))),
     !quiz && mod.prerequisiteId ? timed('ilerleme', getDoc(doc(db, 'progress', who.baristaId))) : Promise.resolve(null),
     opts.resume ? Promise.resolve(null) : timed('soru havuzu', poolQuery())
   ]);
@@ -344,7 +362,12 @@ export async function startExam(
   }
   if (moduleHidden(mod.id)) throw new AppError('Bu eğitim şu an yayında değil.');
   const week = weekWindow(now);
-  const thisWeek = moduleAttempts.filter((a) => a.startedAt >= week.from && !a.voided && (a.lessonId || null) === quiz);
+  // Modül sınavı: bütün modüllerdeki denemeler ortak hakkı paylaşır.
+  // Mini sınav: yalnızca o dersin kendi denemeleri sayılır.
+  const haftalik = quiz
+    ? moduleAttempts.filter((a) => (a.lessonId || null) === quiz)
+    : (weekSnap ? weekSnap.docs.map(asAttempt) : moduleAttempts).filter((a) => !a.lessonId);
+  const thisWeek = haftalik.filter((a) => a.startedAt >= week.from && !a.voided);
   if (thisWeek.length >= EXAMS_PER_WEEK) {
     throw new AppError('weekly-limit', 'weekly-limit', { nextAt: week.renewAt });
   }

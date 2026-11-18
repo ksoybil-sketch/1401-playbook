@@ -107,16 +107,19 @@ export const TrackPage: React.FC = () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * Modül sınavının haftalık hakkı: yalnızca modül sınavları sayılır (reçete
- * mini sınavları ayrı; bkz. exam.ts → startExam). Süresi dolmamış açık
- * deneme varsa hak dolmuş olsa da "kaldığın yerden devam" her zaman açık.
- * Modül sayfası, ders sonu ve sınav sonucu aynı hesabı kullanır.
+ * Haftalık sınav hakkı: **bütün modüller için ortak** (18.11.2026). Yalnızca
+ * modül sınavları sayılır; reçete mini sınavlarının kendi hakkı var
+ * (bkz. exam.ts → startExam). Geçilemeyen deneme de hakkı harcar.
+ * Süresi dolmamış açık deneme varsa hak dolmuş olsa da "kaldığın yerden
+ * devam" her zaman açık. Modül sayfası, ders sonu ve sınav sonucu aynı
+ * hesabı kullanır.
  */
 export function examSlots(attempts: Attempt[], moduleId: string) {
   // Takvim haftası (İstanbul, Pazartesi 00:00) ve sunucu saati; exam.ts ile aynı hesap (H10, H1).
   const now = serverNow();
   const w = weekWindow(now);
-  const week = attempts.filter((a) => a.moduleId === moduleId && !a.lessonId && !a.voided && a.startedAt >= w.from);
+  // Modül süzgeci YOK: hak kişinindir, modülün değil.
+  const week = attempts.filter((a) => !a.lessonId && !a.voided && a.startedAt >= w.from);
   const openAttempt = attempts.find((a) => a.moduleId === moduleId && !a.lessonId && !a.submittedAt && !!a.deadline && a.deadline > now);
   const left = Math.max(0, EXAMS_PER_WEEK - week.length);
   const nextSlotAt = left === 0 ? w.renewAt : null;
@@ -200,8 +203,8 @@ export const ModulePage: React.FC = () => {
               <div className="text-[14px] font-semibold">{st.passed ? `Geçtin · ${st.score} puan` : 'Sınava hazır mısın?'}</div>
               <div className="text-[12px] text-fg-3 mt-0.5 leading-relaxed">
                 {real.empty ? 'Bu modülde şu an soru yok' : `${real.size} soru`} · Geçme notu {mod.passScore} · {left > 0
-                  ? `Bu hafta ${EXAMS_PER_WEEK} hakkından ${left} tanesi kaldı`
-                  : `Bu haftaki ${EXAMS_PER_WEEK} hakkın doldu${!openAttempt && nextSlotAt ? ` · hakların ${renewText(nextSlotAt)} yenilenir` : ''}`}
+                  ? `Bu hafta ${left} sınav hakkın kaldı (bütün modüller için ortak)`
+                  : `Bu haftaki ${EXAMS_PER_WEEK} sınav hakkın doldu${!openAttempt && nextSlotAt ? ` · hakların ${renewText(nextSlotAt)} yenilenir` : ''}`}
               </div>
             </div>
           </div>
