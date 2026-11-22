@@ -20,8 +20,8 @@ import type { Barista } from '../../../shared/types';
  * derslerini görür. Ana ekran (mağaza telefonunun ekranı) derslik kodunu
  * yine kabul eder; oradan bu ekrana bir bağlantı da var.
  *
- * Girişten sonra yalnızca Akademi ve Reçeteler açılır — sınav, bülten,
- * ekip ve talepler mağaza telefonunda kalır.
+ * Girişten sonra Akademi, Reçeteler ve Bülten açılır — sınav, ekip ve
+ * talepler mağaza telefonunda kalır.
  *
  * Mağaza kodunu müdür dağıtır, panelden yenilenir. Kod tek başına kimsenin
  * dersine erişim vermez: yalnızca "hangi mağaza" sorusunu yanıtlar, ders
@@ -65,7 +65,7 @@ export const DerslikCodeScreen: React.FC = () => {
       <div className="h-5">{busy && <Spinner />}</div>
       <div className="w-full max-w-[340px]"><ErrorText>{error}</ErrorText></div>
       <p className="text-[12px] text-fg-4 text-center max-w-[300px] leading-relaxed">
-        Burada dersler ve reçeteler var. Sınavlar mağaza telefonunda verilir.
+        Burada dersler, reçeteler ve bültenler var. Sınavlar mağaza telefonunda verilir.
       </p>
     </Shell>
   );

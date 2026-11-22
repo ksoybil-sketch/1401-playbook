@@ -145,8 +145,9 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
       );
     case 'barista':
       if (!contentReady) return <FullLoader text="Eğitimler yükleniyor" />;
-      // Evden ders çalışma: yalnızca dersler ve reçeteler. Sınav, bülten,
-      // ekip ve talepler mağaza telefonunda kalır (sınav bütünlüğü).
+      // Evden ders çalışma: dersler, reçeteler ve bültenler. Sınav, ekip ve
+      // talepler mağaza telefonunda kalır (sınav bütünlüğü). Bülten okumak
+      // sınavı etkilemez, duyuruyu evde de görmek işe yarar.
       if (session.derslik) return (
         <Routes>
           <Route element={<BaristaLayout derslik />}>
@@ -157,6 +158,7 @@ const Screens: React.FC<{ session: ReturnType<typeof useSession.getState>['sessi
             <Route path="ders/:lessonId" element={<LessonPage />} />
             <Route path="receteler" element={<RecipesPage />} />
             <Route path="recete/:lessonId" element={<RecipeDetailPage />} />
+            <Route path="bulten" element={<BulletinsPage />} />
             <Route path="*" element={<Navigate to="/akademi" replace />} />
           </Route>
         </Routes>

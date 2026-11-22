@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSession } from '../store/session';
+import { clearIdleDeadline, setIdleDeadline } from './idleClock';
 import * as t from '../ui/tokens';
 
 /**
@@ -12,6 +13,10 @@ import * as t from '../ui/tokens';
  *   10 dakikayı aşan bir videoda barista uyarısız oturumdan düşüyordu.
  *   YouTube kendi çerçevesinde oynadığı için dokunuşlar sayfaya ulaşmaz;
  *   odak çerçevedeyse izleniyor kabul edilir.
+ * - Süre cihaza da yazılır (lib/idleClock): uygulama arka plana alınıp
+ *   zamanlayıcı donsa ya da sayfa bellekten atılıp yeniden kurulsa da süre
+ *   işlemiş sayılır. Uygulama öne geldiği an bakılır; sayfa yeniden
+ *   kuruluyorsa oturum hiç açılmaz (store/session.ts).
  *
  * enabled false ise çalışmaz (ör. yöneticinin kendi telefonu/bilgisayarı).
  */
@@ -22,10 +27,10 @@ export function useIdleLogout(ms: number, enabled = true): { warnLeft: number | 
   const deadline = useRef(0);
   const [warnLeft, setWarnLeft] = useState<number | null>(null);
   const reset = useRef(() => {});
-  reset.current = () => { deadline.current = Date.now() + ms; setWarnLeft(null); };
+  reset.current = () => { deadline.current = Date.now() + ms; setIdleDeadline(deadline.current); setWarnLeft(null); };
 
   useEffect(() => {
-    if (!enabled) { setWarnLeft(null); return; }
+    if (!enabled) { clearIdleDeadline(); setWarnLeft(null); return; }
     const onActivity = () => reset.current();
     const watching = () =>
       [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended) ||
@@ -33,14 +38,22 @@ export function useIdleLogout(ms: number, enabled = true): { warnLeft: number | 
     const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
     events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     reset.current();
-    const tick = setInterval(() => {
-      if (watching()) { reset.current(); return; }
+    /** Süre doldu mu: dolduysa oturumu kapatır ve false döner. */
+    const check = () => {
+      if (watching()) { reset.current(); return true; }
       const left = deadline.current - Date.now();
-      if (left <= 0) { clearInterval(tick); logout(); return; }
+      if (left <= 0) { clearIdleDeadline(); logout(); return false; }
       setWarnLeft(left <= WARN_MS ? Math.ceil(left / 1000) : null);
-    }, 1000);
+      return true;
+    };
+    const tick = setInterval(() => { if (!check()) clearInterval(tick); }, 1000);
+    // Uygulama öne geldiği an bakılır: arka planda zamanlayıcı dondurulmuş
+    // olabilir, bir sonraki saniyeyi beklemeden karar verilir.
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVisible);
       events.forEach((e) => window.removeEventListener(e, onActivity));
     };
   }, [logout, ms, enabled]);

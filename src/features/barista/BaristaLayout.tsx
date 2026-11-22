@@ -21,9 +21,9 @@ import { useIdleLogout, IdleWarning } from '../../lib/idleLogout';
 const IDLE_LOGOUT_MS = 10 * 60 * 1000;
 
 /**
- * derslik: evden ders çalışma kipi — yalnızca Akademi ve Reçeteler sekmeleri
- * görünür, "Bugün", "Bülten" ve "Ben" (dolayısıyla sınav geçmişi, ekip,
- * talepler) yoktur. Sınav ekranı bu kipte hiç yönlendirilmez (App.tsx).
+ * derslik: evden ders çalışma kipi — Akademi, Reçeteler ve Bülten sekmeleri
+ * görünür; "Bugün" ve "Ben" (dolayısıyla sınav geçmişi, ekip, talepler)
+ * yoktur. Sınav ekranı bu kipte hiç yönlendirilmez (App.tsx).
  */
 export const BaristaLayout: React.FC<{ derslik?: boolean }> = ({ derslik }) => {
   const s = useBaristaSession();
@@ -60,7 +60,8 @@ export const BaristaLayout: React.FC<{ derslik?: boolean }> = ({ derslik }) => {
   const nav: { to: string; label: string; icon: IconName; badge?: number; hue: Hue; also?: string[] }[] = derslik
     ? [
       { to: '/akademi', label: 'Akademi', icon: 'cap', hue: 'sky', also: ['/modul/'] },
-      { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] }
+      { to: '/receteler', label: 'Reçeteler', icon: 'coffee', hue: 'amber', also: ['/recete/'] },
+      { to: '/bulten', label: 'Bülten', icon: 'bell', badge: unread, hue: 'mint' }
     ]
     : [
       { to: '/', label: 'Bugün', icon: 'home', hue: 'sand' },

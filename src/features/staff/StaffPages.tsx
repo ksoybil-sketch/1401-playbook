@@ -4,7 +4,7 @@ import { useBadgeConfig } from '../../store/badgeConfig';
 import { TitleCard, BadgeGrid, TitleChip } from '../shared/Badges';
 import { BadgeOverridesSheet } from './BadgeOverridesSheet';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addDoc, collection, deleteDoc, doc, getDoc, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, limit, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { backend, errorText, tempPassword } from '../../api/backend';
 import { useContent } from '../../store/content';
@@ -26,8 +26,9 @@ import {
 } from './staffData';
 import { isClosed } from '../../api/requests';
 import { useStaffSession } from './StaffLayout';
-import type { Assignment, Attempt, Barista, BaristaRole, Progress, Question, StaffRole } from '../../../shared/types';
-import { allowed, domainOf } from '../../lib/permissions';
+import type { Assignment, Attempt, Barista, BaristaRole, Feedback, Progress, Question, StaffRole } from '../../../shared/types';
+import { allowed, domainOf, moduleInDomain } from '../../lib/permissions';
+import { FEEDBACK_KINDS } from '../shared/Feedback';
 import { can, assignableRoles, authorName, visibleStaffRoles, STAFF_ROLE_LABEL, BARISTA_ROLE_LABEL, BARISTA_ROLES } from '../../lib/roles';
 
 const EMPTY: Progress = { baristaId: '', storeId: '', lessons: {}, modules: {}, updatedAt: 0 };
@@ -159,7 +160,7 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
  * Yalnızca rolün açabildiği ve sıfırdan büyük olanlar çıkar; hepsi sıfırsa
  * şerit görünmez. Her kart ilgili ekrana, süzülmüş olarak gider.
  */
-const WaitingStrip: React.FC = () => {
+const WaitingStrip: React.FC<{ feedback: number }> = ({ feedback }) => {
   const me = useStaffSession();
   const ok = (p: Parameters<typeof allowed>[1]) => allowed(me.role, p);
   const { requests, proposals, baristas } = useStaffData();
@@ -187,6 +188,11 @@ const WaitingStrip: React.FC = () => {
   if (ok('ekran.kurulSorulari') && ok('kurulYanit')) {
     const n = board.data.filter((q) => q.status === 'open' && askedTo(q, me.role)).length;
     items.push({ key: 'kurul', n, text: `${n} kurul sorusu yanıt bekliyor`, icon: 'award', tone: 'accent', to: '/kurul-sorulari' });
+  }
+  if (ok('ekran.geriBildirim')) {
+    // Uygulamanın içinden gelen hata/içerik/öneri bildirimleri: ele alınana
+    // kadar burada durur (ayrıntısı Geri bildirim ekranında).
+    items.push({ key: 'geri', n: feedback, text: `${feedback} yeni geri bildirim`, icon: 'message', tone: 'caution', to: '/geri-bildirim' });
   }
   if (ok('baristaYonetim')) {
     const pending = baristas.filter((b) => b.active && b.pinPending);
@@ -280,11 +286,24 @@ export const OverviewPage: React.FC = () => {
   const [openQ, setOpenQ] = useState<MissedQuestion | null>(null);
   const done = recent.filter((a) => a.submittedAt && !a.voided);
 
+  // Uygulamadan gelen geri bildirimler. Yalnızca "yeni" olanlar okunur
+  // (tek alanlı süzme, ek dizin gerekmez); sıralama ve alan süzgeci burada.
+  // Alanı sınırlı rol (Operasyon Müdürü) kendi yollarının dışındaki ders
+  // bildirimlerini görmez — Geri bildirim ekranındaki kuralın aynısı.
+  const seeFeedback = can('ekran.geriBildirim');
+  const fb = useQueryLive<Feedback>(seeFeedback ? query(collection(db, 'feedback'), where('status', '==', 'yeni'), limit(50)) : null, `ov-feedback-${seeFeedback}`);
+  const fbDomain = domainOf(me.role);
+  const newFeedback = useMemo(() => fb.data
+    .filter((f) => !fbDomain || !f.lessonId || moduleInDomain(fbDomain, modules.find((m) => m.id === lessons.find((l) => l.id === f.lessonId)?.moduleId)))
+    .sort((a, b) => b.createdAt - a.createdAt),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fb.data, modules, lessons]);
+
   return (
     <Page wide>
       <PageTitle title="Genel bakış" subtitle="Tüm mağazaların eğitim durumu." />
 
-      <WaitingStrip />
+      <WaitingStrip feedback={newFeedback.length} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Aktif barista" value={active.length} hint={`${activeStores.length} mağaza`} icon="users" to={can('ekran.baristalar') ? '/baristalar' : undefined} />
@@ -377,11 +396,44 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
+      {seeFeedback && newFeedback.length > 0 && <NewFeedbackSection list={newFeedback} />}
+
       <PendingCodesSection />
       <StaffTeamSection />
     </Page>
   );
 };
+
+/**
+ * Genel bakışta duran son geri bildirimler. Liste Geri bildirim ekranında
+ * durur; burada yalnızca ele alınmamış olanların en yenileri görünür ki
+ * panele giren kişi "bir şey çalışmıyor" diyen baristayı gözden kaçırmasın.
+ */
+const NewFeedbackSection: React.FC<{ list: Feedback[] }> = ({ list }) => (
+  <Section label="Yeni geri bildirimler"
+    action={<Link to="/geri-bildirim" className={`${t.btn} ${t.btnSecondary} ${t.btnSm}`}>Hepsi ({list.length})</Link>}>
+    <div className={t.listGroup}>
+      {list.slice(0, 3).map((f) => {
+        const k = FEEDBACK_KINDS.find((x) => x.id === f.kind) || FEEDBACK_KINDS[0];
+        return (
+          <Link key={f.id} to="/geri-bildirim" className={`${t.listRow} items-start`}>
+            <span className={`${t.iconChip(f.kind === 'hata' ? 'negative' : f.kind === 'icerik' ? 'caution' : 'accent')} mt-0.5`}>
+              <Icon name={k.icon} size={15} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] leading-snug line-clamp-2">{f.text}</div>
+              <div className="text-[12px] text-fg-3 mt-1 truncate">
+                {k.label}{f.byName ? ` · ${f.byName}` : ''}{f.storeName ? ` · ${f.storeName}` : ''}
+                {f.lessonTitle ? ` · ${f.lessonTitle}` : f.questionPrompt ? ' · soru bildirimi' : ''} · {fmtDateTime(f.createdAt)}
+              </div>
+            </div>
+            <Icon name="chevronRight" size={16} className={t.rowChevron} />
+          </Link>
+        );
+      })}
+    </div>
+  </Section>
+);
 
 interface StaffRow { id: string; name: string; email: string; role: StaffRole; active: boolean }
 

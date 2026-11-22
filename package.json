@@ -1,12 +1,12 @@
 {
   "name": "1401-campus",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "1401 Coffee Campus — barista eğitimi, standartlar, sınav ve görev yönetimi",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:emu": "vite --mode emulator",
+    "dev:emu": "vite --mode emulator --port 5174",
     "curriculum": "node scripts/build-curriculum.mjs && node scripts/check-curriculum.mjs",
     "build": "npm run curriculum && tsc && vite build",
     "seed:demo": "node scripts/seed.mjs --demo",

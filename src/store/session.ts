@@ -5,6 +5,7 @@ import { auth, db } from '../api/firebase';
 import { AppError, backend, isNetworkError } from '../api/backend';
 import { clearOfflinePins, rememberPin, verifyOfflinePin } from '../lib/offlineLogin';
 import { syncServerClock } from '../lib/serverTime';
+import { clearIdleDeadline, idleExpired } from '../lib/idleClock';
 import { loadDevice, saveDevice, clearDevice, type StoredDevice } from '../api/device';
 import type { Barista, BaristaRole, Profile, StaffRole } from '../../shared/types';
 import { STAFF_ROLES, BARISTA_ROLES } from '../lib/roles';
@@ -50,7 +51,7 @@ export type Session =
   | { kind: 'closed'; storeName: string }
   | { kind: 'store'; uid: string; storeId: string; storeName: string; offline?: boolean; held?: string }
   | { kind: 'barista'; uid: string; storeId: string; storeName: string; baristaId: string; name: string; role: BaristaRole; offline?: boolean;
-      /** Evden ders çalışma girişi: yalnızca dersler ve reçeteler açılır (bkz. App.tsx). */
+      /** Evden ders çalışma girişi: dersler, reçeteler ve bültenler açılır (bkz. App.tsx). */
       derslik?: boolean }
   /** Derslik kodu girildi, barista henüz seçilmedi: yalnızca mağazanın listesi okunur. */
   | { kind: 'derslik'; uid: string; storeId: string; storeName: string }
@@ -302,6 +303,30 @@ export const useSession = create<SessionState>((set, get) => {
   }
 
   /**
+   * Hareketsizlik süresi dolmuşken yeniden açılan oturum: ekran o kişinin
+   * oturumuyla değil mağaza ekranıyla açılır. Arka plana alınan uygulamada
+   * zamanlayıcı donuyor, sayfa bellekten atılınca da sayaç sıfırlanıyordu;
+   * yarım saat sonra dönen kişi öncekinin oturumunu açık buluyordu
+   * (bkz. lib/idleClock). Bekleyen yazımlar çıkıştaki gibi o kişinin adıyla
+   * gönderilir (H3).
+   */
+  async function idleHandover(name: string) {
+    const device = get().device;
+    const cur = auth.currentUser;
+    if (!device || !cur || device.uid === cur.uid) { await signOut(auth); return; }
+    notify('Uzun süre dokunulmadığı için oturum kapatıldı.', 'neutral');
+    const flushed = await pendingFlushed(3000);
+    if (flushed) {
+      try { await backend.deviceSignIn(device); return; } catch (e) {
+        if (!isNetworkError(e)) { await signOut(auth); return; }
+      }
+    }
+    writeHold({ uid: cur.uid, name, at: Date.now() });
+    set({ session: storeSession(device, { offline: !isOnline() || undefined, held: name }) });
+    startReconnect();
+  }
+
+  /**
    * Oturum açıkken kendi users/{uid} belgesini dinler: hesap pasifleşince
    * (ekipten kaldırma, telefon bağlantısını kaldırma, PIN sıfırlama, barista
    * pasifleştirme) açık oturum da nazikçe kapanır. Kurallar zaten her şeyi
@@ -350,6 +375,14 @@ export const useSession = create<SessionState>((set, get) => {
       return;
     }
     const profile = read.profile;
+    // Hareketsizlik süresi dolmuşken yeniden açılan oturum geri açılmaz:
+    // ortak mağaza telefonu başkasının oturumuyla gelmesin (lib/idleClock).
+    // Telefonun kendi hesabı ve evde ders çalışma bu süreyi hiç işletmez.
+    if (idleExpired() && profile.role !== 'store' && !derslikModu()) {
+      clearIdleDeadline();
+      await idleHandover(profile.name || '');
+      return;
+    }
     watchProfile(user.uid);
     // Sunucu saati (sınav ve kod süreleri; arka planda, beklenmez).
     void syncServerClock();
@@ -436,6 +469,7 @@ export const useSession = create<SessionState>((set, get) => {
     },
 
     pair: async (code) => {
+      clearIdleDeadline();
       const label = navigator.userAgent.includes('Android') ? 'Android telefon' : 'Tarayıcı';
       const device = await backend.pairDevice(code, label);
       await saveDevice(device);
@@ -450,6 +484,8 @@ export const useSession = create<SessionState>((set, get) => {
      * için yerel PIN özetiyle salt okunur çevrimdışı oturum açılır.
      */
     baristaLogin: async (barista, pin) => {
+      // Yeni giriş: önceki kişinin hareketsizlik kaydı bu oturuma sarkmasın.
+      clearIdleDeadline();
       const device = get().device;
       // Bekletilen çıkış: önceki kişinin işleri onun adıyla gitsin, sonra hesap değişsin.
       const hold = readHold();
@@ -479,12 +515,14 @@ export const useSession = create<SessionState>((set, get) => {
     },
 
     redeemInvite: async (code, pin) => {
+      clearIdleDeadline();
       const s = get().session;
       if (s.kind !== 'store') throw new Error('Bu telefon bir mağazaya bağlı değil.');
       await backend.redeemInvite(code, pin, s.storeId);
     },
 
     staffLogin: async (email, password) => {
+      clearIdleDeadline();
       await signInWithEmailAndPassword(auth, email.trim(), password);
     },
 
@@ -500,6 +538,7 @@ export const useSession = create<SessionState>((set, get) => {
      * yeniden okunmaz. Geçilemezse (ağ yok vb.) eski yol: çıkış + mağaza modu.
      */
     logout: async () => {
+      clearIdleDeadline();
       const device = get().device;
       const s = get().session;
       // Geri tuşu bir önceki kişinin ekranlarına dönmesin.
@@ -537,6 +576,7 @@ export const useSession = create<SessionState>((set, get) => {
     },
 
     unpair: async () => {
+      clearIdleDeadline();
       await clearDevice();
       clearOfflinePins();
       writeHold(null);
