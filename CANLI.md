@@ -60,6 +60,22 @@ npm run yedek
 Dosya `yedekler/` klasörüne tarihli yazılır. Ayda bir OneDrive → `1401 Playbook Yedek` klasörüne kopyala.
 Bir kayıt bozulursa Claude'a "şu kaydı yedekten geri getir" de: önce neyin değişeceğini gösterir, onayla yazar.
 
+## İlerlemeyi sıfırlama
+
+Kural değişince ya da deneme kullanımından sonra herkes sıfırdan başlasın istersen:
+yeni APK gerekmez, ilerleme telefonda değil veritabanında durur. Komut önce ne
+olacağını yazar, `--uygula` demeden hiçbir şey yazmaz:
+
+```bash
+npm run sifirla -- --canli
+```
+
+`--kapsam sinav` dersleri bırakır (yalnızca geçilen modüller ve sınav geçmişi gider),
+`--sube` / `--barista` / `--atla` daraltır, `--acik-koru` o anda süren sınavı silmez.
+Uygulanırken etkilenen her kayıt `yedekler/` içine yazılır; geri dönüş `npm run yedek
+-- --geri-yukle <dosya> --koleksiyon progress --uygula`. Sınav geçmişi silinince o
+haftanın sınav hakkı da yenilenir.
+
 ## Kullanım nasıl gidiyor?
 
 Kim uygulamayı açıyor, hangi ekranlar işliyor, nerede takılıyorlar (şifreni sorar,
