@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { collection, doc, limit, orderBy, query } from 'firebase/firestore';
 import { commitChange, canPublishNow, resultText, StaleError, versionKey, verOf } from '../../api/changes';
-import { authorName } from '../../lib/roles';
+import { authorName, canEditBulletin } from '../../lib/roles';
 import { localDay, localDayStart } from '../../lib/day';
 import { db } from '../../api/firebase';
 import { errorText } from '../../api/backend';
@@ -39,6 +39,9 @@ export const BulletinPage: React.FC = () => {
   const progress = useStaffData((x) => x.progress);
   const baristas = useStaffData((x) => x.baristas);
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Salt okunur rol (Pazarlama & Kreatif) bülteni okur, yazmaz: ne yeni
+  // bülten ne düzenleme düğmesi çıkar (bkz. canEditBulletin).
+  const edit = canEditBulletin(s.role);
 
   // Son 50 bülten (eskiden hepsi canlı); "Daha eski" ile büyür.
   const [max, setMax] = useState(50);
@@ -78,12 +81,12 @@ export const BulletinPage: React.FC = () => {
       <PageTitle
         title="Bülten"
         subtitle="Duyuru, kampanya ve liderlik tabloları. Tüm baristalara, vardiya ve mağaza müdürlerine görünür."
-        action={
+        action={edit ? (
           <button onClick={() => setDraft({ kind: 'duyuru', title: '', body: '', published: true })}
                   className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`}>
             <Icon name="plus" size={15} /> Yeni bülten
           </button>
-        }
+        ) : undefined}
       />
 
       <Section label={`Bültenler${bulletins.length ? ` · ${bulletins.length}` : ''}`}>
@@ -149,9 +152,11 @@ export const BulletinPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <button className={t.iconBtn} onClick={() => setDraft(b)} aria-label="Düzenle">
-                    <Icon name="edit" size={14} />
-                  </button>
+                  {edit && (
+                    <button className={t.iconBtn} onClick={() => setDraft(b)} aria-label="Düzenle">
+                      <Icon name="edit" size={14} />
+                    </button>
+                  )}
                 </div>
               );
             })}

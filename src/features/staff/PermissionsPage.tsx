@@ -5,15 +5,16 @@ import { errorText } from '../../api/backend';
 import { useContent } from '../../store/content';
 import { useQueryLive } from '../../hooks/useFirestore';
 import {
-  allowedIn, DEFAULT_DOMAINS, DEFAULTS, domainIn, EDITABLE_ROLES, PERMS, usePermStore,
+  allowedIn, catsIn, DEFAULT_CATS, DEFAULT_DOMAINS, DEFAULTS, domainIn, EDITABLE_ROLES, PERMS, usePermStore,
   type Perm, type PermConfig, type PermDef
 } from '../../lib/permissions';
+import { CATEGORIES } from '../../api/requests';
 import { STAFF_ROLE_LABEL, visibleStaffRoles, isDevRole, authorName } from '../../lib/roles';
 import { useStaffSession } from './StaffLayout';
 import { Badge, Empty, Page, PageTitle, Section, fmtDateTime, toast } from '../../ui/kit';
 import { Icon } from '../../ui/Icon';
 import * as t from '../../ui/tokens';
-import type { StaffRole } from '../../../shared/types';
+import type { RequestCategory, StaffRole } from '../../../shared/types';
 
 /**
  * Yetkiler — Kahve Operasyon Direktörü her birimin neyi görüp neyi
@@ -26,7 +27,7 @@ type Role = (typeof EDITABLE_ROLES)[number];
 interface Person { id: string; name: string; role: StaffRole; active: boolean }
 
 const SHORT: Record<Role, string> = {
-  director: 'Direktör', opsmanager: 'Operasyon Md.', regional: 'Bölge Md.', board: 'Yönetim Kurulu'
+  director: 'Direktör', opsmanager: 'Operasyon Md.', regional: 'Bölge Md.', marketing: 'Pazarlama & Kreatif', board: 'Yönetim Kurulu'
 };
 
 /** Hücre bu rol için anlamlı mı: kurul yalnız kendi ekranları, diğerleri yalnız panel. */
@@ -75,7 +76,7 @@ export const PermissionsPage: React.FC = () => {
   const reset = async (r: Role) => {
     if (!confirm(`${STAFF_ROLE_LABEL[r]} için bütün yetkiler varsayılana dönsün mü?`)) return;
     try {
-      await write(`${STAFF_ROLE_LABEL[r]}: varsayılana döndü`, () => ({ roles: { [r]: deleteField() }, domains: { [r]: deleteField() } }));
+      await write(`${STAFF_ROLE_LABEL[r]}: varsayılana döndü`, () => ({ roles: { [r]: deleteField() }, domains: { [r]: deleteField() }, cats: { [r]: deleteField() } }));
       toast('Varsayılana döndü', 'positive');
     } catch (e) { toast(errorText(e), 'negative'); }
   };
@@ -87,8 +88,17 @@ export const PermissionsPage: React.FC = () => {
     } catch (e) { toast(errorText(e), 'negative'); }
   };
 
+  const setCats = async (r: Role, list: RequestCategory[] | null) => {
+    try {
+      await write(`${STAFF_ROLE_LABEL[r]} · talep konuları: ${list ? list.map((id) => CATEGORIES.find((c) => c.id === id)?.label || id).join(', ') || 'hiçbiri' : 'bütün konular'}`,
+        () => ({ cats: { [r]: list } }));
+    } catch (e) { toast(errorText(e), 'negative'); }
+  };
+
   const groups = useMemo(() => [...new Set(PERMS.map((p) => p.group))], []);
   const domainRoles = EDITABLE_ROLES.filter((r) => r !== 'board' && PERMS.some((p) => p.domain && allowedIn(cfg, r, p.id)));
+  // Talep konuları: talep ekranını ya da yanıt yetkisini görebilen roller.
+  const catRoles = EDITABLE_ROLES.filter((r) => r !== 'board' && (allowedIn(cfg, r, 'ekran.talepler') || allowedIn(cfg, r, 'talepYanit')));
 
   return (
     <Page wide>
@@ -168,6 +178,36 @@ export const PermissionsPage: React.FC = () => {
                       <button key={tr.id} onClick={() => setDomain(r, on ? (dom || []).filter((x) => x !== tr.id) : [...(dom || []), tr.id])}
                         className={`${t.chip} h-9 px-3.5 text-[13px] ${on ? t.chipOn : t.chipOff}`}>
                         {on && <Icon name="check" size={13} />} {tr.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section label="Talep konuları">
+        <div className="flex flex-col gap-3">
+          {catRoles.map((r) => {
+            const cs = catsIn(cfg, r);
+            return (
+              <div key={r} className={`${t.card} p-4 flex flex-col gap-2.5`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[15px] font-semibold">{STAFF_ROLE_LABEL[r]}</span>
+                  <span className="text-[13px] text-fg-3">{names(r).join(', ')}</span>
+                  {cfg.cats?.[r] !== undefined && JSON.stringify(cfg.cats[r]) !== JSON.stringify(DEFAULT_CATS[r] ?? null) && <Badge tone="caution">Değiştirildi</Badge>}
+                </div>
+                <p className="text-[12.5px] text-fg-3 leading-relaxed">Bu birim yalnızca seçili konulardaki mağaza taleplerini görür ve yanıtlar. Mağazanın yeni talep ekranında seçtiği konu, talebi doğrudan ilgili birime düşürür.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setCats(r, null)} className={`${t.chip} h-9 px-3.5 text-[13px] ${!cs ? t.chipOn : t.chipOff}`}>Bütün konular</button>
+                  {CATEGORIES.map((c) => {
+                    const on = !!cs && cs.includes(c.id);
+                    return (
+                      <button key={c.id} onClick={() => setCats(r, on ? (cs || []).filter((x) => x !== c.id) : [...(cs || []), c.id])}
+                        className={`${t.chip} h-9 px-3.5 text-[13px] ${on ? t.chipOn : t.chipOff}`}>
+                        {on && <Icon name="check" size={13} />} {c.label}
                       </button>
                     );
                   })}

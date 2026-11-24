@@ -60,8 +60,16 @@ service cloud.firestore {
     //              okuma kurallarına ayrıca (canRead) eklenir.
     function isStaff() { return myRole() in ['developer', 'director', 'opsmanager', 'regional']; }
     function isBoard() { return myRole() == 'board'; }
-    /** Okuma: Kahve Operasyonu ve Yönetim Kurulu. */
-    function canRead() { return isStaff() || isBoard(); }
+    /**
+     * Pazarlama & Kreatif (24.11.2026): bülteni, mağaza taleplerini ve
+     * akademiyi OKUR. isStaff() bu rolü KAPSAMAZ — yazma izinleri isStaff()
+     * üzerinden verildiği için akademide hiçbir şeyi değiştiremez, öneri
+     * (proposals) bile açamaz. Tek yazdığı yer: kendi konusundaki talepler
+     * (reqCats, canHandleRequests).
+     */
+    function isMarketing() { return myRole() == 'marketing'; }
+    /** Okuma: Kahve Operasyonu, Pazarlama & Kreatif ve Yönetim Kurulu. */
+    function canRead() { return isStaff() || isBoard() || isMarketing(); }
     // --- Ayarlanabilir yetkiler (src/lib/permissions.ts) ------------------
     // config/permissions.roles[rol][yetki] = true/false. Belge ya da satır
     // yoksa her yetkinin yanında yazan varsayılan rol listesi geçerlidir
@@ -157,8 +165,20 @@ service cloud.firestore {
     function isDirector() { return myRole() in ['developer', 'director']; }
     /** Barista, mağaza telefonu ve davet kodları. */
     function canManageBaristas() { return perm('baristaYonetim', ['regional']); }
+    /**
+     * Rolün talep konuları (src/lib/permissions.ts DEFAULT_CATS ile aynı —
+     * ikisi birlikte değişmeli). config/permissions.cats[rol] ile değiştirilir;
+     * null ya da yoksa bütün konular.
+     */
+    function reqCats() {
+      let r = myRole();
+      let c = exists(permDoc()) ? get(permDoc()).data.get('cats', {}) : {};
+      return r == 'developer' ? null
+        : (r in c ? c[r] : (r == 'marketing' ? ['tabela', 'pano', 'baski'] : null));
+    }
+    function inReqCat(cat) { let lim = reqCats(); return lim == null || cat in lim; }
     /** Mağaza taleplerini yanıtlar, durumunu değiştirir ya da servis onayı verir. */
-    function canHandleRequests() { return perm('talepYanit', ['director', 'opsmanager', 'regional']) || perm('servisOnay', ['director', 'opsmanager']); }
+    function canHandleRequests() { return perm('talepYanit', ['director', 'opsmanager', 'regional', 'marketing']) || perm('servisOnay', ['director', 'opsmanager']); }
     function canApproveService() { return perm('servisOnay', ['director', 'opsmanager']); }
     function isStoreSession() { return myRole() in ['store', 'barista', 'lead', 'shift']; }
     // "Evde ders çalış" girişi (derslikKodlari): yalnızca kendi mağazasının
@@ -173,7 +193,7 @@ service cloud.firestore {
     function manageableRoles() { return ['store', 'barista', 'lead', 'shift', 'derslik']; }
     /** Ekibe verilebilecek roller: Kahve Operasyon Direktörü kurul dahil ekibi kurar. */
     // Ekibe geliştirici eklenmez (tektir); geliştirici ekibin geri kalanını kurar.
-    function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'board'] : ['opsmanager', 'regional', 'board']; }
+    function teamRolesFor() { return isAdmin() ? ['director', 'opsmanager', 'regional', 'marketing', 'board'] : ['opsmanager', 'regional', 'marketing', 'board']; }
     function myStoreId() { return me().storeId; }
     function myBaristaId() { return me().baristaId; }
     function inStore(storeId) { return isStoreSession() && myStoreId() == storeId; }
@@ -188,7 +208,10 @@ service cloud.firestore {
       // Mağaza telefonlarını ve Kahve Operasyonu ekibini listelemek için.
       allow list: if (isStaff() && (isAdmin() || !(resource.data.role == 'developer')))
         // Kurul, soru sorarken kime soracağını seçmek için direktörü ve bölge müdürünü görür.
-        || (isBoard() && resource.data.role in ['director', 'opsmanager', 'regional']);
+        || (isBoard() && resource.data.role in ['director', 'opsmanager', 'regional'])
+        // Pazarlama & Kreatif panelde ekip listesini görür (mağaza ve barista
+        // hesaplarını değil; geliştirici hiç görünmez).
+        || (isMarketing() && resource.data.role in ['director', 'opsmanager', 'regional', 'marketing', 'board']);
       // İlk kurulum: hiç yönetici yokken, yeni hesabın kendisi 'developer' (uygulama geliştiricisi) olarak kendi belgesini oluşturur.
       // Sonrasında: ekip hesaplarını Kahve Operasyon Direktörü, mağaza/barista
       // hesaplarını Bölge Müdürü açar. Kimse kendinden üst rol veremez.
@@ -393,7 +416,9 @@ service cloud.firestore {
     // Soru bankası: sunucu olmadığı için sınav telefonda puanlanır, bu
     // yüzden mağaza oturumları da okuyabilmek zorunda (cevap anahtarı dahil).
     match /questions/{id} {
-      allow read: if isStaff() || isStoreSession();
+      // Pazarlama & Kreatif akademiyi okur: modül ekranındaki soru bankası da
+      // görünür (yazma yetkisi yok, aşağıdaki write kuralı kapsamaz).
+      allow read: if isStaff() || isMarketing() || isStoreSession();
       allow write: if (isAdmin() || ((canPublish() || canFixQuestions()) && inModule(docData().moduleId) && (resource == null || inModule(resource.data.moduleId))))
         && imgWriteOk()
         && (!onWrite() || (strMax(request.resource.data, 'prompt', 1000) && strMax(request.resource.data, 'explanation', 3000)
@@ -444,6 +469,9 @@ service cloud.firestore {
       // Servis onayı bekleyen talebi yalnızca onay yetkisi olan bu durumdan
       // çıkarır; yanıt yetkisi olan "İşleme al" ile onayı atlayamaz (mesaj yazabilir).
       allow update: if requestTextOk() && ((canHandleRequests()
+            // Konu sınırlı rol (Pazarlama & Kreatif) yalnızca kendi
+            // konusundaki talebi yanıtlar; konu da değiştirilemez.
+            && inReqCat(resource.data.category) && request.resource.data.category == resource.data.category
             && (resource.data.status != 'approval' || request.resource.data.status == 'approval' || canApproveService()))
         // Mağaza tarafı kapanmış (çözüldü/reddedildi) talebe yazamaz: talep
         // kapalı kaldığı için mesaj panelde "Açık" listesine düşmüyor, gözden

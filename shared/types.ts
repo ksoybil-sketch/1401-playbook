@@ -29,7 +29,8 @@
 /** Bkz. src/lib/roles.ts — yetki sıralaması ve her rolün yapabildikleri. */
 /** board: Yönetim Kurulu üyesi — her şeyi okur, hiçbir şeyi değiştirmez; Kahve Operasyonu'na soru sorar. */
 /** opsmanager: Operasyon Müdürü — rütbece direktörle eş, alanı kahve dışı (bkz. src/lib/permissions.ts). */
-export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'board';
+/** marketing: Pazarlama & Kreatif — bülten, talep ve akademiyi okur; yalnızca kendi talep konularını yanıtlar. */
+export type StaffRole = 'developer' | 'director' | 'opsmanager' | 'regional' | 'board' | 'marketing';
 /** lead: mağaza müdürü · shift: vardiya müdürü. */
 export type BaristaRole = 'barista' | 'lead' | 'shift';
 /** derslik: evden ders çalışma girişi — yalnızca mağazasının barista listesini ve müfredatı okur. */
@@ -510,7 +511,13 @@ export interface Proposal {
 /* Mağaza talepleri                                                    */
 /* ------------------------------------------------------------------ */
 
-export type RequestCategory = 'ariza' | 'servis' | 'malzeme' | 'personel' | 'diger';
+/**
+ * Talep konuları. 'tabela' | 'pano' | 'baski' (24.11.2026) Pazarlama &
+ * Kreatif biriminin konularıdır: ışıklı tabela ve dış cephe, menü panosu ve
+ * görsel, kampanya/baskı malzemesi. Kimin hangi konuyu gördüğü ve
+ * yanıtladığı Yetkiler ekranından ayarlanır (src/lib/permissions.ts → cats).
+ */
+export type RequestCategory = 'ariza' | 'servis' | 'malzeme' | 'personel' | 'tabela' | 'pano' | 'baski' | 'diger';
 /**
  * İşletme kitapçığındaki akış: şube talebi açar → Bölge Müdürü görür ve
  * çözümü organize eder → yetkili servis gerekiyorsa Kahve Operasyon

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useContent } from '../../store/content';
-import { CATEGORIES, isClosed, markSeen, STATUS } from '../../api/requests';
-import { can } from '../../lib/roles';
-import { allowed } from '../../lib/permissions';
-import { useStaffData } from './staffData';
+import { CATEGORIES, catOf, isClosed, markSeen, STATUS } from '../../api/requests';
+import { canHandleRequest } from '../../lib/roles';
+import { allowed, useCats } from '../../lib/permissions';
+import { useScopedRequests, useStaffData } from './staffData';
 import { useStaffSession } from './StaffLayout';
 import { RequestSummary, RequestThread } from '../shared/Requests';
 import { Page, PageTitle, Section, Sheet, Empty, Stat } from '../../ui/kit';
@@ -21,10 +21,14 @@ import type { RequestCategory, StoreRequest } from '../../../shared/types';
  */
 export const RequestsPage: React.FC = () => {
   const me = useStaffSession();
-  const handle = can(me.role, 'handleRequests');
+  // Yanıt yetkisi konu konu: Pazarlama & Kreatif yalnızca kendi konularındaki
+  // talebi işleme alır, başka konudaki talebi görse de değiştiremez.
+  const handles = (r: StoreRequest) => canHandleRequest(me.role, r.category);
   // Servis onayı: Kahve Operasyon Direktörü ve Operasyon Müdürü (Yetkiler ayarı).
   const approver = allowed(me.role, 'servisOnay');
-  const requests = useStaffData((x) => x.requests);
+  // Rolün konu sınırı: liste ve tür süzgeci yalnızca bu konuları gösterir.
+  const myCats = useCats(me.role);
+  const requests = useScopedRequests();
   const moreRequests = useStaffData((x) => x.moreRequests);
   const { stores } = useContent();
   // Kartlar listeyi süzer; adres çubuğunda da tutulur (?durum=acil) ki
@@ -71,7 +75,7 @@ export const RequestsPage: React.FC = () => {
 
   const open = (r: StoreRequest) => {
     setOpenId(r.id);
-    if (handle && r.status === 'open') markSeen(r, { uid: me.uid, name: me.name }).catch(() => {});
+    if (handles(r) && r.status === 'open') markSeen(r, { uid: me.uid, name: me.name }).catch(() => {});
   };
 
   const week = Date.now() - 7 * 86400000;
@@ -83,7 +87,9 @@ export const RequestsPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title="Talepler"
-        subtitle="Mağaza ve vardiya müdürlerinin arıza, servis, malzeme ve personel talepleri. Sözlü talep geçersiz: kayıt burada."
+        subtitle={myCats
+          ? `Mağazaların yalnızca sana gelen konulardaki talepleri: ${myCats.map((c) => catOf(c).label).join(', ')}. Sözlü talep geçersiz: kayıt burada.`
+          : 'Mağaza ve vardiya müdürlerinin arıza, servis, malzeme ve personel talepleri. Sözlü talep geçersiz: kayıt burada.'}
         action={<Link to="/talepler/istatistik" className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`}><Icon name="chart" size={15} /> İstatistik</Link>} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -114,7 +120,7 @@ export const RequestsPage: React.FC = () => {
         </select>
         <select className={`${t.input} h-9 w-auto text-[14px]`} value={cat} onChange={(e) => setCat(e.target.value as RequestCategory | '')} aria-label="Kategori">
           <option value="">Tüm türler</option>
-          {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          {CATEGORIES.filter((c) => !myCats || myCats.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
         {tab === 'open' && (
           <select className={`${t.input} h-9 w-auto text-[14px]`} value={oldestFirst ? 'bekleyen' : 'acil'} onChange={(e) => setOrder(e.target.value === 'bekleyen')} aria-label="Sıralama">
@@ -148,7 +154,7 @@ export const RequestsPage: React.FC = () => {
         {current && (
           <>
             <RequestSummary r={current} showStore />
-            <RequestThread r={current} side="ops" me={{ uid: me.uid, name: me.name }} canChange={handle} canApprove={approver} />
+            <RequestThread r={current} side="ops" me={{ uid: me.uid, name: me.name }} canChange={handles(current)} canApprove={approver} />
           </>
         )}
       </Sheet>

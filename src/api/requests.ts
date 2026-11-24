@@ -22,6 +22,9 @@ export const CATEGORIES: { id: RequestCategory; label: string; icon: IconName; h
   { id: 'servis', label: 'Teknik servis', icon: 'shield', hint: 'Yetkili servis çağrısı, periyodik bakım' },
   { id: 'malzeme', label: 'Ekipman ihtiyacı', icon: 'package', hint: 'Bozulan ekipmanın yenisi, eksik ekipman' },
   { id: 'personel', label: 'Personel', icon: 'users', hint: 'Yeni barista, PIN, eğitim, vardiya' },
+  { id: 'tabela', label: 'Tabela / dış cephe', icon: 'store', hint: 'Işıklı tabela, harf, aydınlatma, dış cephe' },
+  { id: 'pano', label: 'Menü panosu / görsel', icon: 'image', hint: 'Menü panosu, fiyat şeridi, vitrin görseli, çerçeve' },
+  { id: 'baski', label: 'Baskı / kampanya malzemesi', icon: 'palette', hint: 'Afiş, stand, broşür, kampanya malzemesi' },
   { id: 'diger', label: 'Diğer', icon: 'message', hint: 'Başka bir konu' }
 ];
 
@@ -37,12 +40,14 @@ export const CATEGORIES: { id: RequestCategory; label: string; icon: IconName; h
  *     kullanılmaya devam ediyor (backend.ts resetBaristaPin, Ekibim ekranı);
  *   - eski kayıtlar etiketleriyle görünmeye devam ediyor.
  */
-export const MAGAZA_KATEGORILERI: RequestCategory[] = ['ariza', 'servis', 'malzeme'];
+/* 24.11.2026: tabela / pano / baski eklendi — Pazarlama & Kreatif birimi. */
+export const MAGAZA_KATEGORILERI: RequestCategory[] = ['ariza', 'servis', 'malzeme', 'tabela', 'pano', 'baski'];
 export const MAGAZA_KATEGORI_LISTESI = CATEGORIES.filter((c) => MAGAZA_KATEGORILERI.includes(c.id));
 
 /** Yeni talep ekranındaki uyarı: neyin buradan yürümediği. */
 export const TALEP_KAPSAM_UYARISI =
-  'Buradan yalnızca ekipman arızası, yetkili servis ve eksik/bozuk ekipman takip edilir. '
+  'Buradan ekipman arızası, yetkili servis, eksik/bozuk ekipman ve tabela / pano / baskı malzemesi takip edilir. '
+  + 'Tabela, pano ve baskı konuları Pazarlama & Kreatif birimine gider. '
   + 'Sarf malzeme, ürün siparişi ve personel konularını bölge müdürüne ilet. '
   + 'PIN sıfırlama için Ekibim ekranını kullan.';
 

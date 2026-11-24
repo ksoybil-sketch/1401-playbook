@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { catOf, reasonLabel } from '../../api/requests';
 import { fmtDur, requestStats, waitSegments } from '../../lib/requestStats';
-import { dayStart, loadRequestsSince, useFetched, useStaffData } from './staffData';
+import { dayStart, loadRequestsSince, useFetched, useScopedRequests } from './staffData';
+import { useCats } from '../../lib/permissions';
+import { useStaffSession } from './StaffLayout';
 import { Page, PageTitle, Section, Stat, Empty, fmtDate } from '../../ui/kit';
 import * as t from '../../ui/tokens';
 
@@ -26,7 +28,11 @@ const Bar: React.FC<{ value: number; max: number; tone?: string }> = ({ value, m
 );
 
 export const RequestStatsPage: React.FC = () => {
-  const live = useStaffData((x) => x.requests);
+  const me = useStaffSession();
+  const live = useScopedRequests();
+  // Konu sınırlı rol (Pazarlama & Kreatif) yalnızca kendi konularının
+  // istatistiğini görür; aralık okuması da aynı konulara süzülür.
+  const myCats = useCats(me.role);
   const [days, setDays] = useState<number>(90);
   // Seçilen aralığın talepleri tek seferlik okunur (panel yalnızca açık ve son
   // güncellenen talepleri canlı dinliyor); açık talepler canlı listeden eklenir.
@@ -35,8 +41,9 @@ export const RequestStatsPage: React.FC = () => {
   const requests = useMemo(() => {
     const m = new Map((ranged.data || []).map((r) => [r.id, r]));
     live.forEach((r) => m.set(r.id, r));
-    return [...m.values()];
-  }, [ranged.data, live]);
+    const all = [...m.values()];
+    return myCats ? all.filter((r) => myCats.includes(r.category)) : all;
+  }, [ranged.data, live, myCats]);
   const s = useMemo(() => requestStats(requests, Date.now() - days * 86400000), [requests, days]);
   const byStore = s.group((r) => r.storeId, (k) => requests.find((r) => r.storeId === k)?.storeName || k);
   const byCat = s.group((r) => r.category, (k) => catOf(k as never).label);

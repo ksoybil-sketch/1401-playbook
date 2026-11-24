@@ -47,7 +47,13 @@ Geçici şifre önceden kararlaştırıldıysa komutla da eklenir (şifreler sor
 npm run yonetici-ekle -- --email ornek@1401coffee.com --ad "Ad Soyad" --rol director
 ```
 
-Roller: `director` · `opsmanager` · `regional` · `board`. Betik önce ne yapacağını yazar ve onay ister.
+Roller: `director` · `opsmanager` · `regional` · `marketing` · `board`. Betik önce ne yapacağını yazar ve onay ister.
+
+**Pazarlama & Kreatif (`marketing`)** — 24.11.2026'da eklendi. Bülteni, mağaza taleplerini ve akademiyi
+**okur**, hiçbirini değiştiremez (öneri de açamaz). Mağazaların **tabela / dış cephe**, **menü panosu /
+görsel** ve **baskı / kampanya malzemesi** taleplerini görür, yanıtlar ve kapatır; arıza, servis, ekipman
+ve personel talepleri bu birime düşmez. Hangi birimin hangi konuları göreceği panelde
+**Yetkiler → Talep konuları**'ndan değiştirilir.
 
 ## Yedek
 

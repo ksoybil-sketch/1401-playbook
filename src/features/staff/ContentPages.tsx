@@ -9,7 +9,7 @@ import { errorText } from '../../api/backend';
 import { allowed, domainOf } from '../../lib/permissions';
 import { useQuestionCounts } from './staffData';
 import { useStaffSession } from './StaffLayout';
-import { authorName, can } from '../../lib/roles';
+import { authorName, can, canEditContent } from '../../lib/roles';
 import { getAiKey, setAiKey } from '../../lib/aiKey';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Page, PageTitle, Section, Empty, Badge, Sheet, ErrorText, Spinner, toast, sendOrQueue, QUEUED_TEXT, MAX } from '../../ui/kit';
@@ -91,6 +91,9 @@ export const ContentPage: React.FC = () => {
   // Soru sayısı modül belgesindeki sayaçtan değil bankadan (toplama sorgusu,
   // modül başına 1 okuma): soru eklenip silinince sayaç güncellenmiyordu.
   const qCounts = useQuestionCounts(modules.map((m) => m.id));
+  // Salt okunur rol (Pazarlama & Kreatif): akademiyi gezer, hiçbir şeyi
+  // değiştirmez — düzenleme ve ekleme düğmeleri hiç çıkmaz.
+  const edit = canEditContent(me.role);
   const [editTrack, setEditTrack] = useState<Partial<Track> | null>(null);
   const [editModule, setEditModule] = useState<Partial<Module> | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
@@ -121,10 +124,12 @@ export const ContentPage: React.FC = () => {
             )}
             {/* Tek ders eklemek için modülün içine girmek gerekiyordu; en çok
                 kullanılan yol burası olduğu için düğme de burada duruyor. */}
-            <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setImporting(true)}>
-              <Icon name="upload" size={15} /> Dosyadan ders
-            </button>
-            <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setEditTrack({})}><Icon name="plus" size={15} /> Eğitim yolu</button>
+            {edit && (
+              <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setImporting(true)}>
+                <Icon name="upload" size={15} /> Dosyadan ders
+              </button>
+            )}
+            {edit && <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => setEditTrack({})}><Icon name="plus" size={15} /> Eğitim yolu</button>}
           </div>
         } />
 
@@ -150,9 +155,11 @@ export const ContentPage: React.FC = () => {
             action={
               <div className="flex gap-1.5 items-center">
                 <PublishBadge on={tr.published} />
-                <button className={t.iconBtn} disabled={swapping || ti === 0} onClick={() => swap('tracks', tr, tracks[ti - 1])} title="Yukarı" aria-label={`${tr.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
-                <button className={t.iconBtn} disabled={swapping || ti === tracks.length - 1} onClick={() => swap('tracks', tr, tracks[ti + 1])} title="Aşağı" aria-label={`${tr.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
-                <button className={t.iconBtn} onClick={() => setEditTrack(tr)} title="Düzenle" aria-label={`${tr.title}: düzenle`}><Icon name="edit" size={14} /></button>
+                {edit && <>
+                  <button className={t.iconBtn} disabled={swapping || ti === 0} onClick={() => swap('tracks', tr, tracks[ti - 1])} title="Yukarı" aria-label={`${tr.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                  <button className={t.iconBtn} disabled={swapping || ti === tracks.length - 1} onClick={() => swap('tracks', tr, tracks[ti + 1])} title="Aşağı" aria-label={`${tr.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                  <button className={t.iconBtn} onClick={() => setEditTrack(tr)} title="Düzenle" aria-label={`${tr.title}: düzenle`}><Icon name="edit" size={14} /></button>
+                </>}
               </div>
             }>
             <div className={t.listGroup}>
@@ -172,15 +179,19 @@ export const ContentPage: React.FC = () => {
                   </Link>
                   <div className="flex items-center gap-1.5 ml-auto shrink-0">
                     <PublishBadge on={m.published} />
-                    <button className={t.iconBtn} disabled={swapping || mi === 0} onClick={() => swap('modules', m, mods[mi - 1])} aria-label={`${m.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
-                    <button className={t.iconBtn} disabled={swapping || mi === mods.length - 1} onClick={() => swap('modules', m, mods[mi + 1])} aria-label={`${m.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                    {edit && <>
+                      <button className={t.iconBtn} disabled={swapping || mi === 0} onClick={() => swap('modules', m, mods[mi - 1])} aria-label={`${m.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                      <button className={t.iconBtn} disabled={swapping || mi === mods.length - 1} onClick={() => swap('modules', m, mods[mi + 1])} aria-label={`${m.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                    </>}
                     <Link to={`/icerik/modul/${m.id}`} className={t.iconBtn} aria-label={`${m.title}: aç`}><Icon name="chevronRight" size={14} /></Link>
                   </div>
                 </div>
               ))}
-              <button className={`${t.listRow} text-fg-2`} onClick={() => setEditModule({ trackId: tr.id })}>
-                <Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Modül ekle</span>
-              </button>
+              {edit && (
+                <button className={`${t.listRow} text-fg-2`} onClick={() => setEditModule({ trackId: tr.id })}>
+                  <Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Modül ekle</span>
+                </button>
+              )}
             </div>
           </Section>
         );
@@ -432,6 +443,9 @@ export const ModuleSheet: React.FC<{ value: Partial<Module> | null; onClose: () 
 export const ModuleEditorPage: React.FC = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
+  const me = useStaffSession();
+  // Salt okunur rolde modül ekranı yalnızca okunur (bkz. canEditContent).
+  const edit = canEditContent(me.role);
   const { modules, lessons, tracks } = useContent();
   const mod = modules.find((m) => m.id === moduleId);
   const { data: questions } = useQueryLive<Question>(moduleId ? query(collection(db, 'questions'), where('moduleId', '==', moduleId)) : null, `q-${moduleId}`);
@@ -460,7 +474,7 @@ export const ModuleEditorPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title={mod.title} subtitle={`${tracks.find((x) => x.id === mod.trackId)?.title || ''} · geçme notu ${mod.passScore} · sınavda ${mod.examSize} soru`} back="/icerik"
-        action={<button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditModule(mod)}><Icon name="sliders" size={15} /> Ayarlar</button>} />
+        action={edit ? <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setEditModule(mod)}><Icon name="sliders" size={15} /> Ayarlar</button> : undefined} />
 
       <div className="flex items-center gap-2">
         <div className={t.segment}>
@@ -483,17 +497,21 @@ export const ModuleEditorPage: React.FC = () => {
               </Link>
               <div className="flex items-center gap-1.5 ml-auto shrink-0">
                 <PublishBadge on={l.published} />
-                <button className={t.iconBtn} disabled={swapping || i === 0} onClick={() => swap('lessons', l, ls[i - 1])} aria-label={`${l.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
-                <button className={t.iconBtn} disabled={swapping || i === ls.length - 1} onClick={() => swap('lessons', l, ls[i + 1])} aria-label={`${l.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                {edit && <>
+                  <button className={t.iconBtn} disabled={swapping || i === 0} onClick={() => swap('lessons', l, ls[i - 1])} aria-label={`${l.title}: yukarı taşı`}><Icon name="arrowUp" size={14} /></button>
+                  <button className={t.iconBtn} disabled={swapping || i === ls.length - 1} onClick={() => swap('lessons', l, ls[i + 1])} aria-label={`${l.title}: aşağı taşı`}><Icon name="arrowDown" size={14} /></button>
+                </>}
               </div>
             </div>
           ))}
-          <button className={`${t.listRow} text-fg-2`} onClick={addLesson}><Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Ders ekle</span></button>
-          <button className={`${t.listRow} text-fg-2`} onClick={() => setImporting(true)}>
-            <Icon name="upload" size={16} />
-            <span className="text-[13px] font-medium">Dosyadan ders ekle</span>
-            <span className="text-[12px] text-fg-3 ml-auto">Excel · CSV · PDF</span>
-          </button>
+          {edit && <>
+            <button className={`${t.listRow} text-fg-2`} onClick={addLesson}><Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Ders ekle</span></button>
+            <button className={`${t.listRow} text-fg-2`} onClick={() => setImporting(true)}>
+              <Icon name="upload" size={16} />
+              <span className="text-[13px] font-medium">Dosyadan ders ekle</span>
+              <span className="text-[12px] text-fg-3 ml-auto">Excel · CSV · PDF</span>
+            </button>
+          </>}
         </div>
       ) : (
         <>
@@ -505,18 +523,21 @@ export const ModuleEditorPage: React.FC = () => {
           )}
           <div className={t.listGroup}>
             {questions.map((q, i) => (
-              <button key={q.id} className={`${t.listRow} items-start`} onClick={() => setEditQ(q)}>
+              <div key={q.id} className={`${edit ? t.listRow : t.listRowStatic} items-start`}
+                {...(edit ? { role: 'button', tabIndex: 0, onClick: () => setEditQ(q) } : {})}>
                 <span className="text-[12px] text-fg-3 tnum w-6 pt-0.5">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-medium leading-snug">{q.prompt}</div>
                   <div className="text-[12px] text-positive mt-1">✓ {q.options[q.answer]}</div>
                 </div>
-                <Icon name="edit" size={14} className="text-fg-3 mt-1" />
-              </button>
+                {edit && <Icon name="edit" size={14} className="text-fg-3 mt-1" />}
+              </div>
             ))}
-            <button className={`${t.listRow} text-fg-2`} onClick={() => setEditQ({ moduleId: mod.id, type: 'single', options: ['', '', '', ''], answer: 0 })}>
-              <Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Soru ekle</span>
-            </button>
+            {edit && (
+              <button className={`${t.listRow} text-fg-2`} onClick={() => setEditQ({ moduleId: mod.id, type: 'single', options: ['', '', '', ''], answer: 0 })}>
+                <Icon name="plus" size={16} /> <span className="text-[13px] font-medium">Soru ekle</span>
+              </button>
+            )}
           </div>
         </>
       )}
@@ -658,6 +679,9 @@ export const LessonEditorPage: React.FC = () => {
   if (!lesson || !draft) return <Page wide><PageTitle title="Ders bulunamadı" back="/icerik" /></Page>;
   const mod = modules.find((m) => m.id === lesson.moduleId);
   const publisher = canPublishNow({ op: 'set', col: 'lessons', id: lesson.id, data: { moduleId: lesson.moduleId } });
+  // Salt okunur rol dersi yalnızca okur: düzenleme ve kaydetme düğmeleri
+  // çıkmaz, ders baristanın gördüğü hâliyle (önizleme) açılır.
+  const edit = canEditContent(me.role);
   // Başkasının önerisini yalnızca "Önerileri onayla" yetkisi olan yayınlar
   // (içerik yetkisi açık, onay yetkisi kapalı olan kişide ders yayınlanıp
   // öneri "bekliyor" kalıyordu).
@@ -718,12 +742,12 @@ export const LessonEditorPage: React.FC = () => {
   return (
     <Page wide>
       <PageTitle title={draft.title || 'Ders'} subtitle={mod?.title} back={`/icerik/modul/${lesson.moduleId}`}
-        action={
+        action={edit ? (
           <div className="flex gap-2">
             <button className={`${t.btn} ${t.btnSecondary} ${t.btnMd}`} onClick={() => setPreview(!preview)}><Icon name={preview ? 'edit' : 'phone'} size={15} /> {preview ? 'Düzenle' : 'Önizle'}</button>
             <button className={`${t.btn} ${t.btnPrimary} ${t.btnMd}`} onClick={() => save()} disabled={(!dirty && !(publisher && livePid)) || saving}>{saving ? <Spinner size={14} /> : dirty || (publisher && livePid) ? saveLabel : 'Kaydedildi'}</button>
           </div>
-        } />
+        ) : undefined} />
 
       {remoteChanged && (
         <div className="flex flex-wrap gap-3 p-4 rounded-xl border text-[13px] bg-caution-bg border-caution-line items-center">
@@ -748,7 +772,7 @@ export const LessonEditorPage: React.FC = () => {
         </div>
       )}
 
-      {preview ? (
+      {preview || !edit ? (
         <div className="max-w-[420px] w-full mx-auto rounded-[28px] border border-line-2 bg-espresso p-5 flex flex-col gap-5">
           <h1 className="text-[24px] font-bold leading-tight">{draft.title}</h1>
           <LessonBlocks blocks={draft.blocks} />

@@ -29,6 +29,9 @@ export const NOTIFY_DEFAULTS: Record<string, NotifyEvent[]> = {
   director: ['talep_acil', 'talep_onay', 'oneri_yeni', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
   opsmanager: ['talep_acil', 'talep_onay', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
   regional: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_karar', 'talep_geciken', 'oneri_karar', 'kurul_soru', 'gunluk_ozet'],
+  // Pazarlama & Kreatif yalnızca kendi konularındaki talepler için e-posta alır
+  // (konu süzgeci sunucuda: functions/ortak.js → katliRecipients).
+  marketing: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_geciken'],
   board: ['kurul_yanit', 'haftalik_rapor']
 };
 

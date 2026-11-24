@@ -26,6 +26,7 @@ const ROLLER = {
   director: 'Kahve Operasyon Direktörü',
   opsmanager: 'Operasyon Müdürü',
   regional: 'Bölge Müdürü',
+  marketing: 'Pazarlama & Kreatif',
   board: 'Yönetim Kurulu üyesi'
 };
 
@@ -33,7 +34,7 @@ const email = (val('--email') || '').trim().toLowerCase();
 const ad = (val('--ad') || '').trim();
 const rol = (val('--rol') || '').trim();
 if (!email || !ad || !rol) {
-  console.error('Kullanım: npm run yonetici-ekle -- --email <e-posta> --ad "<Ad Soyad>" --rol <director|opsmanager|regional|board> [--demo]');
+  console.error('Kullanım: npm run yonetici-ekle -- --email <e-posta> --ad "<Ad Soyad>" --rol <director|opsmanager|regional|marketing|board> [--demo]');
   process.exit(1);
 }
 if (!ROLLER[rol]) {

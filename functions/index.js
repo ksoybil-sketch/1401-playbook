@@ -17,7 +17,7 @@
  */
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { db, send, sendTo, recipients, esc, app, CAT, fmt, opts, TZ } from './ortak.js';
+import { db, send, sendTo, recipients, catRecipients, esc, app, CAT, fmt, opts, TZ } from './ortak.js';
 import { gunlukOzetGonder, haftalikRaporGonder } from './ozet.js';
 
 /* ------------------------------------------------------------------ */
@@ -34,9 +34,11 @@ export const talepAcildi = onDocumentCreated({ document: 'requests/{id}', ...opt
     button: { label: 'Talebi aç', url: app('/talepler') }
   };
   // Acil talep: "acil" olayını seçenler; diğerleri yalnızca "yeni talep"le alır (bir kişiye bir e-posta).
-  if (urgent) await send('talep_acil', `Acil talep · ${r.storeName}`, body, { ref: `requests/${e.params.id}` });
-  const already = urgent ? new Set((await recipients('talep_acil')).map((p) => p.email)) : new Set();
-  const to = (await recipients('talep_yeni')).filter((p) => !already.has(p.email));
+  // Konu sınırlı birim (Pazarlama & Kreatif) yalnızca kendi konusundaki talebi alır.
+  const acil = urgent ? await catRecipients('talep_acil', r.category) : [];
+  if (acil.length) await sendTo(acil, 'talep_acil', `Acil talep · ${r.storeName}`, body, { ref: `requests/${e.params.id}` });
+  const already = new Set(acil.map((p) => p.email));
+  const to = (await catRecipients('talep_yeni', r.category)).filter((p) => !already.has(p.email));
   if (to.length) await sendTo(to, 'talep_yeni', `Yeni talep · ${r.storeName}`, body, { ref: `requests/${e.params.id}` });
 });
 
@@ -49,7 +51,8 @@ export const talepDegisti = onDocumentUpdated({ document: 'requests/{id}', ...op
   const added = (r.notes || []).slice((before.notes || []).length);
   const storeReply = added.find((n) => n.side === 'store' && n.text);
   if (storeReply) {
-    await send('talep_yanit', `Mağazadan yanıt · ${r.storeName}`, {
+    const to = await catRecipients('talep_yanit', r.category);
+    if (to.length) await sendTo(to, 'talep_yanit', `Mağazadan yanıt · ${r.storeName}`, {
       title: `${r.storeName}: ${r.title}`,
       lines: [`<b>${esc(storeReply.byName)}</b> yazdı:`, esc(storeReply.text)],
       button: { label: 'Yanıtla', url: app('/talepler') }

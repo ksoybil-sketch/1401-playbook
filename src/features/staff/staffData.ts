@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import {
   collection, count, getAggregateFromServer, getCountFromServer, getDocs, limit, onSnapshot, orderBy, query, sum, where,
@@ -6,6 +6,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { dayStartOf } from '../../lib/day';
+import { useCats } from '../../lib/permissions';
+import { useSession } from '../../store/session';
 import type { Assignment, Attempt, Barista, Progress, Proposal, StoreRequest } from '../../../shared/types';
 import { DELETED_MODULES, type ExamAgg, type ExamStats } from '../../lib/boardStats';
 export type { ExamAgg, ExamStats } from '../../lib/boardStats';
@@ -128,6 +130,20 @@ export const useStaffData = create<StaffData>((set, get) => {
     }
   };
 });
+
+/**
+ * Bu rolün görebildiği talepler: konu sınırı varsa (Pazarlama & Kreatif:
+ * tabela / pano / baskı) yalnızca o konular. Talepler ekranı, istatistikleri,
+ * menüdeki rozet ve "Seni bekleyenler" hep bunu kullanır; sınırsız rollerde
+ * liste aynen döner. Kurallar okumayı kısıtlamaz (ekip bütün talepleri
+ * okuyabilir); bu, ekranın kapsamı.
+ */
+export function useScopedRequests(): StoreRequest[] {
+  const requests = useStaffData((x) => x.requests);
+  const session = useSession((x) => x.session);
+  const cats = useCats(session.kind === 'staff' ? session.role : undefined);
+  return useMemo(() => (cats ? requests.filter((r) => cats.includes(r.category)) : requests), [requests, cats]);
+}
 
 /* ------------------------------------------------------------------ */
 /* Tek seferlik okumalar (oturum içinde önbellekli)                     */

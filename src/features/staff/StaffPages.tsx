@@ -20,7 +20,7 @@ import { AssignSheet } from '../shared/AssignSheet';
 import { AttemptRow } from '../barista/HomePages';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import {
-  useStaffData, useExamsSince, useFetched, useBaristaAttempts, useStoreAssignments, useHistory, useHistoryIfLoaded,
+  useStaffData, useScopedRequests, useExamsSince, useFetched, useBaristaAttempts, useStoreAssignments, useHistory, useHistoryIfLoaded,
   loadBaristaAttempts, loadStoreAssignments, loadOlderAssignments, invalidate, loadOverviewExams, dayStart, isFetched, examsSinceKey,
   type OverviewExams
 } from './staffData';
@@ -163,7 +163,9 @@ const MissedSheet: React.FC<{ q: MissedQuestion | null; onClose: () => void; sto
 const WaitingStrip: React.FC<{ feedback: number }> = ({ feedback }) => {
   const me = useStaffSession();
   const ok = (p: Parameters<typeof allowed>[1]) => allowed(me.role, p);
-  const { requests, proposals, baristas } = useStaffData();
+  const { proposals, baristas } = useStaffData();
+  // Konu sınırlı rolde yalnızca kendi konularındaki talepler sayılır.
+  const requests = useScopedRequests();
   const board = useBoardQuestions(ok('ekran.kurulSorulari') && ok('kurulYanit'));
   const items: { key: string; n: number; text: string; hint?: string; icon: Parameters<typeof Icon>[0]['name']; tone: 'caution' | 'negative' | 'accent'; to?: string; onClick?: () => void }[] = [];
 
@@ -455,7 +457,7 @@ const StaffTeamSection: React.FC = () => {
   const [created, setCreated] = useState<{ name: string; email: string; pw: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rank = (r: StaffRole) => ['board', 'developer', 'director', 'opsmanager', 'regional'].indexOf(r);
+  const rank = (r: StaffRole) => ['board', 'developer', 'director', 'opsmanager', 'regional', 'marketing'].indexOf(r);
 
   const add = async () => {
     setError(null);
@@ -589,6 +591,7 @@ const ROLE_HINT: Record<StaffRole, string> = {
   director: 'yayınlar, onaylar, ekibi yönetir',
   opsmanager: 'kahve dışı eğitimleri yayınlar, talepleri yanıtlar ve servis onaylar, bülten yayınlar',
   regional: 'barista ve mağaza kodlarını yönetir; içerik ve bülten önerileri onaya düşer',
+  marketing: 'bülteni, talepleri ve akademiyi okur; yalnızca tabela / pano / baskı taleplerini yanıtlar',
   board: 'gidişatı, raporları ve süren işleri okur; hiçbir şeyi değiştirmez, soru sorar'
 };
 
@@ -729,13 +732,18 @@ export const ApronBadgesSection: React.FC = () => {
  * buradan takip eder.
  */
 export const PendingCodesSection: React.FC = () => {
+  const me = useStaffSession();
   const { stores } = useContent();
   const { baristas } = useStaffData();
+  // Davet ve eşleştirme kodları barista/mağaza yönetiminin işi: yetkisi
+  // olmayan rol (Pazarlama & Kreatif) bu bölümü görmez — sorgusu da
+  // kurallarca reddediliyordu (telefon hesapları listelenemez).
+  const codes = allowed(me.role, 'baristaYonetim') || allowed(me.role, 'ekran.baristalar');
   const { data: phones } = useQueryLive<{ id: string; storeId: string; createdAt: number }>(
-    query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)), 'pending-phones');
+    codes ? query(collection(db, 'users'), where('role', '==', 'store'), where('paired', '==', false), where('active', '==', true)) : null, 'pending-phones');
   const waiting = baristas.filter((b) => b.active && b.pinPending).sort((a, b) => (a.inviteExpiresAt || 0) - (b.inviteExpiresAt || 0));
   const storeName = (id: string) => stores.find((x) => x.id === id)?.name || '';
-  if (!waiting.length && !phones.length) return null;
+  if (!codes || (!waiting.length && !phones.length)) return null;
   return (
     <div id="kod-bekleyenler" className="scroll-mt-20 flex flex-col">
     <Section label={`Kod bekleyenler · ${waiting.length + phones.length}`}>

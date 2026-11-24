@@ -1,5 +1,5 @@
-import type { BaristaRole, StaffRole } from '../../shared/types';
-import { allowed, type Perm } from './permissions';
+import type { BaristaRole, RequestCategory, StaffRole } from '../../shared/types';
+import { allowed, catsOf, inCats, type Perm } from './permissions';
 
 /**
  * Roller ve yetkiler. Her rolün neyi görüp değiştirebildiği artık ayarlanabilir:
@@ -17,6 +17,11 @@ import { allowed, type Perm } from './permissions';
  *   regional   Uğur Can Gürbüz — Bölge Müdürü. Barista/mağaza/kod işleri
  *              onda. İçerik ve bülten değişiklikleri doğrudan yayına
  *              girmez, Cenk Bey'in "Bekleyen onaylar" listesine düşer.
+ *   marketing  Pazarlama & Kreatif — bülteni, mağaza taleplerini ve akademiyi
+ *              okur; akademide hiçbir şeyi değiştirmez (öneri de açamaz).
+ *              Mağazanın tabela / pano / baskı taleplerini yanıtlar ve kapatır;
+ *              başka konudaki taleplere dokunmaz (konu sınırı: permissions.ts
+ *              DEFAULT_CATS, kurallarda reqCats()).
  *   board      Yönetim Kurulu üyesi — gidişatı, raporları ve süren işleri
  *              okur; hiçbir şeyi değiştirmez. Kendi ekranı var (src/features/board);
  *              Kahve Operasyonu yöneticilerine soru sorar.
@@ -52,7 +57,7 @@ export function can(role: StaffRole | undefined, cap: Capability): boolean {
   return allowed(role, MAP[cap]!);
 }
 
-export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional', 'board'];
+export const STAFF_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional', 'marketing', 'board'];
 
 /**
  * Uygulama geliştiricisi kimseye görünmez:
@@ -72,6 +77,23 @@ export const authorName = (role: StaffRole | string | undefined, name: string | 
 export const visibleStaffRoles = (me: StaffRole | undefined): StaffRole[] =>
   isDevRole(me) ? STAFF_ROLES : STAFF_ROLES.filter((r) => !isDevRole(r));
 
+/**
+ * Akademi ve bülten ekranları bu rolde düzenlenebilir mi.
+ *
+ * Düzenleme iki yoldan yürür: ya doğrudan yayınlarsın (icerikYayin /
+ * bultenYayin), ya da değişiklik öneri olarak onaya düşer. Öneri açabilen
+ * roller firestore.rules → isStaff() ile sınırlı; o listede olmayan ve
+ * yayın yetkisi de olmayan rol (Pazarlama & Kreatif) ekranları salt okunur
+ * görür — düzenleme düğmeleri hiç çıkmaz, çıkıp sunucuda reddedilmez.
+ * Direktör Yetkiler ekranından yayın yetkisi verirse ekran kendiliğinden
+ * düzenlenebilir olur (kurallar da o yetkiye bakıyor).
+ */
+const PROPOSING_ROLES: StaffRole[] = ['developer', 'director', 'opsmanager', 'regional'];
+export const canEditContent = (r: StaffRole | undefined): boolean =>
+  !!r && (PROPOSING_ROLES.includes(r) || allowed(r, 'icerikYayin'));
+export const canEditBulletin = (r: StaffRole | undefined): boolean =>
+  !!r && (PROPOSING_ROLES.includes(r) || allowed(r, 'bultenYayin'));
+
 /** Yönetim Kurulu: salt okunur, ayrı ekran. */
 export const isBoard = (r: StaffRole | undefined) => r === 'board';
 /** Kurul sorularını yanıtlayabilenler. */
@@ -82,15 +104,24 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   director: 'Kahve Operasyon Direktörü',
   opsmanager: 'Operasyon Müdürü',
   regional: 'Bölge Müdürü',
+  marketing: 'Pazarlama & Kreatif',
   board: 'Yönetim Kurulu Üyesi'
 };
+
+/**
+ * Bu talebi yanıtlayıp durumunu değiştirebilir mi: yanıt yetkisi + konu
+ * sınırı. Pazarlama & Kreatif yalnızca kendi konularındaki talebe dokunur;
+ * kurallar (firestore.rules → canHandleRequests) aynısını sunucuda denetler.
+ */
+export const canHandleRequest = (role: StaffRole | undefined, cat: RequestCategory): boolean =>
+  can(role, 'handleRequests') && inCats(catsOf(role), cat);
 
 /** Ekibe kimin hangi rolle kişi ekleyebileceği. */
 export function assignableRoles(me: StaffRole): StaffRole[] {
   // Uygulama geliştiricisi tektir; ekibe geliştirici eklenmez.
-  if (me === 'developer') return ['director', 'opsmanager', 'regional', 'board'];
+  if (me === 'developer') return ['director', 'opsmanager', 'regional', 'marketing', 'board'];
   // Cenk Bey uygulamanın yürütücüsü: Yönetim Kurulu dahil ekibi o kurar.
-  if (me === 'director') return ['opsmanager', 'regional', 'board'];
+  if (me === 'director') return ['opsmanager', 'regional', 'marketing', 'board'];
   return [];
 }
 

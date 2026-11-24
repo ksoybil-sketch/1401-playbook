@@ -41,6 +41,9 @@ export const TEST = {
     { email: 'cenkgirginol@1401coffee.com', password: '192535', name: 'Cenk Girginol', role: 'director' },
     { email: 'semihdizdar@1401coffee.com', password: '351925', name: 'Semih Dizdar', role: 'opsmanager' },
     { email: 'ugurcangurbuz@1401coffee.com', password: '351925', name: 'Uğur Can Gürbüz', role: 'regional' },
+    // Pazarlama & Kreatif: bülten/talep/akademi okur, yalnızca tabela-pano-baskı
+    // taleplerini yanıtlar (örnek veri; canlıda hesap npm run yonetici-ekle ile açılır).
+    { email: 'pazarlama@1401coffee.com', password: '351925', name: 'Pazarlama Birimi', role: 'marketing' },
     // Yönetim Kurulu: salt okunur ekran (src/features/board).
     { email: 'ogunturanli@1401coffee.com', password: '351925', name: 'Ogün Turanlı', role: 'board' },
     { email: 'bulentozgurkilic@1401coffee.com', password: '351925', name: 'Bülent Özgür Kılıç', role: 'board' },

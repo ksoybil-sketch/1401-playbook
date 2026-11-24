@@ -9,7 +9,7 @@ import { useBoardView } from '../../lib/boardView';
 import { useAllow, type Perm } from '../../lib/permissions';
 import { askedTo, useBoardQuestions } from '../board/BoardQuestions';
 import { isClosed } from '../../api/requests';
-import { useStaffData } from './staffData';
+import { useScopedRequests, useStaffData } from './staffData';
 import { ChangePasswordSheet } from './ChangePasswordSheet';
 import { ThemePicker, useStaffTheme } from './theme';
 import { ACTIVITY_LOG } from '../../demo/log';
@@ -51,7 +51,7 @@ export const StaffLayout: React.FC = () => {
   const idle = useIdleLogout(5 * 60 * 1000, sharedDevice);
   const subscribe = useStaffData((x) => x.subscribe);
   const proposals = useStaffData((x) => x.proposals);
-  const requests = useStaffData((x) => x.requests);
+  const requests = useScopedRequests();
   const dataError = useStaffData((x) => x.error);
   const { pathname } = useLocation();
   const [more, setMore] = useState(false);

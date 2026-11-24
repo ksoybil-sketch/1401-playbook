@@ -3,7 +3,7 @@
  * sabah / her pazartesi çağırır; scripts/deneme-ozet.mjs emülatörde
  * doğrudan çalıştırır (emülatörde zamanlayıcı yok).
  */
-import { db, send, esc, app, dur, H, TZ } from './ortak.js';
+import { db, send, sendTo, recipients, catGroups, esc, app, dur, H, TZ } from './ortak.js';
 
 /* ------------------------------------------------------------------ */
 /* Zamanlanmış: günlük özet ve haftalık rapor                           */
@@ -23,11 +23,18 @@ export async function gunlukOzetGonder() {
   const attempts = (await db.collection('attempts').where('submittedAt', '>=', yesterday).get()).docs.map((d) => d.data());
 
   if (late.length) {
-    await send('talep_geciken', `${late.length} talep 3 günü geçti`, {
-      title: `${late.length} açık talep 3 günden uzun süredir bekliyor`,
-      table: [['Talep', 'Bekliyor'], ...late.slice(0, 15).map((r) => [`${r.storeName} · ${r.title}`, dur(now - r.createdAt)])],
-      button: { label: 'Talepler', url: app('/talepler') }
-    });
+    // Konu sınırlı birim (Pazarlama & Kreatif) yalnızca kendi konularındaki
+    // gecikenleri görür: alıcılar kapsamına göre gruplanır, her gruba kendi
+    // listesi gider (hiç gecikeni olmayan gruba e-posta gitmez).
+    for (const g of await catGroups(await recipients('talep_geciken'))) {
+      const mine = g.cats ? late.filter((r) => g.cats.includes(r.category)) : late;
+      if (!mine.length) continue;
+      await sendTo(g.people, 'talep_geciken', `${mine.length} talep 3 günü geçti`, {
+        title: `${mine.length} açık talep 3 günden uzun süredir bekliyor`,
+        table: [['Talep', 'Bekliyor'], ...mine.slice(0, 15).map((r) => [`${r.storeName} · ${r.title}`, dur(now - r.createdAt)])],
+        button: { label: 'Talepler', url: app('/talepler') }
+      });
+    }
   }
   await send('gunluk_ozet', `Günlük özet · ${new Date().toLocaleDateString('tr-TR', { timeZone: TZ, day: 'numeric', month: 'long' })}`, {
     title: 'Günlük özet',

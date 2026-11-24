@@ -50,9 +50,10 @@ Kısa tanıtım: [README](../README.md). Canlı sistemin günlük kullanımı: [
 ## Roller ve yetki
 
 - Her telefon, barista ve yönetici ayrı bir Firebase hesabıdır; rolü `users/{uid}` belgesinde durur.
-- Ekip rolleri: uygulama geliştiricisi, Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Yönetim Kurulu. Mağaza rolleri: mağaza müdürü, vardiya müdürü, barista. Ayrıca `store` (mağaza telefonu) ve `derslik` (evden ders çalışma girişi, yalnızca okur).
+- Ekip rolleri: uygulama geliştiricisi, Kahve Operasyon Direktörü, Operasyon Müdürü, Bölge Müdürü, Pazarlama & Kreatif, Yönetim Kurulu. Mağaza rolleri: mağaza müdürü, vardiya müdürü, barista. Ayrıca `store` (mağaza telefonu) ve `derslik` (evden ders çalışma girişi, yalnızca okur).
 - Rol tanımları `src/lib/roles.ts` ve `src/lib/permissions.ts` içinde, aynı sınırlar `firestore.rules` içinde. Üçü birlikte değişir.
 - Yetkiler rol bazında panelin Yetkiler ekranından ayarlanır; sunucu kuralları aynı ayarı okur.
+- **Pazarlama & Kreatif** (24.11.2026): bülteni, mağaza taleplerini ve akademiyi okur; akademide ve bültende hiçbir şeyi değiştirmez (öneri de açamaz — `firestore.rules` → `isStaff()` bu rolü kapsamaz). Mağazanın **tabela / pano / baskı** taleplerini görür, yanıtlar ve kapatır; başka konudaki talep listesine düşmez. Konu kapsamı Yetkiler ekranındaki "Talep konuları"ndan değiştirilir (`config/permissions.cats`); varsayılanı üç yerde birlikte durur: `src/lib/permissions.ts` → `DEFAULT_CATS`, `firestore.rules` → `reqCats()`, `functions/ortak.js` → `DEFAULT_CATS`.
 - Pasif hesap hiçbir şey okuyamaz ve yazamaz; açık oturumu da kapanır.
 - Yöneticiler şifrelerini panelden, mevcut şifreyle değiştirir.
 

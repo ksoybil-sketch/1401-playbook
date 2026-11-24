@@ -32,8 +32,46 @@ const DEFAULTS = {
   director: ['talep_acil', 'talep_onay', 'oneri_yeni', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
   opsmanager: ['talep_acil', 'talep_onay', 'kurul_soru', 'gunluk_ozet', 'haftalik_rapor'],
   regional: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_karar', 'talep_geciken', 'oneri_karar', 'kurul_soru', 'gunluk_ozet'],
+  marketing: ['talep_yeni', 'talep_acil', 'talep_yanit', 'talep_geciken'],
   board: ['kurul_yanit', 'haftalik_rapor']
 };
+
+/**
+ * Rolün talep konuları (src/lib/permissions.ts DEFAULT_CATS ve
+ * firestore.rules reqCats() ile aynı — üçü birlikte değişmeli).
+ * config/permissions.cats[rol] ile değiştirilir; null / yok = bütün konular.
+ */
+const DEFAULT_CATS = { marketing: ['tabela', 'pano', 'baski'] };
+async function catScope() {
+  const snap = await db.doc('config/permissions').get();
+  const cfg = snap.exists ? snap.get('cats') || {} : {};
+  return (role) => {
+    if (!role || role === 'developer') return null;
+    const c = Object.prototype.hasOwnProperty.call(cfg, role) ? cfg[role] : DEFAULT_CATS[role];
+    return c ?? null;
+  };
+}
+/**
+ * Bu olayın alıcıları, talebin konusuna göre süzülmüş: konu sınırlı birim
+ * (Pazarlama & Kreatif) başka konudaki talep için e-posta almaz.
+ */
+export async function catRecipients(event, category) {
+  const [to, scope] = await Promise.all([recipients(event), catScope()]);
+  return to.filter((p) => { const c = scope(p.role); return !c || c.includes(category); });
+}
+/** Alıcıları konu kapsamına göre gruplar (özet e-postalarında liste süzmek için). */
+export async function catGroups(people) {
+  const scope = await catScope();
+  const m = new Map();
+  for (const p of people) {
+    const c = scope(p.role);
+    const key = c ? [...c].sort().join(',') : '*';
+    const g = m.get(key) || { cats: c, people: [] };
+    g.people.push(p);
+    m.set(key, g);
+  }
+  return [...m.values()];
+}
 
 export async function recipients(event) {
   const snap = await db.doc('config/notifications').get();
@@ -101,7 +139,7 @@ export async function send(event, subject, body, extra = {}) {
 }
 
 export const app = (path) => `${APP_URL.value()}/#${path}`;
-export const CAT = { ariza: 'Arıza', servis: 'Teknik servis', malzeme: 'Malzeme / ekipman', personel: 'Personel', diger: 'Diğer' };
+export const CAT = { ariza: 'Arıza', servis: 'Teknik servis', malzeme: 'Malzeme / ekipman', personel: 'Personel', tabela: 'Tabela / dış cephe', pano: 'Menü panosu / görsel', baski: 'Baskı / kampanya malzemesi', diger: 'Diğer' };
 export const fmt = (ms) => new Date(ms).toLocaleString('tr-TR', { timeZone: TZ, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 export const dur = (ms) => { const h = ms / H; return h < 24 ? `${Math.max(1, Math.round(h))} saat` : `${Math.round(h / 24)} gün`; };
 export const opts = { secrets: [SMTP_URL] };

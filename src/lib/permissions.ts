@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../api/firebase';
-import type { Module, StaffRole } from '../../shared/types';
+import type { Module, RequestCategory, StaffRole } from '../../shared/types';
 
 /**
  * Yetki ayarları — kim neyi görür, neyi değiştirir.
@@ -20,6 +20,10 @@ import type { Module, StaffRole } from '../../shared/types';
  *
  * Alan sınırı: bir rolün içerik yetkisi belirli eğitim yollarıyla
  * sınırlanabilir (Operasyon Müdürü: kahve dışı yollar). Sınır yoksa her yerde.
+ *
+ * Konu sınırı: bir rolün talep ekranı belirli konularla sınırlanabilir
+ * (Pazarlama & Kreatif: tabela / pano / baskı). Sınırlı rol yalnızca o
+ * konudaki talepleri görür ve yanıtlar; sınır yoksa bütün konular.
  */
 
 export type Perm =
@@ -78,6 +82,11 @@ export const DEFAULTS: Record<Exclude<StaffRole, 'developer'>, Perm[]> = {
     'ekran.akademi', 'ekran.soruHavuzu', 'ekran.geriBildirim', 'ekran.kurulSorulari',
     'talepYanit', 'servisOnay', 'icerikYayin', 'oneriOnay', 'bultenYayin', 'soruDuzelt', 'gorevAtama', 'kurulYanit'],
   regional: [...PANEL_ALL, 'ekran.geriBildirim', 'ekran.kurulSorulari', 'talepYanit', 'baristaYonetim', 'gorevAtama', 'kurulYanit'],
+  // Pazarlama & Kreatif: bülteni, talepleri ve akademiyi okur. İçerik ve bülten
+  // yetkisi yok — akademide hiçbir şeyi değiştirmez, öneri bile açmaz
+  // (firestore.rules → isStaff() bu rolü kapsamaz). Talep yanıtı açık ama
+  // konu sınırıyla: yalnızca tabela / pano / baskı (DEFAULT_CATS).
+  marketing: ['ekran.talepler', 'ekran.bulten', 'ekran.akademi', 'talepYanit'],
   board: ['kurul.magazalar', 'kurul.isler', 'kurul.sorular', 'kurul.raporlar']
 };
 
@@ -90,13 +99,24 @@ export const DEFAULT_DOMAINS: Partial<Record<StaffRole, string[]>> = {
   opsmanager: ['oryantasyon', 'misafir-deneyimi', 'isletme-standartlari']
 };
 
+/**
+ * Varsayılan talep konusu sınırları: Pazarlama & Kreatif yalnızca kendi
+ * konularını görür ve yanıtlar. firestore.rules → reqCats() ile aynı.
+ * Listede olmayan rol bütün konuları görür.
+ */
+export const DEFAULT_CATS: Partial<Record<StaffRole, RequestCategory[]>> = {
+  marketing: ['tabela', 'pano', 'baski']
+};
+
 /** Ayarlanabilir roller (yetki sırasıyla). Geliştirici listede yok. */
-export const EDITABLE_ROLES: Exclude<StaffRole, 'developer'>[] = ['director', 'opsmanager', 'regional', 'board'];
+export const EDITABLE_ROLES: Exclude<StaffRole, 'developer'>[] = ['director', 'opsmanager', 'regional', 'marketing', 'board'];
 
 export interface PermConfig {
   roles?: Partial<Record<StaffRole, Partial<Record<Perm, boolean>>>>;
   /** Rol → izinli eğitim yolları. Yoksa / null ise sınırsız. */
   domains?: Partial<Record<StaffRole, string[] | null>>;
+  /** Rol → görüp yanıtlayabildiği talep konuları. Yoksa / null ise hepsi. */
+  cats?: Partial<Record<StaffRole, RequestCategory[] | null>>;
   updatedAt?: number;
   updatedByName?: string;
   log?: { at: number; byName: string; text: string; dev?: boolean }[];
@@ -143,6 +163,25 @@ export function useDomain(role: StaffRole | undefined) {
   const cfg = usePermStore((s) => s.config);
   return domainIn(cfg, role);
 }
+
+/**
+ * Rolün talep konuları: görüp yanıtlayabildiği konular (null = hepsi).
+ * Talepler ekranı, talep istatistikleri, menü rozeti ve "Seni bekleyenler"
+ * bu listeye göre süzülür; yanıt yetkisi de konu konu denetlenir.
+ */
+export function catsIn(cfg: PermConfig, role: StaffRole | undefined): RequestCategory[] | null {
+  if (!role || isDev(role)) return null;
+  const c = cfg.cats?.[role];
+  if (c !== undefined) return c;
+  return DEFAULT_CATS[role] ?? null;
+}
+export const catsOf = (role: StaffRole | undefined) => catsIn(usePermStore.getState().config, role);
+export function useCats(role: StaffRole | undefined) {
+  const cfg = usePermStore((s) => s.config);
+  return catsIn(cfg, role);
+}
+/** Bu konu rolün kapsamında mı (sınır yoksa her konu). */
+export const inCats = (cats: RequestCategory[] | null, cat: RequestCategory) => !cats || cats.includes(cat);
 
 /** Modül bu rolün alanında mı. */
 export function moduleInDomain(domain: string[] | null, mod: Pick<Module, 'trackId'> | undefined | null): boolean {
